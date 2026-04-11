@@ -18,7 +18,8 @@ A Survey Protocol (or just Protocol) defines the contents of a Survey, like what
 
 |Attribute|Type|Required|Description|
 |---------|----|--------|-----------|
-|`title`|string|required|Name of the protocol (sensu [DCMI](https://www.dublincore.org/specifications/dublin-core/dcmi-terms/elements11/title/))|
+|`title`|string|required|Name of the protocol (sensu [DCMI](http://purl.org/dc/terms/title))|
+|`description`|string|required|Narrative description of the protocol (sensu [DCMI](http://purl.org/dc/terms/description))|
 |`createdAt`|datetime|required|Client-declared timestamp when this protocol was originally created.|
 |`requiredFields`|array\<string\>|optional|List of fields required to complete the survey. Known values: "eventDate", "eventDuration".|
 |`locationOptions`|array\<org.atgeo.place\>|optional|Pre-selected list of locations where surveys can occur.|
@@ -28,20 +29,39 @@ A Survey Protocol (or just Protocol) defines the contents of a Survey, like what
 
 A potential subject for the Survey. Belongs to a single Protocol, and a Protocol can have many Survey Targets. Kept as a separate record (rather than nested within Protocol) so that Occurrences can carry a hard reference to the specific target they satisfy.
 
-Survey Targets are not required to have a taxonomic scope — a target could be defined purely by life stage, growth form, or a free-text description (e.g. "trees > 10 cm DBH"). Storing one record per target also avoids the pairing ambiguity that arises when combining multiple scope dimensions as pipe-separated lists within a single record, a limitation the Humboldt Extension User Guide itself acknowledges.
+The `scope` field is a required array of typed scope entries (a union type in atproto). For now, only taxonomic and "verbatim" (or free form) scopes are supported. Requiring at least one entry (`minLength: 1`) enforces that a SurveyTarget must describe something at the lexicon level. DwC-DP export will require unpacking these entries into the appropriate flat columns.
+
+#### Attributes
 
 |Attribute|Type|Required|Description|
 |---------|----|--------|-----------|
 |`protocol`|at-uri|required|Protocol this target belongs to.|
-|`verbatimTargetScope`|string|optional|Free-text description of what is being targeted, for cases not covered by the structured scope fields below. (Sensu [Humboldt Extension](http://rs.tdwg.org/eco/terms/verbatimTargetScope))|
+|`scope`|array\<ScopeEntry\>|required (minLength: 1)|One or more scope criteria defining what this target is. Each entry is a typed union member. See ScopeEntry types below.|
+
+#### ScopeEntry Union Types
+
+##### `TaxonScope`: a taxonomic criterion
+
+|Attribute|Type|Required|Description|
+|---------|----|--------|-----------|
 |`taxonID`|string\<uri\>|optional|Identifier for the target taxon, preferably a stable URI, e.g. https://www.gbif.org/species/102151594.|
-|`scientificName`|string|optional|Full scientific name of the target taxon without rank modifiers, so _Microseris douglasii tenella_, not _Microseris douglasii_ var. _tenella_.|
-|`taxonRank`|string|optional|Taxonomic rank of the target taxon, e.g. family, genus, subspecies, variety, etc.|
-|`kingdom`|string|optional|Taxonomic kingdom of the target taxon. Combined with `scientificName` and `taxonRank`, provides sufficient disambiguation for most homonyms across kingdoms.|
+|`scientificName`|string|required|Full scientific name without rank modifiers, so _Microseris douglasii tenella_, not _Microseris douglasii_ ssp. _tenella_.|
+|`taxonRank`|string|required|Taxonomic rank, e.g. family, genus, subspecies, variety, etc.|
+|`kingdom`|string|optional|Taxonomic kingdom. Combined with `scientificName` and `taxonRank`, provides sufficient disambiguation for most homonyms across kingdoms.|
+
+##### `VerbatimScope`: a free-text criterion for cases not covered by structured types (sensu [Humboldt Extension](http://rs.tdwg.org/eco/terms/verbatimTargetScope))
+
+|Attribute|Type|Required|Description|
+|---------|----|--------|-----------|
+|`verbatimTargetScope`|string|required|Free-text description of what is being targeted, e.g. "trees > 10 cm DBH".|
+
+Future scope types to consider: `LifeStageScope` (sensu [Humboldt Extension](http://rs.tdwg.org/eco/terms/targetLifeStageScope)), `GrowthFormScope` (sensu [Humboldt Extension](http://rs.tdwg.org/eco/terms/targetGrowthFormScope)), `DegreeOfEstablishmentScope` (sensu [Humboldt Extension](http://rs.tdwg.org/eco/terms/targetDegreeOfEstablishmentScope)).
 
 ### Survey (`bio.lexicons.temp.survey`)
 
 A Survey is the actual event where people collect the data required by the Protocol. Belongs to a single Protocol.
+
+A surveyor who authors a Survey is assumed to have actively looked for all SurveyTargets associated with the Protocol. The absence of an Occurrence linked to a given SurveyTarget therefore implies that target was not found, not that it was overlooked. This allows absence data to be inferred without requiring explicit absence Occurrence records. If we want to support the concept of non-comprehensive surveys in the future, we could use the `isAbsenceReported` from Humboldt, but for now we're assuming that value to be true.
 
 #### Attributes
 
@@ -72,4 +92,11 @@ I also add `surveyTargetID` to express which Protocol target an Occurrence was i
 |`identificationID`|at-uri|optional|The Identification record the owner has chosen as the source of `taxonID`. If absent, `taxonID` was asserted directly without a linked Identification. Should not be present without `taxonID`. (Sensu [DarwinCore](http://rs.tdwg.org/dwc/terms/identificationID))|
 |`surveyTargetID`|at-uri|optional|The SurveyTarget this Occurrence was intended to satisfy. Expresses observer intent: this is the target the observer believed they were counting, regardless of subsequent Identifications.|
 |`eventID`|at-uri|optional|Event (e.g. a Survey) this Occurrence was a part of. Temporal and geographic attributes should fall within the uncertainty of the corresponding attributes in the referenced event, but it's up to clients to verify that. (Sensu [DarwinCore](http://rs.tdwg.org/dwc/terms/eventID))|
-|`individualCount`|integer|optional|The number of individuals present at the time of the Occurrence. Note that the DwC `organismQuantity` and `organismQuantityType` type might be better fits here. (Sensu [DarwinCore](http://rs.tdwg.org/dwc/terms/individualCount))|
+|`organismQuantity`|string|optional|The quantity of the organism present at the time of the Occurrence. Generally this will be an integer or a float but could also be categorical, e.g. "many" or "10-100". (Sensu [DarwinCore](http://rs.tdwg.org/dwc/terms/organismQuantity))|
+|`organismQuantityType`|string|optional|The type of quantification system used for the quantity of organisms. (Sensu [DarwinCore](http://rs.tdwg.org/dwc/terms/organismQuantityType))|
+
+
+## Future Directions
+
+### Organism Quantity Control
+For now the model doesn't specify how `organismQuantity` and `organismQuantityType` get populated, but at some point a Protocol should be able to specify how surveyors should report `organismQuantity`, probably separated for each Survey Target, e.g. "we want you to count individual coast live oaks but estimate percent cover for manzanitas."
