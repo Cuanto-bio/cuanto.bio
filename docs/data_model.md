@@ -50,7 +50,7 @@ A Survey is the actual event where people collect the data required by the Proto
 
 |Attribute|Type|Required|Description|
 |---------|----|--------|-----------|
-|`protocol`|at-uri|required|Protocol followed when conducting the survey.|
+|`protocol`|strongRef|required|Protocol followed when conducting the survey. strongRef will indicate whether the Survey was for an older version of the Protocol, though changes to Protocols with completed Surveys should be discouraged.|
 |`createdAt`|datetime|required|Client-declared timestamp when this survey was originally created.|
 |`samplingPerformedBy`|array\<string\>|optional|Array of DIDs of users (agents) who participated in the survey in addition to the owner (sensu [Humboldt Extension](http://rs.tdwg.org/eco/terms/samplingPerformedBy)).|
 |`eventDate`|string|optional|Date or datetime the survey began, ISO 8601 supporting partial forms, so `2026`, `2026-02`, `2026-02-03`, and `2026-02-03T00:01:02Z` are valid, but `12 May 2026` is not.|
