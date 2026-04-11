@@ -26,21 +26,18 @@ A Survey Protocol (or just Protocol) defines the contents of a Survey, like what
 
 ### Survey Target (`bio.lexicons.temp.surveyTarget`)
 
-A potential subject for the Survey, e.g. species to be counted. Belongs to a single Protocol, and a Protocol can have many Survey Targets. Kept as a separate record (rather than nested within Protocol) so that Occurrences can carry a hard reference to the specific target they satisfy.
+A potential subject for the Survey. Belongs to a single Protocol, and a Protocol can have many Survey Targets. Kept as a separate record (rather than nested within Protocol) so that Occurrences can carry a hard reference to the specific target they satisfy.
+
+Survey Targets are not required to have a taxonomic scope — a target could be defined purely by life stage, growth form, or a free-text description (e.g. "trees > 10 cm DBH"). Storing one record per target also avoids the pairing ambiguity that arises when combining multiple scope dimensions as pipe-separated lists within a single record, a limitation the Humboldt Extension User Guide itself acknowledges.
 
 |Attribute|Type|Required|Description|
 |---------|----|--------|-----------|
-|`protocol`|at-uri|required|Protocol followed when conducting the survey.|
-|`taxonID`|string\<uri\>|optional|Identifier for the taxon, preferrably a unique URI / URL, e.g. https://www.gbif.org/species/102151594|
-|`scientificName`|string|required|Full scientific name of the taxon without rank modifiers, so _Microseris douglasii tenella_, not _Microseris douglasii_ var. _tenella_.|
-|`taxonRank`|string|required|Taxonomic rank of this taxon, e.g. family, genus, subspecies, variety, etc.|
-|`kingdom`|string|optional|Taxonomic kingdom containing this taxon.|
-|`phylum`|string|optional|Taxonomic phylum containing this taxon.|
-|`class`|string|optional|Taxonomic class containing this taxon.|
-|`order`|string|optional|Taxonomic order containing this taxon.|
-|`family`|string|optional|Taxonomic family containing this taxon.|
-|`genus`|string|optional|Taxonomic genus containing this taxon.|
-|`species`|string|optional|Taxonomic species containing this taxon.|
+|`protocol`|at-uri|required|Protocol this target belongs to.|
+|`verbatimTargetScope`|string|optional|Free-text description of what is being targeted, for cases not covered by the structured scope fields below. (Sensu [Humboldt Extension](http://rs.tdwg.org/eco/terms/verbatimTargetScope))|
+|`taxonID`|string\<uri\>|optional|Identifier for the target taxon, preferably a stable URI, e.g. https://www.gbif.org/species/102151594.|
+|`scientificName`|string|optional|Full scientific name of the target taxon without rank modifiers, so _Microseris douglasii tenella_, not _Microseris douglasii_ var. _tenella_.|
+|`taxonRank`|string|optional|Taxonomic rank of the target taxon, e.g. family, genus, subspecies, variety, etc.|
+|`kingdom`|string|optional|Taxonomic kingdom of the target taxon. Combined with `scientificName` and `taxonRank`, provides sufficient disambiguation for most homonyms across kingdoms.|
 
 ### Survey (`bio.lexicons.temp.survey`)
 
