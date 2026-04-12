@@ -76,6 +76,23 @@ A surveyor who authors a Survey is assumed to have actively looked for all Surve
 |`location`|org.atgeo.place|required|Geographic location where the survey was conducted. Note that the DwC-CM requires a location record even if it is only present to express that the location is unknown.|
 
 
+## Cuanto-specific Lexicons
+
+These lexicons are maintained in the `bio.cuanto.*` namespace rather than `bio.lexicons.*` because they express app-level concepts specific to cuanto rather than domain-neutral biodiversity data.
+
+### Protocol Follow (`bio.cuanto.surveyProtocol.follow`)
+
+A user's declaration of intent to participate in surveys following a Protocol. The record's existence in a user's PDS is the full expression of the relationship — no additional fields are needed beyond the reference to the Protocol.
+
+Because this record lives in the user's PDS, it is portable across cuanto instances: a user who expresses interest on cuanto.bio will see the same preference on any other cuanto instance that syncs their records.
+
+#### Attributes
+
+|Attribute|Type|Required|Description|
+|---------|----|--------|-----------|
+|`subject`|at-uri|required|The Protocol the user intends to participate in.|
+|`createdAt`|datetime|required|Client-declared timestamp when this follow was created.|
+
 ## Updates to lexicons.bio
 
 ### Occurrence
