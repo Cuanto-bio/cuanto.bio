@@ -1,0 +1,27 @@
+{
+  "lexicon": 1,
+  "id": "bio.cuanto.surveyProtocol.follow",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A user's declaration of intent to participate in surveys following a Protocol. Portable across cuanto instances because it lives in the user's PDS.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["subject", "createdAt"],
+        "properties": {
+          "subject": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "The Protocol the user intends to participate in."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Client-declared timestamp when this follow was created."
+          }
+        }
+      }
+    }
+  }
+}

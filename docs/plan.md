@@ -59,3 +59,7 @@ Vague for now, but things that are on my mind
 1. Support following protocols: when a user is online, they should be able to browse existing protocols and follow them, i.e. create `bio.cuanto.surveyProtocol.follow` records
 1. Show completed Surveys on the Protocol detail page
 1. Export Surveys as DwC-DP from the Protocol detail page
+1. Sync local ATGeo lexicon copies with upstream: `lexicons/org/atgeo/place.json` has two
+   local patches for `@atproto/lex` compatibility (`"key": "record-key"` → `"key": "any"`,
+   `"type": "object"` → `"type": "unknown"` on `relations`). Monitor the
+   [garganorn repo](https://github.com/schuyler/garganorn) for spec-compliant updates.

@@ -2,12 +2,13 @@
 
 - **Language**: TypeScript
 - **Package Manager**: pnpm
-- **Add-ons**: tailwindcss, shadcn-svelte
+- **Add-ons**: prettier, eslint, vitest, playwright
 
 ---
 
 # Development Workflow
 - Branch names: start with the issue number, e.g. `123-fix-broken-embedded-photos`
+- ALWAYS run `pnpm check` after changes and run `pnpm format` to address biome issues
 
 # Test-Driven Development (TDD)
 **ALWAYS write tests before fixing code when:**
