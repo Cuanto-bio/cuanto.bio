@@ -1,4 +1,5 @@
 import { redirect } from '@sveltejs/kit';
+import { TAP_ADMIN_PASSWORD, TAP_URL } from '$env/static/private';
 import { PUBLIC_URL } from '$env/static/public';
 import { client } from '$lib/server/auth';
 import type { RequestHandler } from './$types';
@@ -13,5 +14,17 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
     path: '/',
     secure: new URL(PUBLIC_URL).protocol === 'https:',
   });
+
+  // Register DID with tap so it begins tracking the user's records from the firehose.
+  // Fire-and-forget: a tap failure must not break the OAuth flow.
+  fetch(`${TAP_URL}/repos/add`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Basic ${btoa(`admin:${TAP_ADMIN_PASSWORD}`)}`,
+    },
+    body: JSON.stringify({ dids: [session.did] }),
+  }).catch((err) => console.error('Failed to register DID with tap:', err));
+
   redirect(302, '/');
 };

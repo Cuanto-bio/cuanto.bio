@@ -13,6 +13,9 @@ let { data } = $props();
     <Card.Content>
       {#if data.did}
         <p class="text-sm">Signed in as <span class="font-mono">{data.did}</span></p>
+        <div class="mt-4">
+          <a href="/protocols" class="text-primary text-sm underline">Your protocols</a>
+        </div>
       {:else}
         <p class="text-muted-foreground text-sm">
           A tool for participatory biological surveys. Researchers create protocols; volunteers

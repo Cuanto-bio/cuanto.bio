@@ -26,6 +26,7 @@
     "@atproto/lex": "latest",
     "@biomejs/biome": "^2.4.11",
     "@fontsource-variable/inter": "^5.2.8",
+    "@internationalized/date": "^3.12.0",
     "@lucide/svelte": "^1.8.0",
     "@playwright/test": "latest",
     "@sveltejs/adapter-auto": "^7.0.1",
@@ -33,7 +34,9 @@
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^20",
+    "bits-ui": "^2.17.3",
     "clsx": "^2.1.1",
+    "pino-pretty": "^13.1.3",
     "shadcn-svelte": "^1.2.7",
     "svelte": "^5.55.2",
     "svelte-check": "^4.4.6",
@@ -49,6 +52,8 @@
   "dependencies": {
     "@atproto/lexicon": "^0.6.2",
     "@atproto/oauth-client-node": "^0.3.17",
+    "@atproto/tap": "^0.2.12",
+    "pino": "^10.3.1",
     "postgres": "^3.4.9"
   }
 }

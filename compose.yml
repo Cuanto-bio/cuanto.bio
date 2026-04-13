@@ -10,9 +10,24 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mite"]
+      test: ["CMD-SHELL", "pg_isready -U cuanto"]
       interval: 5s
       retries: 5
 
+  tap:
+    image: ghcr.io/bluesky-social/indigo/tap:latest
+    ports:
+      - "2480:2480"
+    environment:
+      TAP_WEBHOOK_URL: "http://host.docker.internal:5173/api/tap/webhook"
+      TAP_ADMIN_PASSWORD: "${TAP_ADMIN_PASSWORD}"
+      TAP_NO_REPLAY: "true"
+      TAP_SIGNAL_COLLECTION: bio.lexicons.temp.surveyProtocol
+      TAP_COLLECTION_FILTERS: "bio.lexicons.temp.surveyProtocol,bio.lexicons.temp.surveyTarget"
+    volumes:
+      - tap_data:/data
+    restart: unless-stopped
+
 volumes:
   db_data:
+  tap_data:
