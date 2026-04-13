@@ -15,11 +15,13 @@
     "test:unit": "vitest",
     "test": "pnpm test:unit -- --run && pnpm test:integration",
     "test:integration": "playwright test",
+    "gen-key": "tsx scripts/gen-key.ts",
     "migrate:up": "tsx --env-file=.env scripts/migrate.ts up",
     "migrate:down": "tsx --env-file=.env scripts/migrate.ts down",
     "lex:gen": "lex build --out src/lib/lexicons --lexicons ./lexicons --indexFile --clear"
   },
   "devDependencies": {
+    "@atproto/jwk-jose": "^0.1.11",
     "@atproto/lex": "latest",
     "@biomejs/biome": "^2.4.11",
     "@fontsource-variable/inter": "^5.2.8",

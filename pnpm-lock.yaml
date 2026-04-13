@@ -18,6 +18,9 @@ importers:
         specifier: ^3.4.9
         version: 3.4.9
     devDependencies:
+      '@atproto/jwk-jose':
+        specifier: ^0.1.11
+        version: 0.1.11
       '@atproto/lex':
         specifier: latest
         version: 0.0.24

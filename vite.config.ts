@@ -5,6 +5,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit()],
   server: {
+    host: '127.0.0.1',
     // Apparently *vite* needs this to allow connections from Docker
     allowedHosts: ['host.docker.internal'],
   },
