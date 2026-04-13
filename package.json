@@ -12,13 +12,14 @@
     "check:biome": "biome check --no-errors-on-unmatched --files-ignore-unknown=true",
     "check:svelte": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "format": "biome check --write --no-errors-on-unmatched --files-ignore-unknown=true",
-    "test:unit": "vitest",
-    "test": "pnpm test:unit -- --run && pnpm test:integration",
+    "test:unit": "vitest --run",
+    "test": "pnpm test:unit && pnpm test:integration",
     "test:integration": "playwright test",
     "gen-key": "tsx scripts/gen-key.ts",
     "migrate:up": "tsx --env-file=.env scripts/migrate.ts up",
     "migrate:down": "tsx --env-file=.env scripts/migrate.ts down",
-    "lex:gen": "lex build --out src/lib/lexicons --lexicons ./lexicons --indexFile --clear"
+    "lex:gen": "lex build --out src/lib/lexicons --lexicons ./lexicons --indexFile --clear",
+    "psql": "docker compose exec db psql -U cuanto -d cuanto"
   },
   "devDependencies": {
     "@atproto/jwk-jose": "^0.1.11",

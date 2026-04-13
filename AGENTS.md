@@ -9,6 +9,7 @@
 # Development Workflow
 - Branch names: start with the issue number, e.g. `123-fix-broken-embedded-photos`
 - ALWAYS run `pnpm check` after changes and run `pnpm format` to address biome issues
+- use playwrite-cli to control Playwright to verify frontend work
 
 # Test-Driven Development (TDD)
 **ALWAYS write tests before fixing code when:**
@@ -26,3 +27,7 @@
 
 # Reference
 - shadcn-svelte: https://www.shadcn-svelte.com/llms.txt
+- playwright-cli: `playwright-cli --help`
+- database: `pnpm psql` opens a psql shell against the local Postgres container
+- iNaturalist API: https://api.inaturalist.org/v2/api-docs
+- GBIF Species API: https://techdocs.gbif.org/openapi/checklistbank.json
