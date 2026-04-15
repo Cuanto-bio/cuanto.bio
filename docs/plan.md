@@ -55,19 +55,41 @@ container for postgres (minus tap for now)
 ### Phase 5: Odds & Ends
 1. Support sign out
 
+## House Keeping
+- [x] Move db-specific helpers to their own dir
+- [x] Set up lefthook to run checks before commit
+
+
+## Offline Surveying
+
+Offline use is important, as we expect surveyors to be completing surveys in areas with little to no internet connectivity.
+
+- [ ] Support following protocols: when a user is online, they should be able to browse existing protocols and follow them, i.e. create `bio.cuanto.surveyProtocol.follow` records. Offline functionality will depend on this so we know what protocols to cache for offline use
+- [ ] Make frontend a Progressive Web App (PWA) and support offline Survey creation (submitting to the PDS will still require internet)
+
+## Analysis
+
+Researchers are surveyors will both be interested in the outcomes of all the survey activity.
+
+- [ ] Show recently-completed Surveys on the Protocol detail page
+- [ ] Set `organismQuantityType` on all occurrences to `individuals-count` (or similar) to indicate that organismQuantity can be interpreted as an integer, even though it's a string. In the future we'll probably want to let protocols specify the `organismQuantityType` for occurrences in their surveys. We should think about where to document the values of `organismQuantityType` Cuanto.bio recognizes (in the lexicon?)
+- [ ] On protocol detail page, show total / mean / median values for organismQuantity values for each SurveyTarget where `organismQuantityType` is `individuals-count`
+- [ ] Export Surveys as DwC-DP from the Protocol detail page
+
+## Lexicons.bio changes
+- [ ] make a PR that proposes our changes, or perhaps separate prs for each lexicon
+
+## Deployment
+- [ ] Figure out what it will take to deploy this on railway
+- [ ] Consider publishing our own bio.cuanto.surveyProtocol.follow lexicon per atproto DNS guidance (maybe premature until we've worked out the kinks)
+
 ## Future Plans
-Vague for now, but things that are on my mind
+Vague for now, but things that are on my mind.
 
-
-1. Make frontend a Progressive Web App (PWA) and support offline Survey creation (submitting to the PDS will still require internet)
-1. Support following protocols: when a user is online, they should be able to browse existing protocols and follow them, i.e. create `bio.cuanto.surveyProtocol.follow` records
-1. Show completed Surveys on the Protocol detail page
-1. Export Surveys as DwC-DP from the Protocol detail page
+1. Users - attempt to populate profile info w/ bsky profiles
+1. this might need to happen after converting to a PWA, and maybe after recording a track, but occurences should record the coordinates when the user changes the count from 0 to 1, and remove them before submitting if the count is 0, which would record the exact location of the first occurrence
+1. Design overhaul (rethink IA, come up with a logo / icon)
 1. Sync local ATGeo lexicon copies with upstream: `lexicons/org/atgeo/place.json` has two
    local patches for `@atproto/lex` compatibility (`"key": "record-key"` → `"key": "any"`,
    `"type": "object"` → `"type": "unknown"` on `relations`). Monitor the
-   [garganorn repo](https://github.com/schuyler/garganorn) for spec-compliant updates.
-1. Users - attempt to populate profile info w/ bsky profiles
-1. Move db helpers into a db-specific file or path
-1. this might need to happen after converting to a PWA, and maybe after recording a track, but occurences should record the coordinates when the user changes the count from 0 to 1, and remove them before submitting if the count is 0, which would record the exact location of the first occurrence
-1. Make a better sidebar
+   [garganorn repo](https://github.com/schuyler/garganorn) for spec-compliant updates. This is just something we need to keep an eye on.

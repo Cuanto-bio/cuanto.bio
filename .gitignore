@@ -27,6 +27,7 @@ vite.config.ts.timestamp-*
 .claude*
 docs/context/
 docs/phase*
+.worktreeinclude
 
 # Playwright
 playwright-report
