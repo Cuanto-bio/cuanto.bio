@@ -3,7 +3,7 @@ import { redirect } from '@sveltejs/kit';
 import { TAP_ADMIN_PASSWORD, TAP_URL } from '$env/static/private';
 import { PUBLIC_URL } from '$env/static/public';
 import { client } from '$lib/server/auth';
-import { insertUser } from '$lib/server/users';
+import { insertUser } from '$lib/server/db/users';
 import type { RequestHandler } from './$types';
 
 // User has authorized access to their PDS, put their DID in a cookie and show

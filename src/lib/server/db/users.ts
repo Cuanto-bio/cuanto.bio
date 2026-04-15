@@ -1,4 +1,4 @@
-import sql from './db.js';
+import sql from './index.js';
 
 export async function insertUser(did: string, handle: string): Promise<void> {
   const normalizedHandle = handle.toLowerCase();

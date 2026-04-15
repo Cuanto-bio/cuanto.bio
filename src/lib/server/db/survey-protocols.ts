@@ -1,6 +1,6 @@
 import type { Main as SurveyProtocol } from '$lib/lexicons/bio/lexicons/temp/surveyProtocol.defs.js';
 import type { Main as SurveyTarget } from '$lib/lexicons/bio/lexicons/temp/surveyTarget.defs.js';
-import sql from './db.js';
+import sql from './index.js';
 
 export async function insertProtocol(
   did: string,

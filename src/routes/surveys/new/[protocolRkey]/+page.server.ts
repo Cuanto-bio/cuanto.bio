@@ -4,9 +4,9 @@ import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/occurrence';
 import * as Survey from '$lib/lexicons/bio/lexicons/temp/survey';
 import type { Main as AtgeoPlace } from '$lib/lexicons/org/atgeo/place.defs';
 import sql from '$lib/server/db';
+import { insertOccurrence, insertSurvey } from '$lib/server/db/surveys';
 import logger from '$lib/server/logger';
 import { createRecord } from '$lib/server/pds';
-import { insertOccurrence, insertSurvey } from '$lib/server/surveys';
 import type { Actions, PageServerLoad } from './$types';
 
 const log = logger.child({ component: 'survey-new' });

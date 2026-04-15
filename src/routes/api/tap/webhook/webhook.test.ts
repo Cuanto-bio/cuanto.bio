@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-vi.mock('$lib/server/protocols', () => ({
+vi.mock('$lib/server/db/survey-protocols', () => ({
   insertProtocol: vi.fn(),
   insertTarget: vi.fn(),
 }));
 
-vi.mock('$lib/server/surveys', () => ({
+vi.mock('$lib/server/db/surveys', () => ({
   insertSurvey: vi.fn(),
   insertOccurrence: vi.fn(),
 }));
@@ -14,8 +14,8 @@ vi.mock('$env/static/private', () => ({
   TAP_ADMIN_PASSWORD: 'testpassword',
 }));
 
-import { insertProtocol, insertTarget } from '$lib/server/protocols';
-import { insertOccurrence, insertSurvey } from '$lib/server/surveys';
+import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
+import { insertOccurrence, insertSurvey } from '$lib/server/db/surveys';
 import { POST } from './+server';
 
 const VALID_AUTH = `Basic ${btoa('admin:testpassword')}`;

@@ -1,6 +1,6 @@
 import type { Main as Occurrence } from '$lib/lexicons/bio/lexicons/temp/occurrence.defs.js';
 import type { Main as Survey } from '$lib/lexicons/bio/lexicons/temp/survey.defs.js';
-import sql from './db.js';
+import sql from './index.js';
 
 export function parseCoords(
   lat?: string,

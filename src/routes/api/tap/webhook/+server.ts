@@ -5,9 +5,9 @@ import type { Main as Occurrence } from '$lib/lexicons/bio/lexicons/temp/occurre
 import type { Main as Survey } from '$lib/lexicons/bio/lexicons/temp/survey.defs';
 import type { Main as SurveyProtocol } from '$lib/lexicons/bio/lexicons/temp/surveyProtocol.defs';
 import type { Main as SurveyTarget } from '$lib/lexicons/bio/lexicons/temp/surveyTarget.defs';
+import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
+import { insertOccurrence, insertSurvey } from '$lib/server/db/surveys';
 import logger from '$lib/server/logger';
-import { insertProtocol, insertTarget } from '$lib/server/protocols';
-import { insertOccurrence, insertSurvey } from '$lib/server/surveys';
 import type { RequestHandler } from './$types';
 
 const PROTOCOL_NSID = 'bio.lexicons.temp.surveyProtocol';

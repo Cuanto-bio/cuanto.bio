@@ -4,8 +4,8 @@ import * as SurveyProtocol from '$lib/lexicons/bio/lexicons/temp/surveyProtocol'
 import * as SurveyTarget from '$lib/lexicons/bio/lexicons/temp/surveyTarget';
 import type { Main as SurveyTargetMain } from '$lib/lexicons/bio/lexicons/temp/surveyTarget.defs';
 import sql from '$lib/server/db';
+import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
 import { createRecord } from '$lib/server/pds';
-import { insertProtocol, insertTarget } from '$lib/server/protocols';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
