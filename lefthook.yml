@@ -1,0 +1,8 @@
+pre-commit:
+  commands:
+    format_and_check:
+      glob: "{src,tests}/**/*.{js,ts,svelte,css}"
+      run: |
+        pnpm format {staged_files} \
+          && pnpm check:biome {staged_files} \
+          && pnpm check:svelte
