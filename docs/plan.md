@@ -52,8 +52,12 @@ container for postgres (minus tap for now)
 6. ingestion should pick up the new bio.lexicons.temp.survey records and add it to the database
 7. user should see a list of their completed surveys and access a survey detail page to see their survey
 
+### Phase 5: Odds & Ends
+1. Support sign out
+
 ## Future Plans
 Vague for now, but things that are on my mind
+
 
 1. Make frontend a Progressive Web App (PWA) and support offline Survey creation (submitting to the PDS will still require internet)
 1. Support following protocols: when a user is online, they should be able to browse existing protocols and follow them, i.e. create `bio.cuanto.surveyProtocol.follow` records
@@ -63,3 +67,7 @@ Vague for now, but things that are on my mind
    local patches for `@atproto/lex` compatibility (`"key": "record-key"` → `"key": "any"`,
    `"type": "object"` → `"type": "unknown"` on `relations`). Monitor the
    [garganorn repo](https://github.com/schuyler/garganorn) for spec-compliant updates.
+1. Users - attempt to populate profile info w/ bsky profiles
+1. Move db helpers into a db-specific file or path
+1. this might need to happen after converting to a PWA, and maybe after recording a track, but occurences should record the coordinates when the user changes the count from 0 to 1, and remove them before submitting if the count is 0, which would record the exact location of the first occurrence
+1. Make a better sidebar

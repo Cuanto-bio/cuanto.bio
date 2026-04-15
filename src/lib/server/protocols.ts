@@ -7,9 +7,10 @@ export async function insertProtocol(
   rkey: string,
   record: SurveyProtocol,
   atUri: string,
+  cid: string,
 ): Promise<void> {
   await sql`
-    INSERT INTO survey_protocols (at_uri, did, rkey, title, description, required_fields, created_at)
+    INSERT INTO survey_protocols (at_uri, did, rkey, title, description, required_fields, created_at, cid)
     VALUES (
       ${atUri},
       ${did},
@@ -17,7 +18,8 @@ export async function insertProtocol(
       ${record.title},
       ${record.description},
       ${sql.array(record.requiredFields ?? [])},
-      ${record.createdAt}
+      ${record.createdAt},
+      ${cid}
     )
     ON CONFLICT (at_uri) DO NOTHING
   `;

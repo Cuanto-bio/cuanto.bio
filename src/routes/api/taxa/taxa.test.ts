@@ -11,7 +11,7 @@ describe('GET /api/taxa', () => {
     vi.stubGlobal('fetch', mockFetch);
     const resp = await GET({
       url: new URL('http://localhost/api/taxa'),
-    } as any);
+    } as Parameters<typeof GET>[0]);
     const data = await resp.json();
     expect(data.results).toEqual([]);
     expect(mockFetch).not.toHaveBeenCalled();
@@ -22,7 +22,7 @@ describe('GET /api/taxa', () => {
     vi.stubGlobal('fetch', mockFetch);
     const resp = await GET({
       url: new URL('http://localhost/api/taxa?q=a'),
-    } as any);
+    } as Parameters<typeof GET>[0]);
     const data = await resp.json();
     expect(data.results).toEqual([]);
     expect(mockFetch).not.toHaveBeenCalled();
@@ -53,7 +53,7 @@ describe('GET /api/taxa', () => {
 
     const resp = await GET({
       url: new URL('http://localhost/api/taxa?q=quercus'),
-    } as any);
+    } as Parameters<typeof GET>[0]);
     const data = await resp.json();
     expect(data.results).toHaveLength(1);
     expect(data.results[0]).toEqual({
@@ -86,7 +86,7 @@ describe('GET /api/taxa', () => {
 
     const resp = await GET({
       url: new URL('http://localhost/api/taxa?q=patescibacteria'),
-    } as any);
+    } as Parameters<typeof GET>[0]);
     const data = await resp.json();
     expect(data.results[0].kingdom).toBeNull();
   });
@@ -102,7 +102,7 @@ describe('GET /api/taxa', () => {
 
     const resp = await GET({
       url: new URL('http://localhost/api/taxa?q=xyznotfound'),
-    } as any);
+    } as Parameters<typeof GET>[0]);
     const data = await resp.json();
     expect(data.results).toEqual([]);
   });
@@ -118,7 +118,7 @@ describe('GET /api/taxa', () => {
 
     const resp = await GET({
       url: new URL('http://localhost/api/taxa?q=quercus'),
-    } as any);
+    } as Parameters<typeof GET>[0]);
     expect(resp.status).toBe(502);
   });
 });

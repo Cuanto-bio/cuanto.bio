@@ -1,4 +1,5 @@
 <script lang="ts">
+import { Button } from '$lib/components/ui/button';
 import * as Card from '$lib/components/ui/card';
 
 let { data } = $props();
@@ -9,8 +10,8 @@ function formatDate(iso: string) {
 </script>
 
 <main class="mx-auto max-w-2xl px-4 py-8">
-  <div class="mb-6">
-    <a href="/protocols" class="text-muted-foreground text-sm underline">← Protocols</a>
+  <div class="mb-6 flex justify-end">
+    <Button href="/surveys/new/{data.protocol.at_uri.split('/').at(-1)}">Start Survey</Button>
   </div>
 
   <Card.Root class="mb-6">

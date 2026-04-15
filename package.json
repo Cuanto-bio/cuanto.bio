@@ -18,6 +18,7 @@
     "gen-key": "tsx scripts/gen-key.ts",
     "migrate:up": "tsx --env-file=.env scripts/migrate.ts up",
     "migrate:down": "tsx --env-file=.env scripts/migrate.ts down",
+    "test:db:setup": "tsx scripts/setup-test-db.ts",
     "lex:gen": "lex build --out src/lib/lexicons --lexicons ./lexicons --indexFile --clear",
     "psql": "docker compose exec db psql -U cuanto -d cuanto"
   },

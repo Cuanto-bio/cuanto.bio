@@ -78,6 +78,8 @@ async function migrateDown(sql: postgres.Sql): Promise<void> {
   console.log(`Rolled back ${latest}`);
 }
 
+export { migrateUp };
+
 async function main() {
   const direction = process.argv[2];
   if (direction !== 'up' && direction !== 'down') {
@@ -103,7 +105,13 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Only run when executed directly (not when imported)
+if (
+  process.argv[1]?.endsWith('migrate.ts') ||
+  process.argv[1]?.endsWith('migrate.js')
+) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

@@ -1,29 +1,30 @@
-import { redirect } from '@sveltejs/kit';
 import sql from '$lib/server/db';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals }) => {
-  if (!locals.did) redirect(302, '/auth/signin');
+interface ProtocolRow {
+  at_uri: string;
+  rkey: string;
+  title: string;
+  description: string;
+  created_at: string;
+  handle: string;
+  target_count: number;
+}
 
-  const protocols = await sql<
-    {
-      at_uri: string;
-      title: string;
-      description: string;
-      created_at: string;
-      target_count: number;
-    }[]
-  >`
+export const load: PageServerLoad = async () => {
+  const protocols = await sql<ProtocolRow[]>`
     SELECT
       sp.at_uri,
+      sp.rkey,
       sp.title,
       sp.description,
       sp.created_at,
+      u.handle,
       COUNT(st.id)::int AS target_count
     FROM survey_protocols sp
+    JOIN users u ON u.did = sp.did
     LEFT JOIN survey_targets st ON st.protocol_uri = sp.at_uri
-    WHERE sp.did = ${locals.did}
-    GROUP BY sp.at_uri, sp.title, sp.description, sp.created_at
+    GROUP BY sp.at_uri, sp.rkey, sp.title, sp.description, sp.created_at, u.handle
     ORDER BY sp.created_at DESC
   `;
 

@@ -2,7 +2,9 @@ import type { l } from '@atproto/lex';
 import { fail, redirect } from '@sveltejs/kit';
 import * as SurveyProtocol from '$lib/lexicons/bio/lexicons/temp/surveyProtocol';
 import * as SurveyTarget from '$lib/lexicons/bio/lexicons/temp/surveyTarget';
-import { client as oauthClient } from '$lib/server/auth';
+import type { Main as SurveyTargetMain } from '$lib/lexicons/bio/lexicons/temp/surveyTarget.defs';
+import sql from '$lib/server/db';
+import { createRecord } from '$lib/server/pds';
 import { insertProtocol, insertTarget } from '$lib/server/protocols';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -32,8 +34,6 @@ export const actions: Actions = {
       return fail(422, { error: 'Invalid targets' });
     }
 
-    const session = await oauthClient.restore(did);
-
     const protocolRecord = SurveyProtocol.$build({
       title,
       description,
@@ -41,66 +41,54 @@ export const actions: Actions = {
       ...(requiredFields.length ? { requiredFields } : {}),
     });
 
-    const protocolResp = await session.fetchHandler(
-      '/xrpc/com.atproto.repo.createRecord',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          repo: did,
-          collection: 'bio.lexicons.temp.surveyProtocol',
-          record: protocolRecord,
-        }),
-      },
-    );
-
-    if (!protocolResp.ok) {
-      const body = await protocolResp.text();
-      return fail(502, { error: `PDS error: ${body}` });
+    let protocolUri: string;
+    let protocolCid: string;
+    try {
+      ({ uri: protocolUri, cid: protocolCid } = await createRecord(
+        did,
+        'bio.lexicons.temp.surveyProtocol',
+        protocolRecord,
+      ));
+    } catch (err) {
+      return fail(502, { error: `PDS error: ${String(err)}` });
     }
+    const protocolRkey = protocolUri.split('/').at(-1) ?? '';
 
-    const { uri: protocolUri } = (await protocolResp.json()) as {
-      uri: string;
-      cid: string;
-    };
-    const protocolRkey = protocolUri.split('/').at(-1)!;
-
-    await insertProtocol(did, protocolRkey, protocolRecord, protocolUri);
+    await insertProtocol(
+      did,
+      protocolRkey,
+      protocolRecord,
+      protocolUri,
+      protocolCid,
+    );
 
     for (const target of targets) {
       const targetRecord = SurveyTarget.$build({
         protocol: protocolUri as l.AtUriString,
-        scope: target.scope as any,
+        scope: target.scope as unknown as SurveyTargetMain['scope'],
       });
 
-      const targetResp = await session.fetchHandler(
-        '/xrpc/com.atproto.repo.createRecord',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            repo: did,
-            collection: 'bio.lexicons.temp.surveyTarget',
-            record: targetRecord,
-          }),
-        },
-      );
-
-      if (targetResp.ok) {
-        const { uri: targetUri } = (await targetResp.json()) as {
-          uri: string;
-          cid: string;
-        };
-        const targetRkey = targetUri.split('/').at(-1)!;
-        await insertTarget(did, targetRkey, targetRecord, targetUri);
-      } else {
-        console.error(
-          'Failed to create survey target:',
-          await targetResp.text(),
+      try {
+        const { uri: targetUri } = await createRecord(
+          did,
+          'bio.lexicons.temp.surveyTarget',
+          targetRecord,
         );
+        const targetRkey = targetUri.split('/').at(-1) ?? '';
+        await insertTarget(did, targetRkey, targetRecord, targetUri);
+      } catch (err) {
+        console.error('Failed to create survey target:', err);
       }
     }
 
-    redirect(302, '/protocols');
+    const [user] = await sql<{ handle: string }[]>`
+      SELECT handle FROM users WHERE did = ${did}
+    `;
+    if (!user?.handle)
+      return fail(500, {
+        error: 'User handle not found after protocol creation',
+      });
+
+    redirect(302, `/protocols/${user.handle}/${protocolRkey}`);
   },
 };
