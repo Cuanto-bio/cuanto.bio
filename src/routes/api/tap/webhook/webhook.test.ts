@@ -10,10 +10,16 @@ vi.mock('$lib/server/db/surveys', () => ({
   insertOccurrence: vi.fn(),
 }));
 
+vi.mock('$lib/server/db/protocol-follows', () => ({
+  createFollow: vi.fn(),
+  deleteFollow: vi.fn(),
+}));
+
 vi.mock('$env/static/private', () => ({
   TAP_ADMIN_PASSWORD: 'testpassword',
 }));
 
+import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
 import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
 import { insertOccurrence, insertSurvey } from '$lib/server/db/surveys';
 import { POST } from './+server';
@@ -117,6 +123,40 @@ const occurrenceEvent = {
       organismQuantity: '3',
       organismQuantityType: 'individuals',
     },
+    cid: TEST_CID,
+    live: true,
+  },
+};
+
+const followCreateEvent = {
+  id: 5,
+  type: 'record',
+  record: {
+    did: 'did:plc:follower',
+    rev: 'abc',
+    collection: 'bio.cuanto.surveyProtocol.follow',
+    rkey: '3flw',
+    action: 'create',
+    record: {
+      $type: 'bio.cuanto.surveyProtocol.follow',
+      subject: 'at://did:plc:abc123/bio.lexicons.temp.surveyProtocol/3abc',
+      createdAt: '2026-04-15T00:00:00.000Z',
+    },
+    cid: TEST_CID,
+    live: true,
+  },
+};
+
+const followDeleteEvent = {
+  id: 6,
+  type: 'record',
+  record: {
+    did: 'did:plc:follower',
+    rev: 'abc',
+    collection: 'bio.cuanto.surveyProtocol.follow',
+    rkey: '3flw',
+    action: 'delete',
+    record: undefined,
     cid: TEST_CID,
     live: true,
   },
@@ -241,5 +281,31 @@ describe('POST /api/tap/webhook', () => {
     expect(resp.status).toBe(200);
     expect(insertProtocol).not.toHaveBeenCalled();
     expect(insertTarget).not.toHaveBeenCalled();
+  });
+
+  test('calls createFollow for a follow create event', async () => {
+    const resp = await POST({
+      request: makeRequest(followCreateEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(createFollow).toHaveBeenCalledWith({
+      atUri: 'at://did:plc:follower/bio.cuanto.surveyProtocol.follow/3flw',
+      did: 'did:plc:follower',
+      rkey: '3flw',
+      protocolUri: 'at://did:plc:abc123/bio.lexicons.temp.surveyProtocol/3abc',
+      createdAt: '2026-04-15T00:00:00.000Z',
+    });
+    expect(deleteFollow).not.toHaveBeenCalled();
+  });
+
+  test('calls deleteFollow for a follow delete event', async () => {
+    const resp = await POST({
+      request: makeRequest(followDeleteEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(deleteFollow).toHaveBeenCalledWith(
+      'at://did:plc:follower/bio.cuanto.surveyProtocol.follow/3flw',
+    );
+    expect(createFollow).not.toHaveBeenCalled();
   });
 });

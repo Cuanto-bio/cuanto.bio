@@ -1,8 +1,14 @@
 <script lang="ts">
+import { enhance } from '$app/forms';
 import { Button } from '$lib/components/ui/button';
 import * as Card from '$lib/components/ui/card';
 
 let { data } = $props();
+
+// svelte-ignore state_referenced_locally -- intentional: local optimistic state, diverges from server after follow/unfollow
+let isFollowing = $state(data.isFollowing);
+// svelte-ignore state_referenced_locally -- intentional: local optimistic state, diverges from server after follow/unfollow
+let followerCount = $state(data.followerCount);
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString();
@@ -10,7 +16,46 @@ function formatDate(iso: string) {
 </script>
 
 <main class="mx-auto max-w-2xl px-4 py-8">
-  <div class="mb-6 flex justify-end">
+  <div class="mb-6 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="text-muted-foreground text-sm">
+        {followerCount}
+        {followerCount === 1 ? 'follower' : 'followers'}
+      </span>
+      {#if data.isAuthenticated}
+        {#if isFollowing}
+          <form
+            method="POST"
+            action="?/unfollow"
+            use:enhance={() => {
+              return ({ result }) => {
+                if (result.type === 'success') {
+                  isFollowing = false;
+                  followerCount = Math.max(0, followerCount - 1);
+                }
+              };
+            }}
+          >
+            <Button type="submit" variant="outline">Unfollow</Button>
+          </form>
+        {:else}
+          <form
+            method="POST"
+            action="?/follow"
+            use:enhance={() => {
+              return ({ result }) => {
+                if (result.type === 'success') {
+                  isFollowing = true;
+                  followerCount += 1;
+                }
+              };
+            }}
+          >
+            <Button type="submit">Follow this protocol</Button>
+          </form>
+        {/if}
+      {/if}
+    </div>
     <Button href="/surveys/new/{data.protocol.at_uri.split('/').at(-1)}">Start Survey</Button>
   </div>
 

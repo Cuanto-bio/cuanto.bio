@@ -66,6 +66,13 @@ let { did, handle }: { did?: string; handle?: string } = $props();
             <SidebarMenuItem>
               <SidebarMenuButton>
                 {#snippet child({ props })}
+                  <a href="/protocols/following" {...props}>Following</a>
+                {/snippet}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton>
+                {#snippet child({ props })}
                   <a href="/protocols/new" {...props}>New Protocol</a>
                 {/snippet}
               </SidebarMenuButton>

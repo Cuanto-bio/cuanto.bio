@@ -1,10 +1,12 @@
 import { assureAdminAuth, parseTapEvent } from '@atproto/tap';
 import { json } from '@sveltejs/kit';
 import { TAP_ADMIN_PASSWORD } from '$env/static/private';
+import type { Main as Follow } from '$lib/lexicons/bio/cuanto/surveyProtocol/follow.defs';
 import type { Main as Occurrence } from '$lib/lexicons/bio/lexicons/temp/occurrence.defs';
 import type { Main as Survey } from '$lib/lexicons/bio/lexicons/temp/survey.defs';
 import type { Main as SurveyProtocol } from '$lib/lexicons/bio/lexicons/temp/surveyProtocol.defs';
 import type { Main as SurveyTarget } from '$lib/lexicons/bio/lexicons/temp/surveyTarget.defs';
+import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
 import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
 import { insertOccurrence, insertSurvey } from '$lib/server/db/surveys';
 import logger from '$lib/server/logger';
@@ -14,6 +16,7 @@ const PROTOCOL_NSID = 'bio.lexicons.temp.surveyProtocol';
 const TARGET_NSID = 'bio.lexicons.temp.surveyTarget';
 const SURVEY_NSID = 'bio.lexicons.temp.survey';
 const OCCURRENCE_NSID = 'bio.lexicons.temp.occurrence';
+const FOLLOW_NSID = 'bio.cuanto.surveyProtocol.follow';
 
 const log = logger.child({ component: 'tap-webhook' });
 
@@ -41,11 +44,33 @@ export const POST: RequestHandler = async ({ request }) => {
     'tap event received',
   );
 
-  if (evt.type !== 'record' || evt.action !== 'create' || !evt.record) {
+  if (evt.type !== 'record') {
     return json({ ok: true });
   }
 
   const atUri = `at://${evt.did}/${evt.collection}/${evt.rkey}`;
+
+  if (evt.collection === FOLLOW_NSID) {
+    if (evt.action === 'create' && evt.record) {
+      const follow = evt.record as unknown as Follow;
+      await createFollow({
+        atUri,
+        did: evt.did,
+        rkey: evt.rkey,
+        protocolUri: follow.subject,
+        createdAt: follow.createdAt,
+      });
+      log.info({ atUri }, 'ingested protocol follow');
+    } else if (evt.action === 'delete') {
+      await deleteFollow(atUri);
+      log.info({ atUri }, 'deleted protocol follow');
+    }
+    return json({ ok: true });
+  }
+
+  if (evt.action !== 'create' || !evt.record) {
+    return json({ ok: true });
+  }
 
   if (evt.collection === PROTOCOL_NSID) {
     await insertProtocol(

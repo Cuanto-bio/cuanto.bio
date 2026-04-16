@@ -67,6 +67,7 @@ export async function teardownDid(sql: Sql, did: string): Promise<void> {
   await sql`DELETE FROM occurrences WHERE did = ${did}`;
   await sql`DELETE FROM surveys WHERE did = ${did}`;
   await sql`DELETE FROM survey_targets WHERE did = ${did}`;
+  await sql`DELETE FROM protocol_follows WHERE did = ${did}`;
   await sql`DELETE FROM survey_protocols WHERE did = ${did}`;
   await sql`DELETE FROM users WHERE did = ${did}`;
 }
