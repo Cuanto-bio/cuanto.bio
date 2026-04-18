@@ -1,11 +1,13 @@
 import { defineConfig } from '@playwright/test';
 
+const PORT = 5174;
+
 export default defineConfig({
   workers: 1,
   webServer: {
-    command: 'pnpm dev --port 5174',
-    port: 5174,
-    reuseExistingServer: true,
+    command: `pnpm dev --port ${PORT}`,
+    port: PORT,
+    reuseExistingServer: false,
     env: {
       DATABASE_URL: 'postgresql://cuanto:cuanto@localhost:5432/cuanto_test',
       PDS_MOCK: 'true',
@@ -13,6 +15,6 @@ export default defineConfig({
   },
   testMatch: '**/*.spec.{ts,js}',
   use: {
-    baseURL: 'http://localhost:5174',
+    baseURL: `http://localhost:${PORT}`,
   },
 });
