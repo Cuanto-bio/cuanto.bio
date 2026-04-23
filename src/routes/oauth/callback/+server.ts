@@ -15,6 +15,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
     sameSite: 'lax',
     path: '/',
     secure: new URL(PUBLIC_URL).protocol === 'https:',
+    maxAge: 60 * 60 * 24 * 30, // 30 days
   });
 
   const didRes = createDidResolver({});

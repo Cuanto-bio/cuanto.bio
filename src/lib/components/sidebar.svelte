@@ -1,4 +1,5 @@
 <script lang="ts">
+import { onMount } from 'svelte';
 import {
   Sidebar,
   SidebarContent,
@@ -11,8 +12,67 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '$lib/components/ui/sidebar';
+import { useOnline } from '$lib/composables/online.svelte';
 
 let { did, handle }: { did?: string; handle?: string } = $props();
+
+const online = useOnline();
+
+type SwInfo = {
+  controlled: boolean;
+  state: string;
+  shellCached: boolean;
+  shellAssetCount: number;
+  appDataCount: number;
+};
+let serviceWorkerInfo = $state<SwInfo | null>(null);
+
+async function refreshServiceWorkerInfo() {
+  if (!('serviceWorker' in navigator)) return;
+  const reg = await navigator.serviceWorker.getRegistration();
+  const worker = reg?.active ?? reg?.installing ?? reg?.waiting ?? null;
+  const cacheNames = await caches.keys();
+
+  // The SW stores assets in a versioned shell-* cache.
+  const shellName = cacheNames.find((n) => n.startsWith('shell-')) ?? '';
+  let shellCached = false;
+  let shellAssetCount = 0;
+  if (shellName) {
+    const shellCache = await caches.open(shellName);
+    const keys = await shellCache.keys();
+    shellAssetCount = keys.length;
+    shellCached = !!(await shellCache.match('/app/'));
+  }
+
+  let appDataCount = 0;
+  const publicCacheName = cacheNames.find((n) => n === 'public-pages') ?? '';
+  if (publicCacheName) {
+    const dataCache = await caches.open(publicCacheName);
+    appDataCount = (await dataCache.keys()).length;
+  }
+
+  serviceWorkerInfo = {
+    controlled: !!navigator.serviceWorker.controller,
+    state: worker?.state ?? 'none',
+    shellCached,
+    shellAssetCount,
+    appDataCount,
+  };
+}
+
+onMount(() => {
+  refreshServiceWorkerInfo();
+  navigator.serviceWorker?.addEventListener(
+    'controllerchange',
+    refreshServiceWorkerInfo,
+  );
+});
+
+async function signOut() {
+  const { clearIdbUser } = await import('$lib/offline/db');
+  await clearIdbUser();
+  window.location.href = '/auth/signout';
+}
 </script>
 
 <Sidebar>
@@ -27,14 +87,14 @@ let { did, handle }: { did?: string; handle?: string } = $props();
           <SidebarMenuItem>
             <SidebarMenuButton>
               {#snippet child({ props })}
-                <a href="/protocols" {...props}>All Protocols</a>
+                <a href='/protocols' {...props}>All Protocols</a>
               {/snippet}
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton>
               {#snippet child({ props })}
-                <a href="/surveys" {...props}>All Surveys</a>
+                <a href='/surveys' {...props}>All Surveys</a>
               {/snippet}
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -47,26 +107,24 @@ let { did, handle }: { did?: string; handle?: string } = $props();
         <SidebarGroupLabel>You</SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
-            {#if handle}
-              <SidebarMenuItem>
-                <SidebarMenuButton>
-                  {#snippet child({ props })}
-                    <a href="/protocols/{handle}" {...props}>Your Protocols</a>
-                  {/snippet}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton>
-                  {#snippet child({ props })}
-                    <a href="/surveys/{handle}" {...props}>Your Surveys</a>
-                  {/snippet}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            {/if}
             <SidebarMenuItem>
               <SidebarMenuButton>
                 {#snippet child({ props })}
-                  <a href="/protocols/following" {...props}>Following</a>
+                  <a href="/app/surveys" {...props}>Your Surveys</a>
+                {/snippet}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton>
+                {#snippet child({ props })}
+                  <a href="/app/surveys/pending" {...props}>Pending Surveys</a>
+                {/snippet}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton>
+                {#snippet child({ props })}
+                  <a href="/app/protocols/following" {...props}>Following</a>
                 {/snippet}
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -84,18 +142,31 @@ let { did, handle }: { did?: string; handle?: string } = $props();
   </SidebarContent>
 
   <SidebarFooter>
+    <div class="text-muted-foreground border-t space-y-0.5 px-2 pt-2 font-mono text-xs">
+      <div>net: {online.value ? 'online' : 'offline'}</div>
+      {#if serviceWorkerInfo}
+        <div>sw: {serviceWorkerInfo.state}{serviceWorkerInfo.controlled ? ' ✓' : ' (no ctrl)'}</div>
+        <div>shell: {serviceWorkerInfo.shellCached ? '✓' : '✗'} ({serviceWorkerInfo.shellAssetCount} assets)</div>
+        <div>data cache: {serviceWorkerInfo.appDataCount}</div>
+      {:else}
+        <div>sw: checking…</div>
+      {/if}
+      <button onclick={refreshServiceWorkerInfo} class="underline">refresh</button>
+    </div>
     {#if handle}
       <p class="text-muted-foreground px-2 text-xs font-bold">@{handle}</p>
       <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton>
-            {#snippet child({ props })}
-              <a href="/auth/signout" {...props}>Sign out</a>
-            {/snippet}
-          </SidebarMenuButton>
-        </SidebarMenuItem>
+        {#if online.value}
+          <SidebarMenuItem>
+            <SidebarMenuButton>
+              {#snippet child({ props })}
+                <button onclick={signOut} {...props}>Sign out</button>
+              {/snippet}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        {/if}
       </SidebarMenu>
-    {:else}
+    {:else if online.value}
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton>

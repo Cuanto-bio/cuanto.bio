@@ -79,7 +79,7 @@ test('follow flow', async ({ page, sql, context }) => {
     await expect(page.getByText('1 follower')).toBeVisible();
 
     // Protocol appears in /protocols/following
-    await page.goto('/protocols/following');
+    await page.goto('/app/protocols/following');
     await expect(page.getByText('Test Protocol')).toBeVisible();
   } finally {
     await teardownDid(sql, DID);
@@ -119,7 +119,7 @@ test('unfollow flow', async ({ page, sql, context }) => {
     await expect(page.getByText('0 followers')).toBeVisible();
 
     // Protocol no longer appears in /protocols/following
-    await page.goto('/protocols/following');
+    await page.goto('/app/protocols/following');
     await expect(page.getByText('Test Protocol')).not.toBeVisible();
   } finally {
     await teardownDid(sql, DID);
@@ -162,7 +162,7 @@ test('/protocols/following empty state', async ({ page, sql, context }) => {
   await sql`INSERT INTO users (did, handle) VALUES (${DID}, ${HANDLE}) ON CONFLICT (did) DO NOTHING`;
 
   try {
-    await page.goto('/protocols/following');
+    await page.goto('/app/protocols/following');
     await expect(
       page.getByText("You haven't followed any protocols yet."),
     ).toBeVisible();
@@ -171,7 +171,7 @@ test('/protocols/following empty state', async ({ page, sql, context }) => {
   }
 });
 
-test('/protocols/following requires auth', async ({ page }) => {
-  await page.goto('/protocols/following');
+test('/app/protocols/following requires auth', async ({ page }) => {
+  await page.goto('/app/protocols/following');
   await expect(page).toHaveURL(/\/auth\/signin/);
 });

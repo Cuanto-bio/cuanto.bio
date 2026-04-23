@@ -1,0 +1,279 @@
+import 'fake-indexeddb/auto';
+import { describe, expect, test } from 'vitest';
+import {
+  cacheProtocol,
+  cacheSurvey,
+  clearIdbUser,
+  deletePendingSurvey,
+  getCachedFollowedProtocolByRkey,
+  getCachedFollowedProtocols,
+  getCachedProtocolByRkey,
+  getCachedSurvey,
+  getCachedSurveyByRkey,
+  getCachedSurveys,
+  getIdbUser,
+  getPendingSurveys,
+  saveIdbUser,
+  savePendingSurvey,
+  setCachedFollowedProtocols,
+} from './db';
+
+// All tests in this file share one in-memory IDB (singleton _db). Each test
+// explicitly sets up and tears down its own data rather than relying on
+// module-level isolation.
+
+// ── user store ────────────────────────────────────────────────────────────────
+
+describe('user store', () => {
+  test('saves and retrieves a user', async () => {
+    await clearIdbUser();
+    await saveIdbUser({ did: 'did:test:1', handle: 'alice' });
+    const user = await getIdbUser();
+    expect(user).toEqual({ did: 'did:test:1', handle: 'alice' });
+  });
+
+  test('overwrites user on repeated save', async () => {
+    await saveIdbUser({ did: 'did:test:1', handle: 'alice' });
+    await saveIdbUser({ did: 'did:test:2', handle: 'bob' });
+    const user = await getIdbUser();
+    expect(user).toEqual({ did: 'did:test:2', handle: 'bob' });
+  });
+
+  test('returns undefined when no user saved', async () => {
+    await clearIdbUser();
+    const user = await getIdbUser();
+    expect(user).toBeUndefined();
+  });
+
+  test('clearIdbUser removes the stored user', async () => {
+    await saveIdbUser({ did: 'did:test:1', handle: 'alice' });
+    await clearIdbUser();
+    const user = await getIdbUser();
+    expect(user).toBeUndefined();
+  });
+});
+
+// ── cached-protocols store ────────────────────────────────────────────────────
+
+const cachedProtocol1 = {
+  atUri: 'at://did:test:1/bio.lexicons.temp.surveyProtocol/cp1',
+  rkey: 'cp1',
+  title: 'Cached Protocol One',
+  description: 'First cached protocol',
+  handle: 'alice',
+  targets: [
+    { atUri: 'at://did:test:1/bio.lexicons.temp.surveyTarget/t1', scope: [] },
+  ],
+};
+
+describe('cached-protocols store', () => {
+  test('cacheProtocol stores a protocol retrievable by rkey', async () => {
+    await cacheProtocol(cachedProtocol1);
+    const result = await getCachedProtocolByRkey('cp1');
+    expect(result?.atUri).toBe(cachedProtocol1.atUri);
+    expect(result?.title).toBe(cachedProtocol1.title);
+    expect(result?.targets).toHaveLength(1);
+  });
+
+  test('getCachedProtocolByRkey returns undefined for unknown rkey', async () => {
+    const result = await getCachedProtocolByRkey('does-not-exist');
+    expect(result).toBeUndefined();
+  });
+
+  test('getCachedProtocolByRkey falls back to followed-protocols when not in cache', async () => {
+    const followedOnly = {
+      atUri: 'at://did:test:2/bio.lexicons.temp.surveyProtocol/fo1',
+      rkey: 'fo1',
+      title: 'Followed Only',
+      description: 'Only in followed-protocols',
+      handle: 'bob',
+      targets: [],
+    };
+    await setCachedFollowedProtocols([followedOnly]);
+    const result = await getCachedProtocolByRkey('fo1');
+    expect(result?.atUri).toBe(followedOnly.atUri);
+    expect(result?.title).toBe(followedOnly.title);
+  });
+
+  test('cacheProtocol adds cachedAt timestamp', async () => {
+    const before = Date.now();
+    await cacheProtocol(cachedProtocol1);
+    const result = await getCachedProtocolByRkey('cp1');
+    expect(result?.cachedAt).toBeGreaterThanOrEqual(before);
+  });
+});
+
+// ── followed-protocols store ──────────────────────────────────────────────────
+
+const protocol1 = {
+  atUri: 'at://did:test:1/bio.lexicons.temp.surveyProtocol/fp1',
+  rkey: 'fp1',
+  title: 'Protocol One',
+  description: 'First protocol',
+  handle: 'alice',
+  targets: [],
+};
+
+const protocol2 = {
+  atUri: 'at://did:test:1/bio.lexicons.temp.surveyProtocol/fp2',
+  rkey: 'fp2',
+  title: 'Protocol Two',
+  description: 'Second protocol',
+  handle: 'alice',
+  targets: [],
+};
+
+describe('followed-protocols store', () => {
+  test('returns empty array when store is cleared', async () => {
+    await setCachedFollowedProtocols([]);
+    const result = await getCachedFollowedProtocols();
+    expect(result).toEqual([]);
+  });
+
+  test('stores and retrieves protocols', async () => {
+    await setCachedFollowedProtocols([protocol1, protocol2]);
+    const result = await getCachedFollowedProtocols();
+    expect(result).toHaveLength(2);
+    const uris = result.map((p) => p.atUri);
+    expect(uris).toContain(protocol1.atUri);
+    expect(uris).toContain(protocol2.atUri);
+  });
+
+  test('replaces all entries on subsequent call', async () => {
+    await setCachedFollowedProtocols([protocol1, protocol2]);
+    await setCachedFollowedProtocols([protocol1]);
+    const result = await getCachedFollowedProtocols();
+    expect(result).toHaveLength(1);
+    expect(result[0].atUri).toBe(protocol1.atUri);
+  });
+
+  test('adds cachedAt timestamp to stored protocols', async () => {
+    const before = Date.now();
+    await setCachedFollowedProtocols([protocol1]);
+    const result = await getCachedFollowedProtocols();
+    expect(result[0].cachedAt).toBeGreaterThanOrEqual(before);
+  });
+
+  test('getCachedFollowedProtocolByRkey returns the matching protocol', async () => {
+    await setCachedFollowedProtocols([protocol1, protocol2]);
+    const result = await getCachedFollowedProtocolByRkey('fp1');
+    expect(result?.atUri).toBe(protocol1.atUri);
+  });
+
+  test('getCachedFollowedProtocolByRkey returns undefined for unknown rkey', async () => {
+    await setCachedFollowedProtocols([protocol1]);
+    const result = await getCachedFollowedProtocolByRkey('no-such-rkey');
+    expect(result).toBeUndefined();
+  });
+});
+
+// ── pending-surveys store ─────────────────────────────────────────────────────
+
+const pendingSurvey1: Omit<import('./db').PendingSurvey, 'id'> = {
+  protocolUri: 'at://did:test:1/bio.lexicons.temp.surveyProtocol/p1',
+  protocolRkey: 'p1',
+  locationName: 'Test Field',
+  latitude: '37.7',
+  longitude: '-122.4',
+  eventDate: '2026-04-22',
+  eventDurationValue: 60,
+  occurrences: [
+    { surveyTargetUri: 'at://did:test:1/surveyTarget/t1', count: 3 },
+  ],
+  createdAt: Date.now(),
+};
+
+describe('pending-surveys store', () => {
+  test('savePendingSurvey returns a numeric id', async () => {
+    const id = await savePendingSurvey(pendingSurvey1);
+    expect(typeof id).toBe('number');
+  });
+
+  test('getPendingSurveys returns saved surveys', async () => {
+    const id = await savePendingSurvey(pendingSurvey1);
+    const all = await getPendingSurveys();
+    const saved = all.find((s) => s.id === id);
+    expect(saved?.locationName).toBe(pendingSurvey1.locationName);
+    expect(saved?.protocolUri).toBe(pendingSurvey1.protocolUri);
+  });
+
+  test('deletePendingSurvey removes the survey', async () => {
+    const id = await savePendingSurvey(pendingSurvey1);
+    await deletePendingSurvey(id);
+    const all = await getPendingSurveys();
+    expect(all.find((s) => s.id === id)).toBeUndefined();
+  });
+});
+
+// ── cached-surveys store ──────────────────────────────────────────────────────
+
+const survey1 = {
+  atUri: 'at://did:test:1/bio.lexicons.temp.survey/cs1',
+  rkey: 'cs1',
+  eventDate: '2026-04-01',
+  eventDurationValue: 30,
+  eventDurationUnit: 'minutes',
+  locationName: 'Test Park',
+  protocolTitle: 'Bird Count',
+  protocolRkey: 'proto1',
+  protocolHandle: 'alice',
+  protocolUri: 'at://did:test:1/bio.lexicons.temp.surveyProtocol/sp1',
+  handle: 'bob',
+  occurrences: [
+    {
+      atUri: 'at://did:test:1/bio.lexicons.temp.occurrence/o1',
+      organismQuantity: '5',
+      surveyTargetUri: 'at://did:test:1/bio.lexicons.temp.surveyTarget/st1',
+    },
+  ],
+};
+
+describe('cached-surveys store', () => {
+  test('stores and retrieves a survey by atUri', async () => {
+    await cacheSurvey(survey1);
+    const result = await getCachedSurvey(survey1.atUri);
+    expect(result?.atUri).toBe(survey1.atUri);
+    expect(result?.protocolTitle).toBe(survey1.protocolTitle);
+    expect(result?.occurrences).toHaveLength(1);
+  });
+
+  test('returns undefined for unknown atUri', async () => {
+    const result = await getCachedSurvey(
+      'at://did:unknown/bio.lexicons.temp.survey/missing',
+    );
+    expect(result).toBeUndefined();
+  });
+
+  test('getCachedSurveys returns stored surveys', async () => {
+    const survey2 = {
+      ...survey1,
+      atUri: 'at://did:test:1/bio.lexicons.temp.survey/cs2',
+      rkey: 'cs2',
+    };
+    await cacheSurvey(survey1);
+    await cacheSurvey(survey2);
+    const all = await getCachedSurveys();
+    const uris = all.map((s) => s.atUri);
+    expect(uris).toContain(survey1.atUri);
+    expect(uris).toContain(survey2.atUri);
+  });
+
+  test('adds cachedAt timestamp when storing', async () => {
+    const before = Date.now();
+    await cacheSurvey(survey1);
+    const result = await getCachedSurvey(survey1.atUri);
+    expect(result?.cachedAt).toBeGreaterThanOrEqual(before);
+  });
+
+  test('getCachedSurveyByRkey returns the matching survey', async () => {
+    await cacheSurvey(survey1);
+    const result = await getCachedSurveyByRkey(survey1.rkey);
+    expect(result?.atUri).toBe(survey1.atUri);
+    expect(result?.protocolTitle).toBe(survey1.protocolTitle);
+  });
+
+  test('getCachedSurveyByRkey returns undefined for unknown rkey', async () => {
+    const result = await getCachedSurveyByRkey('does-not-exist');
+    expect(result).toBeUndefined();
+  });
+});

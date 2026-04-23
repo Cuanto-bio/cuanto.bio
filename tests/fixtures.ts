@@ -52,11 +52,13 @@ export async function seedProtocol(
     },
   ];
 
-  for (const t of targets) {
+  for (let i = 0; i < targets.length; i++) {
+    const t = targets[i];
     const targetUri = `at://${did}/bio.lexicons.temp.surveyTarget/${t.rkey}`;
+    const indexedAt = new Date(Date.now() + i * 1000).toISOString();
     await sql`
-      INSERT INTO survey_targets (at_uri, did, rkey, protocol_uri, scope)
-      VALUES (${targetUri}, ${did}, ${t.rkey}, ${atUri}, ${sql.json(t.scope)})
+      INSERT INTO survey_targets (at_uri, did, rkey, protocol_uri, scope, indexed_at)
+      VALUES (${targetUri}, ${did}, ${t.rkey}, ${atUri}, ${sql.json(t.scope)}, ${indexedAt})
     `;
   }
 

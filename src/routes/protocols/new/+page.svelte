@@ -4,6 +4,9 @@ import * as Card from '$lib/components/ui/card';
 import { Input } from '$lib/components/ui/input';
 import { Label } from '$lib/components/ui/label';
 import { Textarea } from '$lib/components/ui/textarea';
+import { useOnline } from '$lib/composables/online.svelte';
+
+const onlineState = useOnline();
 
 type TaxonTarget = {
   kind: 'taxon';
@@ -117,6 +120,11 @@ function labelFor(target: Target): string {
       <Card.Description>Define what surveyors should look for.</Card.Description>
     </Card.Header>
     <Card.Content>
+      {#if !onlineState.value}
+        <p class="text-muted-foreground text-sm">
+          Creating a protocol requires an internet connection. Please reconnect and try again.
+        </p>
+      {:else}
       <form method="POST" class="flex flex-col gap-6">
         <div class="flex flex-col gap-2">
           <Label for="title">Title</Label>
@@ -218,6 +226,7 @@ function labelFor(target: Target): string {
 
         <Button type="submit">Create protocol</Button>
       </form>
+      {/if}
     </Card.Content>
   </Card.Root>
 </main>

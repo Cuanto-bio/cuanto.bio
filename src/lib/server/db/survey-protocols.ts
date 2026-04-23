@@ -43,3 +43,48 @@ export async function insertTarget(
     ON CONFLICT (at_uri) DO NOTHING
   `;
 }
+
+export interface ProtocolRow {
+  at_uri: string;
+  did: string;
+  rkey: string;
+  title: string;
+  description: string;
+  required_fields: string | null;
+  created_at: string | null;
+  cid: string | null;
+  handle: string;
+}
+
+export interface TargetListRow {
+  protocol_uri: string;
+  at_uri: string;
+  scope: unknown[];
+}
+
+export async function getTargetsForProtocols(
+  protocolUris: string[],
+): Promise<TargetListRow[]> {
+  if (protocolUris.length === 0) return [];
+  return sql<TargetListRow[]>`
+    SELECT
+      t.protocol_uri,
+      t.at_uri,
+      t.scope
+    FROM survey_targets t
+    WHERE t.protocol_uri = ANY(${sql.array(protocolUris)})
+  `;
+}
+
+export async function getProtocolByUri(uri: string) {
+  const [row] = await sql<ProtocolRow[]>`
+    SELECT
+      survey_protocols.*,
+      u.handle
+    FROM survey_protocols
+      JOIN users u ON u.did = survey_protocols.did
+    WHERE at_uri = ${uri}
+    LIMIT 1
+  `;
+  return row ?? null;
+}
