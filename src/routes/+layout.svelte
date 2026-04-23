@@ -4,7 +4,11 @@ import { page } from '$app/state';
 import './layout.css';
 import favicon from '$lib/assets/favicon.svg';
 import AppSidebar from '$lib/components/sidebar.svelte';
-import { SidebarProvider, SidebarTrigger } from '$lib/components/ui/sidebar';
+import {
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from '$lib/components/ui/sidebar';
 import { useOnline } from '$lib/composables/online.svelte';
 
 let { children } = $props();

@@ -164,7 +164,7 @@ test('New Protocol link navigates to working protocol creation page', async ({
   sql,
 }) => {
   await context.addCookies([AUTH_COOKIE]);
-  const { protocolRkey } = await seedProtocol(sql, DID);
+  await seedProtocol(sql, DID);
 
   try {
     await page.goto(`/app/protocols`);

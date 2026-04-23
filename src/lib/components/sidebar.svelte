@@ -1,5 +1,6 @@
 <script lang="ts">
 import { onMount } from 'svelte';
+import { afterNavigate } from '$app/navigation';
 import {
   Sidebar,
   SidebarContent,
@@ -11,8 +12,12 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from '$lib/components/ui/sidebar';
 import { useOnline } from '$lib/composables/online.svelte';
+
+const sidebar = useSidebar();
+afterNavigate(() => sidebar.setOpenMobile(false));
 
 let { did, handle }: { did?: string; handle?: string } = $props();
 
@@ -110,7 +115,7 @@ async function signOut() {
             <SidebarMenuItem>
               <SidebarMenuButton>
                 {#snippet child({ props })}
-                  <a href="/app/surveys" {...props}>Your Surveys</a>
+                  <a href="/app/surveys" {...props}>Completed Surveys</a>
                 {/snippet}
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -124,14 +129,7 @@ async function signOut() {
             <SidebarMenuItem>
               <SidebarMenuButton>
                 {#snippet child({ props })}
-                  <a href="/app/protocols/following" {...props}>Following</a>
-                {/snippet}
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton>
-                {#snippet child({ props })}
-                  <a href="/protocols/new" {...props}>New Protocol</a>
+                  <a href="/app/protocols/following" {...props}>Followed Protocols</a>
                 {/snippet}
               </SidebarMenuButton>
             </SidebarMenuItem>

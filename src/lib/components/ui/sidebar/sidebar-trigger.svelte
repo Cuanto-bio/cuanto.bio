@@ -22,8 +22,8 @@ const sidebar = useSidebar();
 	data-sidebar="trigger"
 	data-slot="sidebar-trigger"
 	variant="ghost"
-	size="icon-sm"
-	class={cn("cn-sidebar-trigger", className)}
+	size={sidebar.isMobile ? "icon-lg" : "icon-sm"}
+	class={cn("cn-sidebar-trigger", className, "p-6")}
 	type="button"
 	onclick={(e) => {
 		onclick?.(e);
@@ -31,6 +31,6 @@ const sidebar = useSidebar();
 	}}
 	{...restProps}
 >
-	<PanelLeftIcon  />
+	<PanelLeftIcon class={sidebar.isMobile ? "size-6" : "size-4"} />
 	<span class="sr-only">Toggle Sidebar</span>
 </Button>

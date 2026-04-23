@@ -12,17 +12,22 @@ export interface CachedProtocol {
   cachedAt: number;
 }
 
-export interface PendingSurvey {
-  id?: number;
-  protocolUri: string;
-  protocolRkey: string;
+interface BaseSurvey {
+  eventDate: string | null;
+  eventDurationUnit: string | null;
+  eventDurationValue: number | null;
   locationName: string;
+  protocolRkey: string;
+  protocolTitle: string;
+  protocolUri: string;
+}
+
+export interface PendingSurvey extends BaseSurvey {
+  createdAt: number;
+  id?: number;
   latitude: string | null;
   longitude: string | null;
-  eventDate: string;
-  eventDurationValue: number;
   occurrences: { surveyTargetUri: string; taxonID?: string; count: number }[];
-  createdAt: number;
 }
 
 export interface CachedOccurrence {
@@ -31,17 +36,10 @@ export interface CachedOccurrence {
   surveyTargetUri: string | null;
 }
 
-export interface CachedSurvey {
+export interface CachedSurvey extends BaseSurvey {
   atUri: string;
   rkey: string;
-  eventDate: string | null;
-  eventDurationValue: number | null;
-  eventDurationUnit: string | null;
-  locationName: string;
-  protocolTitle: string;
-  protocolRkey: string;
   protocolHandle: string;
-  protocolUri: string;
   handle: string;
   occurrences: CachedOccurrence[];
   cachedAt: number;

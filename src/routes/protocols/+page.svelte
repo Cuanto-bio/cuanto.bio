@@ -1,11 +1,17 @@
 <script lang="ts">
+import { Button } from '$lib/components/ui/button/index.js';
 import * as Card from '$lib/components/ui/card';
 
 let { data } = $props();
 </script>
 
 <main class="mx-auto max-w-2xl px-4 py-8">
-  <h1 class="mb-6 text-2xl font-semibold">Protocols</h1>
+  <div class="flex justify-between">
+    <h1 class="mb-6 text-2xl font-semibold">Protocols</h1>
+    <Button href="/protocols/new">
+      New Protocol
+    </Button>
+  </div>
 
   {#if data.protocols.length === 0}
     <p class="text-muted-foreground text-sm">No protocols yet.</p>

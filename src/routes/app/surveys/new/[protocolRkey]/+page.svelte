@@ -107,11 +107,13 @@ async function finish() {
   const survey = {
     protocolUri: protocol.atUri,
     protocolRkey: protocol.rkey,
+    protocolTitle: protocol.title,
     locationName: locationName.trim(),
     latitude,
     longitude,
     eventDate: new Date(startedAt).toISOString(),
     eventDurationValue: Math.max(1, Math.round(elapsedSeconds / 60)),
+    eventDurationUnit: 'minutes',
     occurrences,
     createdAt: Date.now(),
   };

@@ -172,11 +172,13 @@ describe('followed-protocols store', () => {
 const pendingSurvey1: Omit<import('./db').PendingSurvey, 'id'> = {
   protocolUri: 'at://did:test:1/bio.lexicons.temp.surveyProtocol/p1',
   protocolRkey: 'p1',
+  protocolTitle: 'whatever',
   locationName: 'Test Field',
   latitude: '37.7',
   longitude: '-122.4',
   eventDate: '2026-04-22',
   eventDurationValue: 60,
+  eventDurationUnit: 'minutes',
   occurrences: [
     { surveyTargetUri: 'at://did:test:1/surveyTarget/t1', count: 3 },
   ],
@@ -226,6 +228,7 @@ const survey1 = {
       surveyTargetUri: 'at://did:test:1/bio.lexicons.temp.surveyTarget/st1',
     },
   ],
+  createdAt: Date.now(),
 };
 
 describe('cached-surveys store', () => {

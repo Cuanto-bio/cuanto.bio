@@ -1,5 +1,6 @@
 <script lang="ts">
 import { onMount } from 'svelte';
+import SurveyCard from '$lib/components/SurveyCard.svelte';
 import { Button } from '$lib/components/ui/button';
 import * as Card from '$lib/components/ui/card';
 import { useOnline } from '$lib/composables/online.svelte';
@@ -56,15 +57,7 @@ function formatDate(ts: number): string {
     <ul class="flex flex-col gap-3">
       {#each surveys as survey (survey.id)}
         <li>
-          <Card.Root>
-            <Card.Header>
-              <Card.Title>{survey.locationName}</Card.Title>
-              <Card.Description>{formatDate(survey.createdAt)}</Card.Description>
-            </Card.Header>
-            <Card.Content class="text-muted-foreground text-sm">
-              <span>{survey.occurrences.length} target(s) recorded</span>
-            </Card.Content>
-          </Card.Root>
+          <SurveyCard survey={survey} />
         </li>
       {/each}
     </ul>
