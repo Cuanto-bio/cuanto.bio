@@ -1,4 +1,6 @@
 <script lang="ts">
+import MinusIcon from '@lucide/svelte/icons/minus';
+import PlusIcon from '@lucide/svelte/icons/plus';
 import { enhance } from '$app/forms';
 import { Button } from '$lib/components/ui/button';
 import * as Card from '$lib/components/ui/card';
@@ -49,47 +51,65 @@ function formatDate(iso: string) {
 <main class="mx-auto max-w-2xl px-4 py-8">
   <div class="mb-6 flex items-center justify-between">
     <div class="flex items-center gap-3">
-      <span class="text-muted-foreground text-sm">
-        {followerCount}
-        {followerCount === 1 ? 'follower' : 'followers'}
-      </span>
       {#if canFollow}
         {#if isFollowing}
           <form
             method="POST"
             action="?/unfollow"
             use:enhance={() => {
+              const ogFollowerCount = followerCount;
+              isFollowing = false;
+              followerCount = Math.max(0, followerCount - 1);
               return ({ result }) => {
                 if (result.type === 'success') {
                   isFollowing = false;
-                  followerCount = Math.max(0, followerCount - 1);
+                  followerCount = Math.max(0, ogFollowerCount - 1);
                   onAfterFollowChange();
+                } else{
+                  isFollowing = true;
+                  followerCount = ogFollowerCount;
                 }
               };
             }}
           >
-            <Button type="submit" variant="outline">Unfollow</Button>
+            <Button type="submit" variant="outline">
+              <MinusIcon />
+              Unfollow
+            </Button>
           </form>
         {:else}
           <form
             method="POST"
             action="?/follow"
             use:enhance={() => {
+              const ogFollowerCount = followerCount;
+              isFollowing = true;
+              followerCount += 1;
               return ({ result }) => {
                 if (result.type === 'success') {
                   isFollowing = true;
-                  followerCount += 1;
+                  followerCount = ogFollowerCount + 1;
                   onAfterFollowChange();
+                } else {
+                  isFollowing = false;
+                  followerCount = ogFollowerCount;
                 }
               };
             }}
           >
-            <Button type="submit">Follow this protocol</Button>
+            <Button type="submit" variant="outline">
+              <PlusIcon />
+              Follow this protocol
+            </Button>
           </form>
         {/if}
       {:else if offline}
         <span class="text-muted-foreground text-xs">(follow requires connection)</span>
       {/if}
+      <span class="text-muted-foreground text-sm">
+        {followerCount}
+        {followerCount === 1 ? 'follower' : 'followers'}
+      </span>
     </div>
     <Button href="/app/surveys/new/{protocol.at_uri.split('/').at(-1)}">
       Start Survey
