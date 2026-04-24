@@ -1,6 +1,6 @@
-import type { Main as Occurrence } from '$lib/lexicons/bio/lexicons/temp/occurrence.defs.js';
-import type { Main as Survey } from '$lib/lexicons/bio/lexicons/temp/survey.defs.js';
-import type { CachedSurvey } from '$lib/offline/db';
+import type { Main as AtOccurrence } from '$lib/lexicons/bio/lexicons/temp/occurrence.defs.js';
+import type { Main as AtSurvey } from '$lib/lexicons/bio/lexicons/temp/survey.defs.js';
+import type { Survey } from '$lib/offline/db';
 import sql from './index.js';
 
 export interface SurveyListRow {
@@ -92,8 +92,8 @@ export async function getOccurrencesForSurveys(
 
 export function groupOccurrencesBySurvey(
   occurrences: OccurrenceListRow[],
-): Map<string, Omit<CachedSurvey, 'cachedAt'>['occurrences']> {
-  const map = new Map<string, Omit<CachedSurvey, 'cachedAt'>['occurrences']>();
+): Map<string, Survey['occurrences']> {
+  const map = new Map<string, Survey['occurrences']>();
   for (const o of occurrences) {
     const list = map.get(o.survey_uri) ?? [];
     list.push({
@@ -108,11 +108,8 @@ export function groupOccurrencesBySurvey(
 
 export function toSurveyResponse(
   surveys: SurveyListRow[],
-  occurrencesBySurvey: Map<
-    string,
-    Omit<CachedSurvey, 'cachedAt'>['occurrences']
-  >,
-): Omit<CachedSurvey, 'cachedAt'>[] {
+  occurrencesBySurvey: Map<string, Survey['occurrences']>,
+): Survey[] {
   return surveys.map((s) => ({
     atUri: s.at_uri,
     rkey: s.rkey,
@@ -132,7 +129,7 @@ export function toSurveyResponse(
 export async function getSurveyDetailByHandleAndRkey(
   handle: string,
   rkey: string,
-): Promise<Omit<CachedSurvey, 'cachedAt'> | null> {
+): Promise<Survey | null> {
   const [user] = await sql<{ did: string }[]>`
     SELECT did FROM users WHERE handle = ${handle.toLowerCase()}
   `;
@@ -157,7 +154,7 @@ export function parseCoords(
 export async function insertSurvey(
   did: string,
   rkey: string,
-  record: Survey,
+  record: AtSurvey,
   atUri: string,
 ): Promise<void> {
   const eventDate = (() => {
@@ -191,7 +188,7 @@ export async function insertSurvey(
 export async function insertOccurrence(
   did: string,
   rkey: string,
-  record: Occurrence,
+  record: AtOccurrence,
   atUri: string,
 ): Promise<void> {
   const surveyUri = record.eventID ?? null;

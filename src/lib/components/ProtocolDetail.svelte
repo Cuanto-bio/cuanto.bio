@@ -4,23 +4,11 @@ import PlusIcon from '@lucide/svelte/icons/plus';
 import { enhance } from '$app/forms';
 import { Button } from '$lib/components/ui/button';
 import * as Card from '$lib/components/ui/card';
-
-interface Protocol {
-  at_uri: string;
-  title: string;
-  description: string;
-  required_fields: string[];
-  created_at?: string;
-}
-
-interface Target {
-  at_uri: string;
-  scope: unknown[];
-}
+import type { Protocol, TaxonScope, VerbatimScope } from '$lib/offline/db';
+import * as Table from './ui/table';
 
 interface Props {
   protocol: Protocol;
-  targets: Target[];
   followerCount: number;
   isFollowing?: boolean;
   canFollow?: boolean;
@@ -30,7 +18,6 @@ interface Props {
 
 let {
   protocol,
-  targets,
   followerCount: initialFollowerCount,
   isFollowing: initialIsFollowing,
   canFollow,
@@ -111,64 +98,90 @@ function formatDate(iso: string) {
         {followerCount === 1 ? 'follower' : 'followers'}
       </span>
     </div>
-    <Button href="/app/surveys/new/{protocol.at_uri.split('/').at(-1)}">
+    <Button href="/app/surveys/new/{protocol.atUri.split('/').at(-1)}">
       Start Survey
     </Button>
   </div>
 
-  <Card.Root class="mb-6">
-    <Card.Header>
-      <Card.Title>{protocol.title}</Card.Title>
-      <Card.Description>{protocol.description}</Card.Description>
-    </Card.Header>
-    <Card.Content class="space-y-2 text-sm">
-      <div>
-        <span class="text-muted-foreground font-medium">AT URI:</span>
-        <span class="ml-2 font-mono">{protocol.at_uri}</span>
-      </div>
-      {#if protocol.created_at}
-        <div>
-          <span class="text-muted-foreground font-medium">Created:</span>
-          <span class="ml-2">{formatDate(protocol.created_at)}</span>
-        </div>
-      {/if}
-      {#if protocol.required_fields.length > 0}
-        <div>
-          <span class="text-muted-foreground font-medium">Required fields:</span>
-          <ul class="ml-4 mt-1 list-disc">
-            {#each protocol.required_fields as field}
-              <li>{field}</li>
-            {/each}
-          </ul>
-        </div>
-      {/if}
-    </Card.Content>
-  </Card.Root>
+  <div class="text-muted-foreground text-xs mb-1">PROTOCOL</div>
+  <h1>{protocol.title}</h1>
+  <p>{protocol.description}</p>
 
-  <h2 class="mb-3 text-lg font-semibold">Targets ({targets.length})</h2>
+  <Table.Root class="my-2">
+    <Table.Body>
+      <Table.Row>
+        <Table.Head>Author</Table.Head>
+        <Table.Cell>@{protocol.handle}</Table.Cell>
+      </Table.Row>
+      <Table.Row>
+        <Table.Head>Created</Table.Head>
+        <Table.Cell>{protocol.createdAt}</Table.Cell>
+      </Table.Row>
+      <Table.Row>
+        <Table.Head>Required Fields</Table.Head>
+        <Table.Cell>
+          {#if protocol.requiredFields && protocol.requiredFields.length > 0}
+            <ul class="ml-4 mt-1 list-disc">
+              {#each protocol.requiredFields as field}
+                <li>{field}</li>
+              {/each}
+            </ul>
+          {:else}
+            No required fields
+          {/if}
+        </Table.Cell>
+      </Table.Row>
+    </Table.Body>
+  </Table.Root>
 
-  {#if targets.length === 0}
-    <p class="text-muted-foreground text-sm">No targets.</p>
+  <h2 class="mb-3 text-lg font-semibold">Targets ({protocol.targets.length})</h2>
+
+  {#if protocol.targets.length === 0}
+    <p class="text-muted-foreground">No targets.</p>
   {:else}
-    <ul class="flex flex-col gap-3">
-      {#each targets as target (target.at_uri)}
-        <li>
-          <Card.Root>
-            <Card.Content class="space-y-2 pt-4 text-sm">
-              <div>
-                <span class="text-muted-foreground font-medium">AT URI:</span>
-                <span class="ml-2 font-mono">{target.at_uri}</span>
-              </div>
-              <div>
-                <span class="text-muted-foreground font-medium">Scope:</span>
-                <pre
-                  class="bg-muted mt-1 overflow-auto rounded p-2 text-xs"
-                >{JSON.stringify(target.scope, null, 2)}</pre>
-              </div>
-            </Card.Content>
-          </Card.Root>
-        </li>
-      {/each}
-    </ul>
+    <Table.Root>
+      <Table.Header>
+        <Table.Row>
+          <Table.Head>Type</Table.Head>
+          <Table.Head>Target</Table.Head>
+        </Table.Row>
+      </Table.Header>
+      <Table.Body>
+        {#each protocol.targets as target (target.atUri)}
+          <Table.Row>
+            <Table.Cell>
+              {#if target.scope.length === 1}
+                {#if target.scope[0].$type.endsWith('taxonScope')}
+                  Taxonomic
+                {:else if target.scope[0].$type.endsWith('verbatimScope')}
+                  Verbatim
+                {/if}
+              {:else}
+                Multiple
+              {/if}
+            </Table.Cell>
+            <Table.Cell>
+              {#each target.scope as scope, idx}
+                {#if idx > 0}
+                  <p>AND</p>
+                {/if}
+                <div>
+                  {#if scope.$type.endsWith('taxonScope')}
+                    {(scope as TaxonScope).taxonRank}
+                    {#if ['genus', 'species', 'subspecies', 'variety', 'infraspecies'].includes((scope as TaxonScope).taxonRank)}
+                      <i>{(scope as TaxonScope).scientificName}</i>
+                    {:else}
+                      {(scope as TaxonScope).scientificName}
+                    {/if}
+                  {:else if scope.$type.endsWith('verbatimScope')}
+                    {(scope as VerbatimScope).verbatimTargetScope}
+                  {/if}
+                </div>
+              {/each}
+            </Table.Cell>
+          </Table.Row>
+        {/each}
+      </Table.Body>
+    </Table.Root>
   {/if}
 </main>

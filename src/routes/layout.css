@@ -127,3 +127,11 @@
     @apply font-sans;
   }
 }
+
+h1 {
+  @apply scroll-m-20 text-4xl tracking-tight text-balance;
+}
+
+p {
+  @apply text-muted-foreground leading-7 [&:not(:first-child)]:mt-6;
+}

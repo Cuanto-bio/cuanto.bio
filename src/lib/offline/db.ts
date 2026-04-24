@@ -2,13 +2,37 @@ import type { DBSchema, IDBPDatabase } from 'idb';
 import { openDB } from 'idb';
 import { CUANTO_IDB_VERSION } from './constants';
 
-export interface CachedProtocol {
+export interface TargetScope {
+  $type:
+    | 'bio.lexicons.temp.surveyTarget#taxonScope'
+    | 'bio.lexicons.temp.surveyTarget#verbatimScope';
+}
+
+export interface TaxonScope extends TargetScope {
+  taxonID: string;
+  taxonRank: string;
+  scientificName: string;
+}
+
+export interface VerbatimScope extends TargetScope {
+  verbatimTargetScope: string;
+}
+
+export interface Protocol {
   atUri: string;
   rkey: string;
   title: string;
   description: string;
   handle: string;
-  targets: { atUri: string; scope: unknown[] }[];
+  targets: {
+    atUri: string;
+    scope: TargetScope[];
+  }[];
+  createdAt?: string;
+  requiredFields?: string[];
+}
+
+export interface CachedProtocol extends Protocol {
   cachedAt: number;
 }
 
@@ -30,19 +54,22 @@ export interface PendingSurvey extends BaseSurvey {
   occurrences: { surveyTargetUri: string; taxonID?: string; count: number }[];
 }
 
-export interface CachedOccurrence {
-  atUri: string;
-  organismQuantity: string | null;
-  surveyTargetUri: string | null;
-}
-
-export interface CachedSurvey extends BaseSurvey {
+export interface Survey extends BaseSurvey {
   atUri: string;
   rkey: string;
   protocolHandle: string;
   handle: string;
   occurrences: CachedOccurrence[];
+}
+
+export interface CachedSurvey extends Survey {
   cachedAt: number;
+}
+
+export interface CachedOccurrence {
+  atUri: string;
+  organismQuantity: string | null;
+  surveyTargetUri: string | null;
 }
 
 export interface IdbUser {
@@ -107,9 +134,7 @@ async function getDB(): Promise<IDBPDatabase<CuantoDB>> {
   return _db;
 }
 
-export async function cacheProtocol(
-  protocol: Omit<CachedProtocol, 'cachedAt'>,
-): Promise<void> {
+export async function cacheProtocol(protocol: Protocol): Promise<void> {
   const db = await getDB();
   await db.put('cached-protocols', { ...protocol, cachedAt: Date.now() });
 }
@@ -160,7 +185,7 @@ export async function getCachedFollowedProtocolByRkey(
 }
 
 export async function setCachedFollowedProtocols(
-  protocols: Omit<CachedProtocol, 'cachedAt'>[],
+  protocols: Protocol[],
 ): Promise<void> {
   const db = await getDB();
   const tx = db.transaction('followed-protocols', 'readwrite');
@@ -172,9 +197,7 @@ export async function setCachedFollowedProtocols(
   await tx.done;
 }
 
-export async function cacheSurvey(
-  survey: Omit<CachedSurvey, 'cachedAt'>,
-): Promise<void> {
+export async function cacheSurvey(survey: Survey): Promise<void> {
   const db = await getDB();
   await db.put('cached-surveys', { ...survey, cachedAt: Date.now() });
 }

@@ -7,7 +7,6 @@ let { data } = $props();
 
 <ProtocolDetail
   protocol={data.protocol}
-  targets={data.targets}
   followerCount={data.followerCount}
   isFollowing={data.isFollowing}
   canFollow={!data.offline}

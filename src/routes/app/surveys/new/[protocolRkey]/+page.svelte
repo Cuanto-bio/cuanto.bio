@@ -46,13 +46,18 @@ onMount(() => {
   }
 
   const rkey = page.params.protocolRkey ?? '';
-  getCachedProtocolByRkey(rkey).then((cached) => {
-    if (cached) {
-      protocol = cached;
-    } else {
-      notFound = true;
-    }
-  });
+  getCachedProtocolByRkey(rkey)
+    .then((cached) => {
+      console.log('[+page.svelte] cached', cached);
+      if (cached) {
+        protocol = cached;
+      } else {
+        notFound = true;
+      }
+    })
+    .catch((e) => {
+      console.log('[+page.svelte] hey, that did not work', e);
+    });
 
   return () => clearInterval(id);
 });

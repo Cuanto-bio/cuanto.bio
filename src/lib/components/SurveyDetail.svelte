@@ -1,10 +1,10 @@
 <script lang="ts">
 import * as Card from '$lib/components/ui/card';
-import type { CachedProtocol, CachedSurvey } from '$lib/offline/db';
+import type { Protocol, Survey } from '$lib/offline/db';
 
 interface Props {
-  protocol: Omit<CachedProtocol, 'cachedAt'>;
-  survey: Omit<CachedSurvey, 'cachedAt'>;
+  protocol: Protocol;
+  survey: Survey;
 }
 
 let { protocol, survey }: Props = $props();
@@ -27,6 +27,7 @@ function targetLabel(scope: unknown[] | null): string {
 </script>
 
 <main class="mx-auto max-w-2xl px-4 py-8">
+  <div class="text-muted-foreground text-xs mb-4">SURVEY</div>
   <Card.Root class="mb-6">
     <Card.Header>
       <Card.Title>{survey.protocolTitle}</Card.Title>

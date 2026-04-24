@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import type { CachedProtocol } from '$lib/offline/db';
+import type { Protocol } from '$lib/offline/db';
 import {
   getProtocolByUri,
   getTargetsForProtocols,
@@ -16,7 +16,7 @@ export const load: PageServerLoad = async ({ params }) => {
   const protocolRow = await getProtocolByUri(survey.protocolUri);
   if (!protocolRow) error(404, 'Protocol not found');
   const targetRows = await getTargetsForProtocols([protocolRow.at_uri]);
-  const protocol: Omit<CachedProtocol, 'cachedAt'> = {
+  const protocol: Protocol = {
     atUri: protocolRow.at_uri,
     rkey: protocolRow.rkey,
     title: protocolRow.title,

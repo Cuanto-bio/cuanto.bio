@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import logger from '$lib/logger';
 import {
+  type CachedProtocol,
   cacheProtocol,
   getCachedFollowedProtocolByRkey,
   getCachedProtocols,
@@ -10,21 +11,13 @@ import type { PageLoad } from './$types';
 const log = logger.child({ component: 'app-protocol-detail' });
 
 function toPageData(
-  cached: Awaited<ReturnType<typeof getCachedProtocols>>[number],
+  cachedProtocol: Awaited<ReturnType<typeof getCachedProtocols>>[number],
   offline: boolean,
   isFollowing: boolean,
 ) {
   return {
-    protocol: {
-      at_uri: cached.atUri,
-      title: cached.title,
-      description: cached.description,
-      required_fields: [] as string[],
-      created_at: '',
-      cid: '',
-    },
-    targets: cached.targets.map((t) => ({ at_uri: t.atUri, scope: t.scope })),
-    handle: cached.handle,
+    protocol: cachedProtocol,
+    handle: cachedProtocol.handle,
     followerCount: 0,
     isFollowing,
     offline,
@@ -45,17 +38,8 @@ export const load: PageLoad = async ({ fetch, params }) => {
     fetch(`/api/protocols/${params.handle}/${params.rkey}`)
       .then(async (res) => {
         if (res.ok) {
-          const data = await res.json();
-          await cacheProtocol({
-            atUri: data.protocol.at_uri,
-            rkey: params.rkey,
-            title: data.protocol.title,
-            description: data.protocol.description,
-            handle: data.handle,
-            targets: (
-              data.targets as { at_uri: string; scope: unknown[] }[]
-            ).map((t) => ({ atUri: t.at_uri, scope: t.scope })),
-          });
+          const data: { protocol: CachedProtocol } = await res.json();
+          await cacheProtocol(data.protocol);
         }
       })
       .catch((err) => {
@@ -75,17 +59,8 @@ export const load: PageLoad = async ({ fetch, params }) => {
   try {
     const res = await fetch(`/api/protocols/${params.handle}/${params.rkey}`);
     if (res.ok) {
-      const data = await res.json();
-      await cacheProtocol({
-        atUri: data.protocol.at_uri,
-        rkey: params.rkey,
-        title: data.protocol.title,
-        description: data.protocol.description,
-        handle: data.handle,
-        targets: (data.targets as { at_uri: string; scope: unknown[] }[]).map(
-          (t) => ({ atUri: t.at_uri, scope: t.scope }),
-        ),
-      });
+      const data: { protocol: CachedProtocol } = await res.json();
+      await cacheProtocol(data.protocol);
       const cachedFollowedProtocol = await getCachedFollowedProtocolByRkey(
         params.rkey,
       );

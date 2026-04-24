@@ -5,7 +5,7 @@ let { data } = $props();
 </script>
 
 <main class="mx-auto max-w-2xl px-4 py-8">
-  <h1 class="mb-6 text-2xl font-semibold">Following</h1>
+  <h1 class="mb-6 text-2xl font-semibold">Followed Protocols</h1>
 
   {#if data.follows.length === 0}
     <p class="text-muted-foreground text-sm">You haven't followed any protocols yet.</p>

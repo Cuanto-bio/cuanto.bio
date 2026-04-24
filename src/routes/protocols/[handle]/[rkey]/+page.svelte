@@ -6,6 +6,5 @@ let { data } = $props();
 
 <ProtocolDetail
   protocol={data.protocol}
-  targets={data.targets}
   followerCount={data.followerCount}
 />

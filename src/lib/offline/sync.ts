@@ -1,4 +1,4 @@
-import type { CachedProtocol, CachedSurvey } from './db';
+import type { Protocol, Survey } from './db';
 import { cacheProtocol, cacheSurvey, setCachedFollowedProtocols } from './db';
 
 export async function syncOfflineData(
@@ -8,8 +8,8 @@ export async function syncOfflineData(
     const res = await fetch('/api/sync');
     if (!res.ok) return;
     const { followedProtocols, surveys } = (await res.json()) as {
-      followedProtocols: Omit<CachedProtocol, 'cachedAt'>[];
-      surveys: Omit<CachedSurvey, 'cachedAt'>[];
+      followedProtocols: Protocol[];
+      surveys: Survey[];
     };
     await Promise.all([
       // Write to followed-protocols (for the /following page IDB read)
