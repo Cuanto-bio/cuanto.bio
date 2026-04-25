@@ -30,6 +30,10 @@
 4. NEVER make the test pass by altering the test
 5. Run full test suite to ensure no regressions
 
+# Frontend
+* ALWAYS look for an appropriate shadcn component, even if not installed
+* ALWAYS try to use appropriate theme colors in layout.css; if tempted to add custom colors, ask the user
+
 # Reference
 - shadcn-svelte: https://www.shadcn-svelte.com/llms.txt
 - playwright-cli: `playwright-cli --help`

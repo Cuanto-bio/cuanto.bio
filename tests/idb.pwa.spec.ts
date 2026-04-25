@@ -225,7 +225,7 @@ test('pending surveys page shows a pending survey from IDB', async ({
     );
 
     await context.setOffline(true);
-    await page.goto('/app/surveys/pending');
+    await page.goto('/app/surveys');
     await page.waitForLoadState('networkidle', { timeout: 10000 });
 
     await expect(page.getByText('Pending Test Park')).toBeVisible();

@@ -60,7 +60,7 @@ test('app shell loads offline at an unvisited /app/* route', async ({
   // Hard-navigate to a route never visited in this session. The SW's fetch
   // handler matches any navigate request to /app/* and responds with the
   // cached /app/ shell — no server access needed.
-  const response = await page.goto('/app/surveys/pending');
+  const response = await page.goto('/app/surveys');
 
   // HTTP 200 proves the SW served the cached shell rather than a browser
   // network error page (which would throw or return a non-200 status).
@@ -70,7 +70,7 @@ test('app shell loads offline at an unvisited /app/* route', async ({
   // navigator.onLine). networkidle is more reliable than relying solely on
   // Playwright's implicit assertion retry here.
   await page.waitForLoadState('networkidle', { timeout: 10000 });
-  // The root layout's onMount sets isOnline = navigator.onLine. The banner
+  // The root layout's onMount sets isOnline from navigator.onLine. The banner
   // being visible confirms the shell was served and SvelteKit's JS executed.
   await expect(page.getByText("You're offline")).toBeVisible();
 });

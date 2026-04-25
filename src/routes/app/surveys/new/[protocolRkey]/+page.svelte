@@ -126,7 +126,7 @@ async function finish() {
   }
 
   await savePendingSurvey(survey);
-  await goto('/app/surveys/pending');
+  await goto('/app/surveys');
 }
 </script>
 

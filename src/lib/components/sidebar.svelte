@@ -116,14 +116,7 @@ async function signOut() {
             <SidebarMenuItem>
               <SidebarMenuButton>
                 {#snippet child({ props })}
-                  <a href="/app/surveys" {...props}>Completed Surveys</a>
-                {/snippet}
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton>
-                {#snippet child({ props })}
-                  <a href="/app/surveys/pending" {...props}>Pending Surveys</a>
+                  <a href="/app/surveys" {...props}>Your Surveys</a>
                 {/snippet}
               </SidebarMenuButton>
             </SidebarMenuItem>
