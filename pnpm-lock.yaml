@@ -20,6 +20,12 @@ importers:
       '@atproto/tap':
         specifier: ^0.2.12
         version: 0.2.12
+      '@fontsource-variable/dynapuff':
+        specifier: ^5.2.8
+        version: 5.2.8
+      '@fontsource-variable/nunito':
+        specifier: ^5.2.7
+        version: 5.2.7
       idb:
         specifier: ^8.0.3
         version: 8.0.3
@@ -469,8 +475,14 @@ packages:
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
 
+  '@fontsource-variable/dynapuff@5.2.8':
+    resolution: {integrity: sha512-qsR7Jx2aeq6xFwBlooSownMM5MlPjXmdjPjsNbAQUAgFSi4hIBDqidU8AYNLBTV+2z7yXMtqnnGHeAjMJALIQw==}
+
   '@fontsource-variable/inter@5.2.8':
     resolution: {integrity: sha512-kOfP2D+ykbcX/P3IFnokOhVRNoTozo5/JxhAIVYLpea/UBmCQ/YWPBfWIDuBImXX/15KH+eKh4xpEUyS2sQQGQ==}
+
+  '@fontsource-variable/nunito@5.2.7':
+    resolution: {integrity: sha512-2N8QhatkyKgSUbAGZO2FYLioxA32+RyI1EplVLawbpkGjUeui9Qg9VMrpkCaik1ydjFjfLV+kzQ0cGEsMrMenQ==}
 
   '@internationalized/date@3.12.0':
     resolution: {integrity: sha512-/PyIMzK29jtXaGU23qTvNZxvBXRtKbNnGDFD+PY6CZw/Y8Ex8pFUzkuCJCG9aOqmShjqhS9mPqP6Dk5onQY8rQ==}
@@ -2291,7 +2303,11 @@ snapshots:
 
   '@floating-ui/utils@0.2.11': {}
 
+  '@fontsource-variable/dynapuff@5.2.8': {}
+
   '@fontsource-variable/inter@5.2.8': {}
+
+  '@fontsource-variable/nunito@5.2.7': {}
 
   '@internationalized/date@3.12.0':
     dependencies:

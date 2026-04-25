@@ -67,6 +67,20 @@ Offline use is important, as we expect surveyors to be completing surveys in are
 - [x] Support following protocols: when a user is online, they should be able to browse existing protocols and follow them, i.e. create `bio.cuanto.surveyProtocol.follow` records. Offline functionality will depend on this so we know what protocols to cache for offline use
 - [x] Make frontend a Progressive Web App (PWA) and support offline Survey creation (submitting to the PDS will still require internet)
 
+FWIW, this was much trickier than anticipated.
+
+## Deployment
+- [x] Figure out what it will take to deploy this on railway
+
+## UI Massage
+- [ ] logo & wordmark
+- [ ] home page that explains what this is and encourages sign in
+- [ ] autocomplete for Atmosphere handle
+- [ ] show Bluesky profile pic
+- [ ] Merge pending and completed surveys; pending should be a section at the top of the surveys page
+- [ ] nav in mobile; at least need crumbs if not an actual navigator; maybe persistent bottom tabs
+
+
 ## Analysis
 
 Researchers are surveyors will both be interested in the outcomes of all the survey activity.
@@ -79,10 +93,6 @@ Researchers are surveyors will both be interested in the outcomes of all the sur
 ## Lexicons.bio changes
 - [ ] make a PR that proposes our changes, or perhaps separate prs for each lexicon
 
-## Deployment
-- [ ] Figure out what it will take to deploy this on railway
-- [ ] Consider publishing our own bio.cuanto.surveyProtocol.follow lexicon per atproto DNS guidance (maybe premature until we've worked out the kinks)
-
 ## Future Plans
 Vague for now, but things that are on my mind.
 
@@ -93,3 +103,6 @@ Vague for now, but things that are on my mind.
    local patches for `@atproto/lex` compatibility (`"key": "record-key"` → `"key": "any"`,
    `"type": "object"` → `"type": "unknown"` on `relations`). Monitor the
    [garganorn repo](https://github.com/schuyler/garganorn) for spec-compliant updates. This is just something we need to keep an eye on.
+1. Consider publishing our own bio.cuanto.surveyProtocol.follow lexicon per atproto DNS guidance (maybe premature until we've worked out the kinks)
+1. Edit surveys
+1. Enter old surveys

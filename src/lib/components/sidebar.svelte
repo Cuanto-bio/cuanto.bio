@@ -14,6 +14,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '$lib/components/ui/sidebar';
+import Wordmark from '$lib/components/wordmark.svelte';
 import { useOnline } from '$lib/composables/online.svelte';
 
 const sidebar = useSidebar();
@@ -82,7 +83,7 @@ async function signOut() {
 
 <Sidebar>
   <SidebarHeader>
-    Cuanto.bio
+    <a href="/" class="wordmark home-link"><Wordmark /></a>
   </SidebarHeader>
   <SidebarContent>
     <SidebarGroup>
@@ -177,3 +178,17 @@ async function signOut() {
     {/if}
   </SidebarFooter>
 </Sidebar>
+
+<style>
+  .home-link {
+    display: block;
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+    text-decoration: none;
+    transition: opacity 0.15s ease;
+  }
+
+  .home-link:hover {
+    opacity: 0.75;
+  }
+</style>
