@@ -1,4 +1,5 @@
 <script lang="ts">
+import Autocomplete from '$lib/components/Autocomplete.svelte';
 import { Button } from '$lib/components/ui/button';
 import * as Card from '$lib/components/ui/card';
 import { Input } from '$lib/components/ui/input';
@@ -37,7 +38,25 @@ let targets = $state<Target[]>([]);
 let taxonQuery = $state('');
 let taxonResults = $state<InatResult[]>([]);
 let searching = $state(false);
-let searchTimeout: ReturnType<typeof setTimeout> | undefined;
+
+$effect(() => {
+  if (taxonQuery.trim().length < 2) {
+    taxonResults = [];
+    return;
+  }
+  const query = taxonQuery.trim();
+  const timer = setTimeout(async () => {
+    searching = true;
+    try {
+      const resp = await fetch(`/api/taxa?q=${encodeURIComponent(query)}`);
+      const data = await resp.json();
+      taxonResults = data.results ?? [];
+    } finally {
+      searching = false;
+    }
+  }, 300);
+  return () => clearTimeout(timer);
+});
 
 function toScope(target: Target): unknown {
   if (target.kind === 'taxon') {
@@ -57,26 +76,6 @@ function toScope(target: Target): unknown {
 
 function targetsJson(): string {
   return JSON.stringify(targets.map((t) => ({ scope: [toScope(t)] })));
-}
-
-function onQueryInput() {
-  clearTimeout(searchTimeout);
-  if (taxonQuery.trim().length < 2) {
-    taxonResults = [];
-    return;
-  }
-  searchTimeout = setTimeout(async () => {
-    searching = true;
-    try {
-      const resp = await fetch(
-        `/api/taxa?q=${encodeURIComponent(taxonQuery.trim())}`,
-      );
-      const data = await resp.json();
-      taxonResults = data.results ?? [];
-    } finally {
-      searching = false;
-    }
-  }, 300);
 }
 
 function addTaxon(result: InatResult) {
@@ -185,37 +184,24 @@ function labelFor(target: Target): string {
             </ul>
           {/if}
 
-          <div class="relative">
-            <Input
-              placeholder="Search taxa (e.g. Quercus)"
-              bind:value={taxonQuery}
-              oninput={onQueryInput}
-              autocomplete="off"
-            />
-            {#if taxonResults.length > 0}
-              <ul
-                class="bg-background border-border absolute z-10 mt-1 w-full rounded border shadow-md"
-              >
-                {#each taxonResults as result (result.inatId)}
-                  <li>
-                    <button
-                      type="button"
-                      onclick={() => addTaxon(result)}
-                      class="hover:bg-muted w-full px-3 py-2 text-left text-sm"
-                    >
-                      <span class="font-medium">{result.scientificName}</span>
-                      <span class="text-muted-foreground ml-1 text-xs">{result.taxonRank}</span>
-                      {#if result.commonName}
-                        <span class="text-muted-foreground ml-1">— {result.commonName}</span>
-                      {/if}
-                    </button>
-                  </li>
-                {/each}
-              </ul>
-            {:else if searching}
-              <p class="text-muted-foreground mt-1 text-xs">Searching…</p>
-            {/if}
-          </div>
+          <Autocomplete
+            placeholder="Search taxa (e.g. Quercus)"
+            autocomplete="off"
+            bind:value={taxonQuery}
+            items={taxonResults}
+            onselect={addTaxon}
+          >
+            {#snippet item(result)}
+              <span class="font-medium">{result.scientificName}</span>
+              <span class="text-muted-foreground text-xs">{result.taxonRank}</span>
+              {#if result.commonName}
+                <span class="text-muted-foreground">— {result.commonName}</span>
+              {/if}
+            {/snippet}
+          </Autocomplete>
+          {#if searching && taxonResults.length === 0}
+            <p class="text-muted-foreground mt-1 text-xs">Searching…</p>
+          {/if}
 
           <Button type="button" variant="outline" onclick={addVerbatim} class="w-fit">
             + Add verbatim target

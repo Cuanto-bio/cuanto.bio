@@ -141,4 +141,7 @@
     @apply text-muted-foreground leading-7 [&:not(:first-child)]:mt-6;
     letter-spacing: 2%;
   }
+  p a {
+    @apply underline underline-offset-4 hover:text-primary;
+  }
 }

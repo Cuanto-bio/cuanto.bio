@@ -74,7 +74,7 @@ FWIW, this was much trickier than anticipated.
 
 ## UI Massage
 - [ ] logo & wordmark
-- [ ] home page that explains what this is and encourages sign in
+- [x] home page that explains what this is and encourages sign in
 - [ ] autocomplete for Atmosphere handle
 - [ ] show Bluesky profile pic
 - [ ] Merge pending and completed surveys; pending should be a section at the top of the surveys page
