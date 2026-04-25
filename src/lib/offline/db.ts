@@ -1,75 +1,66 @@
 import type { DBSchema, IDBPDatabase } from 'idb';
 import { openDB } from 'idb';
+import type { Main as AtOccurrence } from '$lib/lexicons/bio/lexicons/temp/occurrence.defs.js';
+import type { Main as AtSurvey } from '$lib/lexicons/bio/lexicons/temp/survey.defs.js';
+import type { Main as AtSurveyProtocol } from '$lib/lexicons/bio/lexicons/temp/surveyProtocol.defs.js';
+import type { Main as AtSurveyTarget } from '$lib/lexicons/bio/lexicons/temp/surveyTarget.defs.js';
 import { CUANTO_IDB_VERSION } from './constants';
 
-export interface TargetScope {
-  $type:
-    | 'bio.lexicons.temp.surveyTarget#taxonScope'
-    | 'bio.lexicons.temp.surveyTarget#verbatimScope';
-}
+export type {
+  TaxonScope,
+  VerbatimScope,
+} from '$lib/lexicons/bio/lexicons/temp/surveyTarget.defs.js';
 
-export interface TaxonScope extends TargetScope {
-  taxonID: string;
-  taxonRank: string;
-  scientificName: string;
-}
-
-export interface VerbatimScope extends TargetScope {
-  verbatimTargetScope: string;
+export interface Target {
+  atUri: string;
+  record: AtSurveyTarget;
 }
 
 export interface Protocol {
   atUri: string;
   rkey: string;
-  title: string;
-  description: string;
   handle: string;
-  targets: {
-    atUri: string;
-    scope: TargetScope[];
-  }[];
-  createdAt?: string;
-  requiredFields?: string[];
+  record: AtSurveyProtocol;
+  targets: Target[];
 }
 
 export interface CachedProtocol extends Protocol {
   cachedAt: number;
 }
 
-interface BaseSurvey {
-  eventDate: string | null;
-  eventDurationUnit: string | null;
-  eventDurationValue: number | null;
-  locationName: string;
-  protocolRkey: string;
-  protocolTitle: string;
-  protocolUri: string;
+export interface Occurrence {
+  atUri: string;
+  record: AtOccurrence;
 }
 
-export interface PendingSurvey extends BaseSurvey {
-  createdAt: number;
-  id?: number;
-  latitude: string | null;
-  longitude: string | null;
-  occurrences: { surveyTargetUri: string; taxonID?: string; count: number }[];
-}
-
-export interface Survey extends BaseSurvey {
+export interface Survey {
   atUri: string;
   rkey: string;
-  protocolHandle: string;
   handle: string;
-  occurrences: CachedOccurrence[];
+  protocolHandle: string;
+  protocolRkey: string;
+  protocolTitle: string;
+  record: AtSurvey;
+  occurrences: Occurrence[];
 }
 
 export interface CachedSurvey extends Survey {
   cachedAt: number;
 }
 
-export interface CachedOccurrence {
-  atUri: string;
-  organismQuantity: string | null;
-  surveyTargetUri: string | null;
+export interface PendingSurvey {
+  id?: number;
+  protocolUri: string;
+  protocolRkey: string;
+  protocolTitle: string;
+  locationName: string;
+  eventDate: string | null;
+  eventDurationValue: number | null;
+  eventDurationUnit: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  occurrences: { surveyTargetUri: string; taxonID?: string; count: number }[];
+  createdAt: number;
 }
 
 export interface IdbUser {
@@ -128,6 +119,13 @@ async function getDB(): Promise<IDBPDatabase<CuantoDB>> {
       }
       if (oldVersion < 4) {
         tx.objectStore('cached-surveys').createIndex('by-rkey', 'rkey');
+      }
+      if (oldVersion < 7) {
+        // Record shape changed to embed lexicon records; clear cached stores
+        // so stale flat-field entries don't collide with the new shape.
+        tx.objectStore('cached-protocols').clear();
+        tx.objectStore('followed-protocols').clear();
+        tx.objectStore('cached-surveys').clear();
       }
     },
   });

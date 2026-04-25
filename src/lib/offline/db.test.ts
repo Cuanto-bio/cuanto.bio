@@ -58,11 +58,24 @@ describe('user store', () => {
 const cachedProtocol1 = {
   atUri: 'at://did:test:1/bio.lexicons.temp.surveyProtocol/cp1',
   rkey: 'cp1',
-  title: 'Cached Protocol One',
-  description: 'First cached protocol',
   handle: 'alice',
+  record: {
+    $type: 'bio.lexicons.temp.surveyProtocol' as const,
+    title: 'Cached Protocol One',
+    description: 'First cached protocol',
+    createdAt:
+      '2026-04-01T00:00:00.000Z' as `${string}-${string}-${string}T${string}:${string}:${string}Z`,
+  },
   targets: [
-    { atUri: 'at://did:test:1/bio.lexicons.temp.surveyTarget/t1', scope: [] },
+    {
+      atUri: 'at://did:test:1/bio.lexicons.temp.surveyTarget/t1',
+      record: {
+        $type: 'bio.lexicons.temp.surveyTarget' as const,
+        protocol:
+          'at://did:test:1/bio.lexicons.temp.surveyProtocol/cp1' as `at://did:${string}:${string}/${string}.${string}.${string}/${string}`,
+        scope: [],
+      },
+    },
   ],
 };
 
@@ -71,7 +84,7 @@ describe('cached-protocols store', () => {
     await cacheProtocol(cachedProtocol1);
     const result = await getCachedProtocolByRkey('cp1');
     expect(result?.atUri).toBe(cachedProtocol1.atUri);
-    expect(result?.title).toBe(cachedProtocol1.title);
+    expect(result?.record.title).toBe(cachedProtocol1.record.title);
     expect(result?.targets).toHaveLength(1);
   });
 
@@ -84,15 +97,20 @@ describe('cached-protocols store', () => {
     const followedOnly = {
       atUri: 'at://did:test:2/bio.lexicons.temp.surveyProtocol/fo1',
       rkey: 'fo1',
-      title: 'Followed Only',
-      description: 'Only in followed-protocols',
       handle: 'bob',
+      record: {
+        $type: 'bio.lexicons.temp.surveyProtocol' as const,
+        title: 'Followed Only',
+        description: 'Only in followed-protocols',
+        createdAt:
+          '2026-04-01T00:00:00.000Z' as `${string}-${string}-${string}T${string}:${string}:${string}Z`,
+      },
       targets: [],
     };
     await setCachedFollowedProtocols([followedOnly]);
     const result = await getCachedProtocolByRkey('fo1');
     expect(result?.atUri).toBe(followedOnly.atUri);
-    expect(result?.title).toBe(followedOnly.title);
+    expect(result?.record.title).toBe(followedOnly.record.title);
   });
 
   test('cacheProtocol adds cachedAt timestamp', async () => {
@@ -108,18 +126,28 @@ describe('cached-protocols store', () => {
 const protocol1 = {
   atUri: 'at://did:test:1/bio.lexicons.temp.surveyProtocol/fp1',
   rkey: 'fp1',
-  title: 'Protocol One',
-  description: 'First protocol',
   handle: 'alice',
+  record: {
+    $type: 'bio.lexicons.temp.surveyProtocol' as const,
+    title: 'Protocol One',
+    description: 'First protocol',
+    createdAt:
+      '2026-04-01T00:00:00.000Z' as `${string}-${string}-${string}T${string}:${string}:${string}Z`,
+  },
   targets: [],
 };
 
 const protocol2 = {
   atUri: 'at://did:test:1/bio.lexicons.temp.surveyProtocol/fp2',
   rkey: 'fp2',
-  title: 'Protocol Two',
-  description: 'Second protocol',
   handle: 'alice',
+  record: {
+    $type: 'bio.lexicons.temp.surveyProtocol' as const,
+    title: 'Protocol Two',
+    description: 'Second protocol',
+    createdAt:
+      '2026-04-01T00:00:00.000Z' as `${string}-${string}-${string}T${string}:${string}:${string}Z`,
+  },
   targets: [],
 };
 
@@ -212,23 +240,37 @@ describe('pending-surveys store', () => {
 const survey1 = {
   atUri: 'at://did:test:1/bio.lexicons.temp.survey/cs1',
   rkey: 'cs1',
-  eventDate: '2026-04-01',
-  eventDurationValue: 30,
-  eventDurationUnit: 'minutes',
-  locationName: 'Test Park',
-  protocolTitle: 'Bird Count',
-  protocolRkey: 'proto1',
-  protocolHandle: 'alice',
-  protocolUri: 'at://did:test:1/bio.lexicons.temp.surveyProtocol/sp1',
   handle: 'bob',
+  protocolHandle: 'alice',
+  protocolRkey: 'proto1',
+  protocolTitle: 'Bird Count',
+  record: {
+    $type: 'bio.lexicons.temp.survey' as const,
+    protocol: {
+      uri: 'at://did:test:1/bio.lexicons.temp.surveyProtocol/sp1' as `at://did:${string}:${string}/${string}.${string}.${string}/${string}`,
+      cid: 'bafycid1' as `bafy${string}`,
+    },
+    createdAt:
+      '2026-04-01T00:00:00.000Z' as `${string}-${string}-${string}T${string}:${string}:${string}Z`,
+    eventDate: '2026-04-01T00:00:00.000Z',
+    eventDurationValue: 30,
+    eventDurationUnit: 'minutes',
+    location: { $type: 'org.atgeo.place' as const, name: 'Test Park' },
+  },
   occurrences: [
     {
       atUri: 'at://did:test:1/bio.lexicons.temp.occurrence/o1',
-      organismQuantity: '5',
-      surveyTargetUri: 'at://did:test:1/bio.lexicons.temp.surveyTarget/st1',
+      record: {
+        $type: 'bio.lexicons.temp.occurrence' as const,
+        eventID:
+          'at://did:test:1/bio.lexicons.temp.survey/cs1' as `at://did:${string}:${string}/${string}.${string}.${string}/${string}`,
+        surveyTargetID:
+          'at://did:test:1/bio.lexicons.temp.surveyTarget/st1' as `at://did:${string}:${string}/${string}.${string}.${string}/${string}`,
+        organismQuantity: '5',
+        organismQuantityType: 'individuals',
+      },
     },
   ],
-  createdAt: Date.now(),
 };
 
 describe('cached-surveys store', () => {
@@ -278,5 +320,14 @@ describe('cached-surveys store', () => {
   test('getCachedSurveyByRkey returns undefined for unknown rkey', async () => {
     const result = await getCachedSurveyByRkey('does-not-exist');
     expect(result).toBeUndefined();
+  });
+
+  test('occurrence record fields are preserved', async () => {
+    await cacheSurvey(survey1);
+    const result = await getCachedSurvey(survey1.atUri);
+    expect(result?.occurrences[0].record.organismQuantity).toBe('5');
+    expect(result?.occurrences[0].record.surveyTargetID).toBe(
+      survey1.occurrences[0].record.surveyTargetID,
+    );
   });
 });

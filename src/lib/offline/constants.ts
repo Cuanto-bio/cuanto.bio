@@ -1,1 +1,1 @@
-export const CUANTO_IDB_VERSION = 6;
+export const CUANTO_IDB_VERSION = 7;

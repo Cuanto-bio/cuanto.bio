@@ -6,9 +6,7 @@ interface ProtocolRow {
   rkey: string;
   title: string;
   description: string;
-  created_at: string;
   handle: string;
-  target_count: number;
 }
 
 // Protocol list is publicly readable — no auth required.
@@ -17,16 +15,12 @@ export const load: PageServerLoad = async () => {
     SELECT
       sp.at_uri,
       sp.rkey,
-      sp.title,
-      sp.description,
-      sp.created_at,
-      u.handle,
-      COUNT(st.id)::int AS target_count
+      sp.record->>'title'       AS title,
+      sp.record->>'description' AS description,
+      u.handle
     FROM survey_protocols sp
     JOIN users u ON u.did = sp.did
-    LEFT JOIN survey_targets st ON st.protocol_uri = sp.at_uri
-    GROUP BY sp.at_uri, sp.rkey, sp.title, sp.description, sp.created_at, u.handle
-    ORDER BY sp.created_at DESC
+    ORDER BY sp.indexed_at DESC
   `;
 
   return { protocols };

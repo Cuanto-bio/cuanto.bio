@@ -43,15 +43,20 @@ async function seedSurvey(
 ): Promise<string> {
   const rkey = `survey${Date.now()}`;
   const atUri = `at://${did}/bio.lexicons.temp.survey/${rkey}`;
+  const record = {
+    $type: 'bio.lexicons.temp.survey',
+    protocol: { uri: protocolUri, cid: FAKE_CID },
+    createdAt: new Date().toISOString(),
+    location: { $type: 'org.atgeo.place', name: 'Offline Test Park' },
+  };
   await sql`
-    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, protocol_cid, location, created_at)
+    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, record, indexed_at)
     VALUES (
       ${atUri},
       ${did},
       ${rkey},
       ${protocolUri},
-      ${FAKE_CID},
-      ${sql.json({ name: 'Offline Test Park' })},
+      ${sql.json(record)},
       now()
     )
   `;

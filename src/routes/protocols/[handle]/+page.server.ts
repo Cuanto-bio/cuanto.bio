@@ -7,8 +7,6 @@ interface ProtocolRow {
   rkey: string;
   title: string;
   description: string;
-  created_at: string;
-  target_count: number;
 }
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -21,13 +19,11 @@ export const load: PageServerLoad = async ({ params }) => {
     SELECT
       at_uri,
       rkey,
-      title,
-      description,
-      created_at,
-      (SELECT COUNT(*) FROM survey_targets WHERE protocol_uri = survey_protocols.at_uri)::int AS target_count
+      record->>'title' AS title,
+      record->>'description' AS description
     FROM survey_protocols
     WHERE did = ${user.did}
-    ORDER BY created_at DESC
+    ORDER BY indexed_at DESC
   `;
 
   return { protocols, handle: params.handle };

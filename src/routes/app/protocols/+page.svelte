@@ -29,10 +29,6 @@ const online = useOnline();
               <Card.Content>
                 <div class="text-muted-foreground flex gap-4 text-sm">
                   <span>by @{protocol.handle}</span>
-                  <span>
-                    {protocol.target_count}
-                    {protocol.target_count === 1 ? 'target' : 'targets'}
-                  </span>
                 </div>
               </Card.Content>
             </Card.Root>

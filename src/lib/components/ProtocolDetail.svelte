@@ -104,8 +104,8 @@ function formatDate(iso: string) {
   </div>
 
   <div class="text-muted-foreground text-xs mb-1">PROTOCOL</div>
-  <h1>{protocol.title}</h1>
-  <p>{protocol.description}</p>
+  <h1>{protocol.record.title}</h1>
+  <p>{protocol.record.description}</p>
 
   <Table.Root class="my-2">
     <Table.Body>
@@ -115,14 +115,14 @@ function formatDate(iso: string) {
       </Table.Row>
       <Table.Row>
         <Table.Head>Created</Table.Head>
-        <Table.Cell>{protocol.createdAt}</Table.Cell>
+        <Table.Cell>{formatDate(protocol.record.createdAt)}</Table.Cell>
       </Table.Row>
       <Table.Row>
         <Table.Head>Required Fields</Table.Head>
         <Table.Cell>
-          {#if protocol.requiredFields && protocol.requiredFields.length > 0}
+          {#if protocol.record.requiredFields && protocol.record.requiredFields.length > 0}
             <ul class="ml-4 mt-1 list-disc">
-              {#each protocol.requiredFields as field}
+              {#each protocol.record.requiredFields as field}
                 <li>{field}</li>
               {/each}
             </ul>
@@ -150,10 +150,10 @@ function formatDate(iso: string) {
         {#each protocol.targets as target (target.atUri)}
           <Table.Row>
             <Table.Cell>
-              {#if target.scope.length === 1}
-                {#if target.scope[0].$type.endsWith('taxonScope')}
+              {#if target.record.scope.length === 1}
+                {#if target.record.scope[0].$type?.endsWith('taxonScope')}
                   Taxonomic
-                {:else if target.scope[0].$type.endsWith('verbatimScope')}
+                {:else if target.record.scope[0].$type?.endsWith('verbatimScope')}
                   Verbatim
                 {/if}
               {:else}
@@ -161,19 +161,19 @@ function formatDate(iso: string) {
               {/if}
             </Table.Cell>
             <Table.Cell>
-              {#each target.scope as scope, idx}
+              {#each target.record.scope as scope, idx}
                 {#if idx > 0}
                   <p>AND</p>
                 {/if}
                 <div>
-                  {#if scope.$type.endsWith('taxonScope')}
+                  {#if scope.$type?.endsWith('taxonScope')}
                     {(scope as TaxonScope).taxonRank}
                     {#if ['genus', 'species', 'subspecies', 'variety', 'infraspecies'].includes((scope as TaxonScope).taxonRank)}
                       <i>{(scope as TaxonScope).scientificName}</i>
                     {:else}
                       {(scope as TaxonScope).scientificName}
                     {/if}
-                  {:else if scope.$type.endsWith('verbatimScope')}
+                  {:else if scope.$type?.endsWith('verbatimScope')}
                     {(scope as VerbatimScope).verbatimTargetScope}
                   {/if}
                 </div>

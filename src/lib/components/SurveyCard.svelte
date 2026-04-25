@@ -1,7 +1,27 @@
 <script lang="ts">
 import * as Card from '$lib/components/ui/card';
+import type { PendingSurvey, Survey } from '$lib/offline/db';
 
-let { survey } = $props();
+let { survey }: { survey: Survey | PendingSurvey } = $props();
+
+const isSurvey = (s: Survey | PendingSurvey): s is Survey => 'record' in s;
+
+const locationName = $derived(
+  isSurvey(survey) ? survey.record.location.name : survey.locationName,
+);
+const eventDate = $derived(
+  isSurvey(survey) ? (survey.record.eventDate ?? null) : survey.eventDate,
+);
+const eventDurationValue = $derived(
+  isSurvey(survey)
+    ? (survey.record.eventDurationValue ?? null)
+    : survey.eventDurationValue,
+);
+const eventDurationUnit = $derived(
+  isSurvey(survey)
+    ? (survey.record.eventDurationUnit ?? null)
+    : survey.eventDurationUnit,
+);
 
 function formatDate(iso: string | null): string {
   if (!iso) return 'Unknown date';
@@ -17,12 +37,12 @@ function formatDuration(value: number | null, unit: string | null): string {
 <Card.Root class="hover:bg-muted transition-colors">
   <Card.Header>
     <Card.Title>{survey.protocolTitle}</Card.Title>
-    <Card.Description>{survey.locationName}</Card.Description>
+    <Card.Description>{locationName}</Card.Description>
   </Card.Header>
   <Card.Content class="text-muted-foreground flex gap-4 text-sm">
-    <span>{formatDate(survey.eventDate)}</span>
-    {#if survey.eventDurationValue != null}
-      <span>{formatDuration(survey.eventDurationValue, survey.eventDurationUnit)}</span>
+    <span>{formatDate(eventDate)}</span>
+    {#if eventDurationValue != null}
+      <span>{formatDuration(eventDurationValue, eventDurationUnit)}</span>
     {/if}
     <span>
       {survey.occurrences.length}

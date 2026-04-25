@@ -26,13 +26,7 @@ let { data } = $props();
                 <Card.Description>{protocol.description}</Card.Description>
               </Card.Header>
               <Card.Content>
-                <div class="text-muted-foreground flex gap-4 text-sm">
-                  <span>by @{protocol.handle}</span>
-                  <span>
-                    {protocol.target_count}
-                    {protocol.target_count === 1 ? 'target' : 'targets'}
-                  </span>
-                </div>
+                <p class="text-muted-foreground text-sm">by @{protocol.handle}</p>
               </Card.Content>
             </Card.Root>
           </a>

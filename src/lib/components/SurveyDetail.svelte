@@ -31,19 +31,19 @@ function targetLabel(scope: unknown[] | null): string {
   <Card.Root class="mb-6">
     <Card.Header>
       <Card.Title>{survey.protocolTitle}</Card.Title>
-      <Card.Description>{survey.locationName}</Card.Description>
+      <Card.Description>{survey.record.location.name}</Card.Description>
     </Card.Header>
     <Card.Content class="space-y-2 text-sm">
       <div>
         <span class="text-muted-foreground font-medium">Date:</span>
-        <span class="ml-2">{formatDate(survey.eventDate)}</span>
+        <span class="ml-2">{formatDate(survey.record.eventDate ?? null)}</span>
       </div>
-      {#if survey.eventDurationValue != null}
+      {#if survey.record.eventDurationValue != null}
         <div>
           <span class="text-muted-foreground font-medium">Duration:</span>
           <span class="ml-2">
-            {survey.eventDurationValue}
-            {survey.eventDurationUnit ?? 'min'}
+            {survey.record.eventDurationValue}
+            {survey.record.eventDurationUnit ?? 'min'}
           </span>
         </div>
       {/if}
@@ -67,8 +67,8 @@ function targetLabel(scope: unknown[] | null): string {
     <ul class="flex flex-col gap-3">
       {#each protocol.targets as target (target.atUri)}
         <li class="flex items-center justify-between rounded border px-4 py-3">
-          <span class="text-sm">{targetLabel(target.scope)}</span>
-          <span class="font-mono text-sm font-semibold">{survey.occurrences.find(o => o.surveyTargetUri === target.atUri)?.organismQuantity ?? 0}</span>
+          <span class="text-sm">{targetLabel(target.record.scope)}</span>
+          <span class="font-mono text-sm font-semibold">{survey.occurrences.find(o => o.record.surveyTargetID === target.atUri)?.record.organismQuantity ?? 0}</span>
         </li>
       {/each}
     </ul>

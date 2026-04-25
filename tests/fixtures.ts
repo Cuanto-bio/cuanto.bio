@@ -20,14 +20,17 @@ export async function seedProtocol(
   const rkey = `testproto${Date.now()}`;
   const atUri = `at://${did}/bio.lexicons.temp.surveyProtocol/${rkey}`;
 
+  const protocolRecord = {
+    $type: 'bio.lexicons.temp.surveyProtocol',
+    title: 'Test Protocol',
+    description: 'A protocol for integration tests',
+    createdAt: new Date().toISOString(),
+    requiredFields: [],
+  };
+
   await sql`
-    INSERT INTO survey_protocols
-      (at_uri, did, rkey, title, description, required_fields, created_at, cid)
-    VALUES (
-      ${atUri}, ${did}, ${rkey},
-      'Test Protocol', 'A protocol for integration tests',
-      ${sql.array([])}, ${new Date().toISOString()}, ${FAKE_CID}
-    )
+    INSERT INTO survey_protocols (at_uri, did, rkey, cid, record, indexed_at)
+    VALUES (${atUri}, ${did}, ${rkey}, ${FAKE_CID}, ${sql.json(protocolRecord)}, now())
   `;
 
   const targets = [
@@ -56,13 +59,39 @@ export async function seedProtocol(
     const t = targets[i];
     const targetUri = `at://${did}/bio.lexicons.temp.surveyTarget/${t.rkey}`;
     const indexedAt = new Date(Date.now() + i * 1000).toISOString();
+    const targetRecord = {
+      $type: 'bio.lexicons.temp.surveyTarget',
+      protocol: atUri,
+      scope: t.scope,
+    };
     await sql`
-      INSERT INTO survey_targets (at_uri, did, rkey, protocol_uri, scope, indexed_at)
-      VALUES (${targetUri}, ${did}, ${t.rkey}, ${atUri}, ${sql.json(t.scope)}, ${indexedAt})
+      INSERT INTO survey_targets (at_uri, did, rkey, protocol_uri, record, indexed_at)
+      VALUES (${targetUri}, ${did}, ${t.rkey}, ${atUri}, ${sql.json(targetRecord)}, ${indexedAt})
     `;
   }
 
   return { protocolRkey: rkey };
+}
+
+export async function seedSurvey(
+  sql: Sql,
+  did: string,
+  protocolUri: string,
+  locationName = 'Test Location',
+): Promise<{ surveyRkey: string }> {
+  const rkey = `testsurvey${Date.now()}`;
+  const atUri = `at://${did}/bio.lexicons.temp.survey/${rkey}`;
+  const record = {
+    $type: 'bio.lexicons.temp.survey',
+    protocol: { uri: protocolUri, cid: FAKE_CID },
+    createdAt: new Date().toISOString(),
+    location: { $type: 'org.atgeo.place', name: locationName },
+  };
+  await sql`
+    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, record, indexed_at)
+    VALUES (${atUri}, ${did}, ${rkey}, ${protocolUri}, ${sql.json(record)}, now())
+  `;
+  return { surveyRkey: rkey };
 }
 
 export async function teardownDid(sql: Sql, did: string): Promise<void> {

@@ -1,17 +1,17 @@
 import { error } from '@sveltejs/kit';
 import logger from '$lib/logger';
 import {
-  type CachedProtocol,
   cacheProtocol,
   getCachedFollowedProtocolByRkey,
   getCachedProtocols,
+  type Protocol,
 } from '$lib/offline/db';
 import type { PageLoad } from './$types';
 
 const log = logger.child({ component: 'app-protocol-detail' });
 
 function toPageData(
-  cachedProtocol: Awaited<ReturnType<typeof getCachedProtocols>>[number],
+  cachedProtocol: Protocol,
   offline: boolean,
   isFollowing: boolean,
 ) {
@@ -38,7 +38,7 @@ export const load: PageLoad = async ({ fetch, params }) => {
     fetch(`/api/protocols/${params.handle}/${params.rkey}`)
       .then(async (res) => {
         if (res.ok) {
-          const data: { protocol: CachedProtocol } = await res.json();
+          const data: { protocol: Protocol } = await res.json();
           await cacheProtocol(data.protocol);
         }
       })
@@ -59,7 +59,7 @@ export const load: PageLoad = async ({ fetch, params }) => {
   try {
     const res = await fetch(`/api/protocols/${params.handle}/${params.rkey}`);
     if (res.ok) {
-      const data: { protocol: CachedProtocol } = await res.json();
+      const data: { protocol: Protocol } = await res.json();
       await cacheProtocol(data.protocol);
       const cachedFollowedProtocol = await getCachedFollowedProtocolByRkey(
         params.rkey,

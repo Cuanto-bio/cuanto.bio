@@ -1,5 +1,4 @@
 import { error } from '@sveltejs/kit';
-import type { Protocol } from '$lib/offline/db';
 import {
   getProtocolByUri,
   getTargetsForProtocols,
@@ -13,16 +12,15 @@ export const load: PageServerLoad = async ({ params }) => {
     params.rkey,
   );
   if (!survey) error(404, 'Survey not found');
-  const protocolRow = await getProtocolByUri(survey.protocolUri);
+  const protocolRow = await getProtocolByUri(survey.record.protocol.uri);
   if (!protocolRow) error(404, 'Protocol not found');
   const targetRows = await getTargetsForProtocols([protocolRow.at_uri]);
-  const protocol: Protocol = {
+  const protocol = {
     atUri: protocolRow.at_uri,
     rkey: protocolRow.rkey,
-    title: protocolRow.title,
-    description: protocolRow.description,
     handle: protocolRow.handle,
-    targets: targetRows.map((r) => ({ atUri: r.at_uri, scope: r.scope })),
+    record: protocolRow.record,
+    targets: targetRows.map((r) => ({ atUri: r.at_uri, record: r.record })),
   };
 
   return { survey, protocol };

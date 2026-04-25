@@ -11,17 +11,17 @@ let { data } = $props();
     <p class="text-muted-foreground text-sm">You haven't followed any protocols yet.</p>
   {:else}
     <ul class="flex flex-col gap-3">
-      {#each data.follows as follow (follow.atUri)}
+      {#each data.follows as protocol (protocol.atUri)}
         <li>
-          <a href="/app/protocols/{follow.handle}/{follow.rkey}">
+          <a href="/app/protocols/{protocol.handle}/{protocol.rkey}">
             <Card.Root class="hover:bg-muted transition-colors">
               <Card.Header>
-                <Card.Title>{follow.title}</Card.Title>
-                <Card.Description>{follow.description}</Card.Description>
+                <Card.Title>{protocol.record.title}</Card.Title>
+                <Card.Description>{protocol.record.description}</Card.Description>
               </Card.Header>
               <Card.Content>
                 <div class="text-muted-foreground text-sm">
-                  <span>by @{follow.handle}</span>
+                  <span>by @{protocol.handle}</span>
                 </div>
               </Card.Content>
             </Card.Root>

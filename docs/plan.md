@@ -64,8 +64,8 @@ container for postgres (minus tap for now)
 
 Offline use is important, as we expect surveyors to be completing surveys in areas with little to no internet connectivity.
 
-- [ ] Support following protocols: when a user is online, they should be able to browse existing protocols and follow them, i.e. create `bio.cuanto.surveyProtocol.follow` records. Offline functionality will depend on this so we know what protocols to cache for offline use
-- [ ] Make frontend a Progressive Web App (PWA) and support offline Survey creation (submitting to the PDS will still require internet)
+- [x] Support following protocols: when a user is online, they should be able to browse existing protocols and follow them, i.e. create `bio.cuanto.surveyProtocol.follow` records. Offline functionality will depend on this so we know what protocols to cache for offline use
+- [x] Make frontend a Progressive Web App (PWA) and support offline Survey creation (submitting to the PDS will still require internet)
 
 ## Analysis
 

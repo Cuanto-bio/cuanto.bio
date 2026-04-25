@@ -1,0 +1,31 @@
+import { expect, seedProtocol, teardownDid, test } from './fixtures.js';
+
+const DID = 'did:test:protocols-spec';
+const HANDLE = 'user-protocols-spec';
+
+test('/protocols shows protocol titles', async ({ page, sql }) => {
+  await sql`INSERT INTO users (did, handle) VALUES (${DID}, ${HANDLE}) ON CONFLICT (did) DO NOTHING`;
+  await seedProtocol(sql, DID);
+
+  try {
+    await page.goto('/protocols');
+    await expect(page.getByText('Test Protocol')).toBeVisible();
+  } finally {
+    await teardownDid(sql, DID);
+  }
+});
+
+test('/protocols/[handle] shows protocol titles for that user', async ({
+  page,
+  sql,
+}) => {
+  await sql`INSERT INTO users (did, handle) VALUES (${DID}, ${HANDLE}) ON CONFLICT (did) DO NOTHING`;
+  await seedProtocol(sql, DID);
+
+  try {
+    await page.goto(`/protocols/${HANDLE}`);
+    await expect(page.getByText('Test Protocol')).toBeVisible();
+  } finally {
+    await teardownDid(sql, DID);
+  }
+});

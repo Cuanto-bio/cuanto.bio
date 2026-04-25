@@ -1,31 +1,24 @@
-import type { Main as AtProtocol } from '$lib/lexicons/bio/lexicons/temp/surveyProtocol.defs.js';
-import type { Main as AtTarget } from '$lib/lexicons/bio/lexicons/temp/surveyTarget.defs.js';
-import type {
-  Protocol,
-  TargetScope,
-  TaxonScope,
-  VerbatimScope,
-} from '$lib/offline/db.js';
+import type { Main as AtSurveyProtocol } from '$lib/lexicons/bio/lexicons/temp/surveyProtocol.defs.js';
+import type { Main as AtSurveyTarget } from '$lib/lexicons/bio/lexicons/temp/surveyTarget.defs.js';
+import type { Protocol, Target } from '$lib/offline/db.js';
 import sql from './index.js';
 
 export async function insertProtocol(
   did: string,
   rkey: string,
-  record: AtProtocol,
+  record: AtSurveyProtocol,
   atUri: string,
   cid: string,
 ): Promise<void> {
   await sql`
-    INSERT INTO survey_protocols (at_uri, did, rkey, title, description, required_fields, created_at, cid)
+    INSERT INTO survey_protocols (at_uri, did, rkey, cid, record, indexed_at)
     VALUES (
       ${atUri},
       ${did},
       ${rkey},
-      ${record.title},
-      ${record.description},
-      ${sql.array(record.requiredFields ?? [])},
-      ${record.createdAt},
-      ${cid}
+      ${cid},
+      ${sql.json(record as Parameters<typeof sql.json>[0])},
+      now()
     )
     ON CONFLICT (at_uri) DO UPDATE SET
       title = EXCLUDED.title,
@@ -39,17 +32,18 @@ export async function insertProtocol(
 export async function insertTarget(
   did: string,
   rkey: string,
-  record: AtTarget,
+  record: AtSurveyTarget,
   atUri: string,
 ): Promise<void> {
   await sql`
-    INSERT INTO survey_targets (at_uri, did, rkey, protocol_uri, scope)
+    INSERT INTO survey_targets (at_uri, did, rkey, protocol_uri, record, indexed_at)
     VALUES (
       ${atUri},
       ${did},
       ${rkey},
       ${record.protocol},
-      ${sql.json(record.scope as Parameters<typeof sql.json>[0])}
+      ${sql.json(record as Parameters<typeof sql.json>[0])},
+      now()
     )
     ON CONFLICT (at_uri) DO UPDATE SET
       protocol_uri = EXCLUDED.protocol_uri,
@@ -57,24 +51,18 @@ export async function insertTarget(
   `;
 }
 
-export interface ProtocolRow {
+interface ProtocolRow {
   at_uri: string;
-  did: string;
   rkey: string;
-  title: string;
-  description: string;
-  required_fields: string | null;
-  created_at: string;
   cid: string | null;
   handle: string;
+  record: AtSurveyProtocol;
 }
 
-export interface TargetRow {
+interface TargetRow {
   protocol_uri: string;
   at_uri: string;
-  // Since this is stored as JSON blob, the shape matches the lexicon and
-  // offline schemas
-  scope: TargetScope[];
+  record: AtSurveyTarget;
 }
 
 export async function getTargetsForProtocols(
@@ -82,63 +70,60 @@ export async function getTargetsForProtocols(
 ): Promise<TargetRow[]> {
   if (protocolUris.length === 0) return [];
   return sql<TargetRow[]>`
-    SELECT
-      t.protocol_uri,
-      t.at_uri,
-      t.scope
-    FROM survey_targets t
-    WHERE t.protocol_uri = ANY(${sql.array(protocolUris)})
+    SELECT protocol_uri, at_uri, record
+    FROM survey_targets
+    WHERE protocol_uri = ANY(${sql.array(protocolUris)})
   `;
 }
 
-export async function getProtocolByUri(uri: string) {
+function toTarget(row: TargetRow): Target {
+  return { atUri: row.at_uri, record: row.record };
+}
+
+export async function getProtocolByUri(
+  uri: string,
+): Promise<ProtocolRow | null> {
   const [row] = await sql<ProtocolRow[]>`
-    SELECT
-      survey_protocols.*,
-      u.handle
-    FROM survey_protocols
-      JOIN users u ON u.did = survey_protocols.did
-    WHERE at_uri = ${uri}
+    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle
+    FROM survey_protocols sp
+    JOIN users u ON u.did = sp.did
+    WHERE sp.at_uri = ${uri}
     LIMIT 1
   `;
   return row ?? null;
 }
 
-export async function getProtocolByDidAndRkey(did: string, rkey: string) {
+async function getProtocolByDidAndRkey(
+  did: string,
+  rkey: string,
+): Promise<ProtocolRow | null> {
   const [row] = await sql<ProtocolRow[]>`
-    SELECT
-      sp.at_uri,
-      sp.rkey,
-      sp.title,
-      sp.description,
-      sp.required_fields,
-      sp.created_at,
-      sp.cid,
-      u.handle
+    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle
     FROM survey_protocols sp
-      JOIN users u ON u.did = sp.did
+    JOIN users u ON u.did = sp.did
     WHERE sp.did = ${did} AND sp.rkey = ${rkey}
     LIMIT 1
   `;
   return row ?? null;
 }
 
-export function groupTargetsByProtocol(
+function toProtocol(row: ProtocolRow, targets: TargetRow[]): Protocol {
+  return {
+    atUri: row.at_uri,
+    rkey: row.rkey,
+    handle: row.handle,
+    record: row.record,
+    targets: targets.map(toTarget),
+  };
+}
+
+function groupTargetsByProtocol(
   targets: TargetRow[],
-): Map<string, Protocol['targets']> {
-  const map = new Map<string, Protocol['targets']>();
+): Map<string, TargetRow[]> {
+  const map = new Map<string, TargetRow[]>();
   for (const t of targets) {
     const list = map.get(t.protocol_uri) ?? [];
-    const scope = t.scope.map((s) => {
-      if (s.$type.endsWith('taxonScope')) {
-        return s as TaxonScope;
-      }
-      return s as VerbatimScope;
-    });
-    list.push({
-      atUri: t.at_uri,
-      scope,
-    });
+    list.push(t);
     map.set(t.protocol_uri, list);
   }
   return map;
@@ -155,38 +140,21 @@ export async function getProtocolDetailByHandleAndRkey(
   const protocol = await getProtocolByDidAndRkey(user.did, rkey);
   if (!protocol) return null;
   const targets = await getTargetsForProtocols([protocol.at_uri]);
-  return toProtocolResponse([protocol], groupTargetsByProtocol(targets))[0];
+  return toProtocol(protocol, targets);
 }
 
-export async function getFollowedProtocolsByDid(did: string) {
-  return sql<ProtocolRow[]>`
-    SELECT
-      sp.at_uri,
-      sp.rkey,
-      sp.title,
-      sp.description,
-      sp.required_fields,
-      sp.created_at,
-      sp.cid,
-      u.handle
+export async function getFollowedProtocolsByDid(
+  did: string,
+): Promise<Protocol[]> {
+  const rows = await sql<ProtocolRow[]>`
+    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle
     FROM protocol_follows pf
     JOIN survey_protocols sp ON sp.at_uri = pf.protocol_uri
     JOIN users u ON u.did = sp.did
     WHERE pf.did = ${did}
   `;
-}
-
-export function toProtocolResponse(
-  protocols: ProtocolRow[],
-  targetsByProtocol: Map<string, Protocol['targets']>,
-): Protocol[] {
-  return protocols.map((p) => ({
-    atUri: p.at_uri,
-    rkey: p.rkey,
-    handle: p.handle,
-    targets: targetsByProtocol.get(p.at_uri) ?? [],
-    title: p.title,
-    description: p.description,
-    createdAt: p.created_at,
-  }));
+  const protocolUris = rows.map((r) => r.at_uri);
+  const targetRows = await getTargetsForProtocols(protocolUris);
+  const byProtocol = groupTargetsByProtocol(targetRows);
+  return rows.map((p) => toProtocol(p, byProtocol.get(p.at_uri) ?? []));
 }

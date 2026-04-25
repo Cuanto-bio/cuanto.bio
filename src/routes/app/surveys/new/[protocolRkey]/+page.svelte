@@ -5,18 +5,14 @@ import { page } from '$app/state';
 import { Button } from '$lib/components/ui/button';
 import { Input } from '$lib/components/ui/input';
 import { Label } from '$lib/components/ui/label';
-import { getCachedProtocolByRkey, savePendingSurvey } from '$lib/offline/db';
+import {
+  type CachedProtocol,
+  getCachedProtocolByRkey,
+  savePendingSurvey,
+} from '$lib/offline/db';
 import { uploadPendingSurvey } from '$lib/offline/upload';
 
-type Protocol = {
-  atUri: string;
-  rkey: string;
-  title: string;
-  handle: string;
-  targets: { atUri: string; scope: unknown[] }[];
-};
-
-let protocol = $state<Protocol | null>(null);
+let protocol = $state<CachedProtocol | null>(null);
 let notFound = $state(false);
 
 let startedAt = $state(0);
@@ -46,18 +42,13 @@ onMount(() => {
   }
 
   const rkey = page.params.protocolRkey ?? '';
-  getCachedProtocolByRkey(rkey)
-    .then((cached) => {
-      console.log('[+page.svelte] cached', cached);
-      if (cached) {
-        protocol = cached;
-      } else {
-        notFound = true;
-      }
-    })
-    .catch((e) => {
-      console.log('[+page.svelte] hey, that did not work', e);
-    });
+  getCachedProtocolByRkey(rkey).then((cached) => {
+    if (cached) {
+      protocol = cached;
+    } else {
+      notFound = true;
+    }
+  });
 
   return () => clearInterval(id);
 });
@@ -105,14 +96,14 @@ async function finish() {
 
   const occurrences = protocol.targets.map((t) => ({
     surveyTargetUri: t.atUri,
-    taxonID: targetTaxonID(t.scope),
+    taxonID: targetTaxonID(t.record.scope),
     count: counts[t.atUri] ?? 0,
   }));
 
   const survey = {
     protocolUri: protocol.atUri,
     protocolRkey: protocol.rkey,
-    protocolTitle: protocol.title,
+    protocolTitle: protocol.record.title,
     locationName: locationName.trim(),
     latitude,
     longitude,
@@ -153,7 +144,7 @@ async function finish() {
   <main class="mx-auto max-w-2xl px-4 py-8">
     <div class="mb-6 flex items-start justify-between">
       <div>
-        <h1 class="text-xl font-semibold">{protocol.title}</h1>
+        <h1 class="text-xl font-semibold">{protocol.record.title}</h1>
         <a href="/app/protocols/{protocol.handle}/{protocol.rkey}" class="text-muted-foreground text-sm underline">
           ← Protocol
         </a>
@@ -177,7 +168,7 @@ async function finish() {
       <ul class="mb-6 flex flex-col gap-2">
         {#each protocol.targets as target (target.atUri)}
           <li class="flex items-center justify-between rounded border px-4 py-3">
-            <span class="text-sm">{targetLabel(target.scope)}</span>
+            <span class="text-sm">{targetLabel(target.record.scope)}</span>
             <div class="flex items-center gap-3">
               <button
                 type="button"

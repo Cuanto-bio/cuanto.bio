@@ -41,24 +41,6 @@ export async function deleteFollow(atUri: string): Promise<void> {
   await sql`DELETE FROM protocol_follows WHERE at_uri = ${atUri}`;
 }
 
-export async function getFollowsByDid(
-  did: string,
-): Promise<FollowWithProtocol[]> {
-  return sql<FollowWithProtocol[]>`
-    SELECT
-      pf.*,
-      sp.title AS protocol_title,
-      sp.description AS protocol_description,
-      sp.rkey AS protocol_rkey,
-      u.handle
-    FROM protocol_follows pf
-    JOIN survey_protocols sp ON sp.at_uri = pf.protocol_uri
-    JOIN users u ON u.did = sp.did
-    WHERE pf.did = ${did}
-    ORDER BY pf.created_at DESC
-  `;
-}
-
 export async function getFollowByDidAndProtocol(
   did: string,
   protocolUri: string,

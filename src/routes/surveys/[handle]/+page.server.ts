@@ -24,18 +24,17 @@ export const load: PageServerLoad = async ({ params }) => {
       s.at_uri,
       s.rkey,
       s.event_date,
-      s.event_duration_value,
-      s.event_duration_unit,
-      s.location->>'name' AS location_name,
-      sp.title AS protocol_title,
-      COUNT(o.id)::int AS occurrence_count
+      (s.record->>'eventDurationValue')::int  AS event_duration_value,
+      s.record->>'eventDurationUnit'          AS event_duration_unit,
+      s.record->'location'->>'name'           AS location_name,
+      sp.record->>'title'                     AS protocol_title,
+      COUNT(o.id)::int                        AS occurrence_count
     FROM surveys s
     JOIN survey_protocols sp ON sp.at_uri = s.protocol_uri
     LEFT JOIN occurrences o ON o.survey_uri = s.at_uri
     WHERE s.did = ${user.did}
     GROUP BY
-      s.at_uri, s.rkey, s.event_date, s.event_duration_value,
-      s.event_duration_unit, s.location, sp.title, s.indexed_at
+      s.at_uri, s.rkey, s.event_date, s.record, sp.record, s.indexed_at
     ORDER BY s.event_date DESC NULLS LAST, s.indexed_at DESC
   `;
 
