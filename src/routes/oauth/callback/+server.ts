@@ -1,20 +1,20 @@
 import { createDidResolver } from '@atproto/oauth-client-node';
 import { redirect } from '@sveltejs/kit';
-import { TAP_ADMIN_PASSWORD, TAP_URL } from '$env/static/private';
-import { PUBLIC_URL } from '$env/static/public';
-import { client } from '$lib/server/auth';
+import { env as privateEnv } from '$env/dynamic/private';
+import { env as publicEnv } from '$env/dynamic/public';
+import { getClient } from '$lib/server/auth';
 import { insertUser } from '$lib/server/db/users';
 import type { RequestHandler } from './$types';
 
 // User has authorized access to their PDS, put their DID in a cookie and show
 // them the site
 export const GET: RequestHandler = async ({ url, cookies }) => {
-  const { session } = await client.callback(url.searchParams);
+  const { session } = await (await getClient()).callback(url.searchParams);
   cookies.set('did', session.did, {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
-    secure: new URL(PUBLIC_URL).protocol === 'https:',
+    secure: new URL(publicEnv.PUBLIC_URL).protocol === 'https:',
     maxAge: 60 * 60 * 24 * 30, // 30 days
   });
 
@@ -28,11 +28,11 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 
   // Register DID with tap so it begins tracking the user's records from the firehose.
   // Fire-and-forget: a tap failure must not break the OAuth flow.
-  fetch(`${TAP_URL}/repos/add`, {
+  fetch(`${privateEnv.TAP_URL}/repos/add`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Basic ${btoa(`admin:${TAP_ADMIN_PASSWORD}`)}`,
+      Authorization: `Basic ${btoa(`admin:${privateEnv.TAP_ADMIN_PASSWORD}`)}`,
     },
     body: JSON.stringify({ dids: [session.did] }),
   }).catch((err) => console.error('Failed to register DID with tap:', err));

@@ -27,7 +27,12 @@ export async function insertProtocol(
       ${record.createdAt},
       ${cid}
     )
-    ON CONFLICT (at_uri) DO NOTHING
+    ON CONFLICT (at_uri) DO UPDATE SET
+      title = EXCLUDED.title,
+      description = EXCLUDED.description,
+      required_fields = EXCLUDED.required_fields,
+      created_at = EXCLUDED.created_at,
+      cid = EXCLUDED.cid
   `;
 }
 
@@ -46,7 +51,9 @@ export async function insertTarget(
       ${record.protocol},
       ${sql.json(record.scope as Parameters<typeof sql.json>[0])}
     )
-    ON CONFLICT (at_uri) DO NOTHING
+    ON CONFLICT (at_uri) DO UPDATE SET
+      protocol_uri = EXCLUDED.protocol_uri,
+      scope = EXCLUDED.scope
   `;
 }
 

@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
-import { client } from '$lib/server/auth';
+import { getClient } from '$lib/server/auth';
 import type { Actions } from './$types';
 
 export const actions: Actions = {
@@ -8,7 +8,7 @@ export const actions: Actions = {
 
     // Get the user's PDS authorization URL and send them there
     const handle = data.get('handle') as string;
-    const url = await client.authorize(handle);
+    const url = await (await getClient()).authorize(handle);
     redirect(302, url.toString());
   },
 };

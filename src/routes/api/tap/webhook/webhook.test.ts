@@ -15,13 +15,29 @@ vi.mock('$lib/server/db/protocol-follows', () => ({
   deleteFollow: vi.fn(),
 }));
 
-vi.mock('$env/static/private', () => ({
-  TAP_ADMIN_PASSWORD: 'testpassword',
+vi.mock('$env/dynamic/private', () => ({
+  env: { TAP_ADMIN_PASSWORD: 'testpassword' },
+}));
+
+vi.mock('$lib/server/pds', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...(actual as object),
+    fetchAtRecord: vi.fn(),
+    resolveHandle: vi.fn(),
+    listAtRecords: vi.fn(),
+  };
+});
+
+vi.mock('$lib/server/db/users', () => ({
+  insertUser: vi.fn(),
 }));
 
 import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
 import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
 import { insertOccurrence, insertSurvey } from '$lib/server/db/surveys';
+import { insertUser } from '$lib/server/db/users';
+import { fetchAtRecord, listAtRecords, resolveHandle } from '$lib/server/pds';
 import { POST } from './+server';
 
 const VALID_AUTH = `Basic ${btoa('admin:testpassword')}`;
@@ -162,6 +178,17 @@ const followDeleteEvent = {
   },
 };
 
+const identityEvent = {
+  id: 7,
+  type: 'identity',
+  identity: {
+    did: 'did:plc:abc123',
+    handle: 'test.bsky.social',
+    is_active: true,
+    status: 'active',
+  },
+};
+
 describe('POST /api/tap/webhook', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -184,6 +211,18 @@ describe('POST /api/tap/webhook', () => {
     expect(resp.status).toBe(401);
   });
 
+  test('calls insertProtocol for a surveyProtocol update event', async () => {
+    const updateEvent = {
+      ...protocolEvent,
+      record: { ...protocolEvent.record, action: 'update' },
+    };
+    const resp = await POST({
+      request: makeRequest(updateEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertProtocol).toHaveBeenCalled();
+  });
+
   test('calls insertProtocol for a surveyProtocol create event', async () => {
     const resp = await POST({
       request: makeRequest(protocolEvent, VALID_AUTH),
@@ -197,6 +236,18 @@ describe('POST /api/tap/webhook', () => {
       TEST_CID,
     );
     expect(insertTarget).not.toHaveBeenCalled();
+  });
+
+  test('calls insertTarget for a surveyTarget update event', async () => {
+    const updateEvent = {
+      ...targetEvent,
+      record: { ...targetEvent.record, action: 'update' },
+    };
+    const resp = await POST({
+      request: makeRequest(updateEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertTarget).toHaveBeenCalled();
   });
 
   test('calls insertTarget for a surveyTarget create event', async () => {
@@ -213,6 +264,18 @@ describe('POST /api/tap/webhook', () => {
     expect(insertProtocol).not.toHaveBeenCalled();
   });
 
+  test('calls insertSurvey for a survey update event', async () => {
+    const updateEvent = {
+      ...surveyEvent,
+      record: { ...surveyEvent.record, action: 'update' },
+    };
+    const resp = await POST({
+      request: makeRequest(updateEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertSurvey).toHaveBeenCalled();
+  });
+
   test('calls insertSurvey for a survey create event', async () => {
     const resp = await POST({
       request: makeRequest(surveyEvent, VALID_AUTH),
@@ -224,6 +287,42 @@ describe('POST /api/tap/webhook', () => {
       surveyEvent.record.record,
       'at://did:plc:abc123/bio.lexicons.temp.survey/3svy',
     );
+  });
+
+  test('fetches and inserts occurrences for a live survey create event', async () => {
+    vi.mocked(listAtRecords).mockResolvedValueOnce([
+      {
+        uri: 'at://did:plc:abc123/bio.lexicons.temp.occurrence/3occ',
+        cid: TEST_CID,
+        value: {
+          $type: 'bio.lexicons.temp.occurrence',
+          eventID: 'at://did:plc:abc123/bio.lexicons.temp.survey/3svy',
+          organismQuantity: '1',
+          organismQuantityType: 'individuals',
+        },
+      },
+    ]);
+    const resp = await POST({
+      request: makeRequest(surveyEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(listAtRecords).toHaveBeenCalledWith(
+      'did:plc:abc123',
+      'bio.lexicons.temp.occurrence',
+    );
+    expect(insertOccurrence).toHaveBeenCalledOnce();
+  });
+
+  test('calls insertOccurrence for an occurrence update event', async () => {
+    const updateEvent = {
+      ...occurrenceEvent,
+      record: { ...occurrenceEvent.record, action: 'update' },
+    };
+    const resp = await POST({
+      request: makeRequest(updateEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertOccurrence).toHaveBeenCalled();
   });
 
   test('calls insertOccurrence for an occurrence create event', async () => {
@@ -251,17 +350,7 @@ describe('POST /api/tap/webhook', () => {
     expect(insertProtocol).not.toHaveBeenCalled();
   });
 
-  test('returns 200 without inserting for an identity event', async () => {
-    const identityEvent = {
-      id: 5,
-      type: 'identity',
-      identity: {
-        did: 'did:plc:abc123',
-        handle: 'test.bsky.social',
-        is_active: true,
-        status: 'active',
-      },
-    };
+  test('does not call insertProtocol or insertTarget for an identity event', async () => {
     const resp = await POST({
       request: makeRequest(identityEvent, VALID_AUTH),
     } as Parameters<typeof POST>[0]);
@@ -307,5 +396,208 @@ describe('POST /api/tap/webhook', () => {
       'at://did:plc:follower/bio.cuanto.surveyProtocol.follow/3flw',
     );
     expect(createFollow).not.toHaveBeenCalled();
+  });
+
+  test('calls insertUser for identity events', async () => {
+    const resp = await POST({
+      request: makeRequest(identityEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertUser).toHaveBeenCalledWith(
+      'did:plc:abc123',
+      'test.bsky.social',
+    );
+    expect(resolveHandle).not.toHaveBeenCalled();
+  });
+
+  test('does not call insertUser when resolveHandle returns null', async () => {
+    vi.mocked(resolveHandle).mockResolvedValueOnce(null);
+    const resp = await POST({
+      request: makeRequest(protocolEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertUser).not.toHaveBeenCalled();
+    expect(insertProtocol).toHaveBeenCalled();
+  });
+
+  test('resolves handle and calls insertUser before insertProtocol', async () => {
+    vi.mocked(resolveHandle).mockResolvedValueOnce('test.bsky.social');
+    const resp = await POST({
+      request: makeRequest(protocolEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(resolveHandle).toHaveBeenCalledWith('did:plc:abc123');
+    expect(insertUser).toHaveBeenCalledWith(
+      'did:plc:abc123',
+      'test.bsky.social',
+    );
+    expect(insertProtocol).toHaveBeenCalled();
+  });
+
+  test('resolves handle and calls insertUser before insertSurvey', async () => {
+    vi.mocked(resolveHandle).mockResolvedValueOnce('test.bsky.social');
+    const resp = await POST({
+      request: makeRequest(surveyEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(resolveHandle).toHaveBeenCalledWith('did:plc:abc123');
+    expect(insertUser).toHaveBeenCalledWith(
+      'did:plc:abc123',
+      'test.bsky.social',
+    );
+    expect(insertSurvey).toHaveBeenCalled();
+  });
+
+  const fkError = Object.assign(new Error('FK violation'), { code: '23503' });
+
+  const fetchedProtocolRecord = {
+    uri: 'at://did:plc:abc123/bio.lexicons.temp.surveyProtocol/3abc',
+    cid: TEST_CID,
+    value: {
+      $type: 'bio.lexicons.temp.surveyProtocol',
+      title: 'Test Protocol',
+      description: 'A test',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    },
+  };
+
+  const fetchedSurveyRecord = {
+    uri: 'at://did:plc:abc123/bio.lexicons.temp.survey/3svy',
+    cid: TEST_CID,
+    value: {
+      $type: 'bio.lexicons.temp.survey',
+      protocol: {
+        uri: 'at://did:plc:abc123/bio.lexicons.temp.surveyProtocol/3abc',
+        cid: TEST_CID,
+      },
+      createdAt: '2026-04-13T10:00:00.000Z',
+      eventDate: '2026-04-13T10:00:00.000Z',
+      eventDurationValue: 30,
+      eventDurationUnit: 'minutes',
+      location: { $type: 'org.atgeo.place', name: 'Test Park' },
+    },
+  };
+
+  test('backfills missing protocol when insertTarget gets FK violation', async () => {
+    vi.mocked(insertTarget).mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord).mockResolvedValueOnce(fetchedProtocolRecord);
+    const resp = await POST({
+      request: makeRequest(targetEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(fetchAtRecord).toHaveBeenCalledWith(
+      'at://did:plc:abc123/bio.lexicons.temp.surveyProtocol/3abc',
+    );
+    expect(insertProtocol).toHaveBeenCalledWith(
+      'did:plc:abc123',
+      '3abc',
+      fetchedProtocolRecord.value,
+      fetchedProtocolRecord.uri,
+      TEST_CID,
+    );
+    expect(insertTarget).toHaveBeenCalledTimes(2);
+  });
+
+  test('backfills missing protocol when insertSurvey gets FK violation', async () => {
+    vi.mocked(insertSurvey).mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord).mockResolvedValueOnce(fetchedProtocolRecord);
+    const resp = await POST({
+      request: makeRequest(surveyEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(fetchAtRecord).toHaveBeenCalledWith(
+      'at://did:plc:abc123/bio.lexicons.temp.surveyProtocol/3abc',
+    );
+    expect(insertProtocol).toHaveBeenCalledOnce();
+    expect(insertSurvey).toHaveBeenCalledTimes(2);
+  });
+
+  test('backfills missing survey when insertOccurrence gets FK violation', async () => {
+    vi.mocked(insertOccurrence).mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord).mockResolvedValueOnce(fetchedSurveyRecord);
+    const resp = await POST({
+      request: makeRequest(occurrenceEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(fetchAtRecord).toHaveBeenCalledWith(
+      'at://did:plc:abc123/bio.lexicons.temp.survey/3svy',
+    );
+    expect(insertSurvey).toHaveBeenCalledOnce();
+    expect(insertOccurrence).toHaveBeenCalledTimes(2);
+  });
+
+  const fetchedTargetRecord = {
+    uri: 'at://did:plc:abc123/bio.lexicons.temp.surveyTarget/3def',
+    cid: TEST_CID,
+    value: {
+      $type: 'bio.lexicons.temp.surveyTarget',
+      protocol: 'at://did:plc:abc123/bio.lexicons.temp.surveyProtocol/3abc',
+      scope: [],
+    },
+  };
+
+  const fetchedOccurrenceRecord = {
+    uri: 'at://did:plc:abc123/bio.lexicons.temp.occurrence/3occ',
+    cid: TEST_CID,
+    value: {
+      $type: 'bio.lexicons.temp.occurrence',
+      eventID: 'at://did:plc:abc123/bio.lexicons.temp.survey/3svy',
+      surveyTargetID: 'at://did:plc:abc123/bio.lexicons.temp.surveyTarget/3def',
+      organismQuantity: '3',
+      organismQuantityType: 'individuals',
+    },
+  };
+
+  test('backfillProtocol also inserts related targets', async () => {
+    vi.mocked(insertTarget).mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord).mockResolvedValueOnce(fetchedProtocolRecord);
+    vi.mocked(listAtRecords).mockResolvedValueOnce([fetchedTargetRecord]);
+    const resp = await POST({
+      request: makeRequest(targetEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(listAtRecords).toHaveBeenCalledWith(
+      'did:plc:abc123',
+      'bio.lexicons.temp.surveyTarget',
+    );
+    expect(insertTarget).toHaveBeenCalledTimes(3); // 1 fail + 1 backfill + 1 retry
+  });
+
+  test('backfillSurvey also inserts related occurrences', async () => {
+    vi.mocked(insertOccurrence).mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord).mockResolvedValueOnce(fetchedSurveyRecord);
+    vi.mocked(listAtRecords).mockResolvedValueOnce([fetchedOccurrenceRecord]);
+    const resp = await POST({
+      request: makeRequest(occurrenceEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(listAtRecords).toHaveBeenCalledWith(
+      'did:plc:abc123',
+      'bio.lexicons.temp.occurrence',
+    );
+    expect(insertOccurrence).toHaveBeenCalledTimes(3); // 1 fail + 1 backfill + 1 retry
+  });
+
+  test('nested backfill: backfills survey and protocol when survey is also missing', async () => {
+    vi.mocked(insertOccurrence).mockRejectedValueOnce(fkError);
+    vi.mocked(insertSurvey).mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord)
+      .mockResolvedValueOnce(fetchedSurveyRecord)
+      .mockResolvedValueOnce(fetchedProtocolRecord);
+    const resp = await POST({
+      request: makeRequest(occurrenceEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(fetchAtRecord).toHaveBeenNthCalledWith(
+      1,
+      'at://did:plc:abc123/bio.lexicons.temp.survey/3svy',
+    );
+    expect(fetchAtRecord).toHaveBeenNthCalledWith(
+      2,
+      'at://did:plc:abc123/bio.lexicons.temp.surveyProtocol/3abc',
+    );
+    expect(insertProtocol).toHaveBeenCalledOnce();
+    expect(insertSurvey).toHaveBeenCalledTimes(2);
+    expect(insertOccurrence).toHaveBeenCalledTimes(2);
   });
 });

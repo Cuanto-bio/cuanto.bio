@@ -23,7 +23,7 @@ services:
       TAP_ADMIN_PASSWORD: "${TAP_ADMIN_PASSWORD}"
       TAP_NO_REPLAY: "true"
       TAP_SIGNAL_COLLECTION: bio.lexicons.temp.surveyProtocol
-      TAP_COLLECTION_FILTERS: "bio.lexicons.temp.surveyProtocol,bio.lexicons.temp.surveyTarget"
+      TAP_COLLECTION_FILTERS: "bio.lexicons.temp.surveyProtocol,bio.lexicons.temp.surveyTarget,bio.lexicons.temp.survey,bio.cuanto.surveyProtocol.follow,bio.lexicons.temp.occurrence"
     volumes:
       - tap_data:/data
     restart: unless-stopped

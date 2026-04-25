@@ -7,8 +7,8 @@ import {
   type NodeSavedState,
   type OAuthClientMetadataInput,
 } from '@atproto/oauth-client-node';
-import { PRIVATE_OAUTH_KEY } from '$env/static/private';
-import { PUBLIC_OAUTH_CLIENT_ID, PUBLIC_URL } from '$env/static/public';
+import { env as privateEnv } from '$env/dynamic/private';
+import { env as publicEnv } from '$env/dynamic/public';
 import sql from '$lib/server/db';
 
 class PgStateStore {
@@ -61,7 +61,8 @@ const SCOPE = 'atproto transition:generic';
 
 // Loopback client is only for local development. In prod we need a
 // publicly-accessible URL
-const isLoopback = PUBLIC_OAUTH_CLIENT_ID.startsWith('http://localhost');
+const isLoopback =
+  publicEnv.PUBLIC_OAUTH_CLIENT_ID?.startsWith('http://localhost') ?? false;
 
 function buildClientMetadata() {
   if (isLoopback) {
@@ -69,15 +70,20 @@ function buildClientMetadata() {
     // are encoded in the client_id URL. token_endpoint_auth_method is 'none'.
     return buildAtprotoLoopbackClientMetadata({
       scope: SCOPE,
-      redirect_uris: [`${PUBLIC_URL}/oauth/callback`],
+      redirect_uris: [`${publicEnv.PUBLIC_URL}/oauth/callback`],
     });
+  }
+  if (!publicEnv.PUBLIC_OAUTH_CLIENT_ID) {
+    throw new Error(
+      'PUBLIC_OAUTH_CLIENT_ID env var is required for production OAuth',
+    );
   }
   // Discoverable client for production: PDS fetches metadata from the client_id URL.
   return {
-    client_id: PUBLIC_OAUTH_CLIENT_ID,
+    client_id: publicEnv.PUBLIC_OAUTH_CLIENT_ID,
     client_name: 'Cuanto.bio',
-    client_uri: PUBLIC_URL,
-    redirect_uris: [`${PUBLIC_URL}/oauth/callback`],
+    client_uri: publicEnv.PUBLIC_URL,
+    redirect_uris: [`${publicEnv.PUBLIC_URL}/oauth/callback`],
     scope: SCOPE,
     grant_types: ['authorization_code', 'refresh_token'],
     response_types: ['code'],
@@ -92,20 +98,38 @@ function buildClientMetadata() {
 // Loopback clients use token_endpoint_auth_method='none' and need no keyset.
 async function buildKeyset(): Promise<Keyset | undefined> {
   if (isLoopback) return undefined;
-  if (!PRIVATE_OAUTH_KEY)
+  if (!privateEnv.PRIVATE_OAUTH_KEY)
     throw new Error(
       'PRIVATE_OAUTH_KEY env var is required for production OAuth',
     );
-  return new Keyset([await JoseKey.fromJWK(JSON.parse(PRIVATE_OAUTH_KEY))]);
+  return new Keyset([
+    await JoseKey.fromJWK(JSON.parse(privateEnv.PRIVATE_OAUTH_KEY)),
+  ]);
 }
 
-const keyset = await buildKeyset();
+// Stored as a promise so concurrent calls on cold start share a single
+// construction — if stored as the resolved value, two callers could both see
+// undefined and race to build two NodeOAuthClient instances.
+let _clientPromise: Promise<NodeOAuthClient> | undefined;
 
-const client = new NodeOAuthClient({
-  clientMetadata: buildClientMetadata(),
-  keyset,
-  stateStore: new PgStateStore(),
-  sessionStore: new PgSessionStore(),
-});
+async function getClient(): Promise<NodeOAuthClient> {
+  if (!_clientPromise) {
+    _clientPromise = (async () => {
+      const keyset = await buildKeyset();
+      return new NodeOAuthClient({
+        clientMetadata: buildClientMetadata(),
+        keyset,
+        stateStore: new PgStateStore(),
+        sessionStore: new PgSessionStore(),
+      });
+    })();
+    // Clear on failure so the next call retries rather than returning the
+    // cached rejection permanently.
+    _clientPromise.catch(() => {
+      _clientPromise = undefined;
+    });
+  }
+  return _clientPromise;
+}
 
-export { client };
+export { getClient };

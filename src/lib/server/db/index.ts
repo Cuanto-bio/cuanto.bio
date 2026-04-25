@@ -1,6 +1,6 @@
 import postgres from 'postgres';
-import { DATABASE_URL } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 
-const sql = postgres(DATABASE_URL);
+const sql = postgres(env.DATABASE_URL);
 
 export default sql;

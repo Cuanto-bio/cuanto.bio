@@ -1,4 +1,4 @@
 import { json } from '@sveltejs/kit';
-import { client } from '$lib/server/auth';
+import { getClient } from '$lib/server/auth';
 
-export const GET = () => json(client.jwks);
+export const GET = async () => json((await getClient()).jwks);

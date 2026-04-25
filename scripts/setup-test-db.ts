@@ -13,11 +13,14 @@ const BASE_URL = 'postgresql://cuanto:cuanto@localhost:5432';
 async function main() {
   const adminSql = postgres(`${BASE_URL}/cuanto`, { max: 1 });
   try {
+    await adminSql.unsafe('DROP DATABASE cuanto_test');
+  } catch (err) {
+    if (!(err as Error).message.includes('does not exist')) throw err;
+    // Fine if it doesn't already exist
+  }
+  try {
     await adminSql.unsafe('CREATE DATABASE cuanto_test');
     console.log('Created database cuanto_test');
-  } catch (err) {
-    if (!(err as Error).message.includes('already exists')) throw err;
-    console.log('Database cuanto_test already exists');
   } finally {
     await adminSql.end();
   }

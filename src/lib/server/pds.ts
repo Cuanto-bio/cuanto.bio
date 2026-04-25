@@ -1,13 +1,18 @@
-import { client as oauthClient } from './auth.js';
+import { IdResolver } from '@atproto/identity';
+import { getClient } from './auth.js';
 
 let mockSeq = 0;
 const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
 
-/**
- * Parses an AT-URI into its component parts.
- * e.g. at://did:plc:abc/collection/rkey → { did, collection, rkey }
- */
-function parseAtUri(uri: string): {
+const idResolver = new IdResolver();
+
+export interface AtRecord {
+  uri: string;
+  cid: string;
+  value: unknown;
+}
+
+export function parseAtUri(uri: string): {
   did: string;
   collection: string;
   rkey: string;
@@ -15,6 +20,64 @@ function parseAtUri(uri: string): {
   const match = /^at:\/\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(uri);
   if (!match) throw new Error(`Invalid AT-URI: ${uri}`);
   return { did: match[1], collection: match[2], rkey: match[3] };
+}
+
+/** Returns the ATProto handle for a DID, or null if none is found or on error. */
+export async function resolveHandle(did: string): Promise<string | null> {
+  try {
+    const data = await idResolver.did.resolveAtprotoData(did);
+    return data.handle === 'handle.invalid' ? null : data.handle;
+  } catch {
+    return null;
+  }
+}
+
+export async function listAtRecords(
+  did: string,
+  collection: string,
+): Promise<AtRecord[]> {
+  const data = await idResolver.did.resolveAtprotoData(did);
+  const pdsUrl = data.pds;
+  const all: AtRecord[] = [];
+  let cursor: string | undefined;
+
+  do {
+    const url = new URL(`${pdsUrl}/xrpc/com.atproto.repo.listRecords`);
+    url.searchParams.set('repo', did);
+    url.searchParams.set('collection', collection);
+    url.searchParams.set('limit', '100');
+    if (cursor) url.searchParams.set('cursor', cursor);
+
+    const resp = await fetch(url);
+    if (!resp.ok)
+      throw new Error(
+        `Failed to list records for ${did}/${collection}: ${resp.status}`,
+      );
+    const body = (await resp.json()) as {
+      records: AtRecord[];
+      cursor?: string;
+    };
+    all.push(...body.records);
+    cursor = body.cursor;
+  } while (cursor);
+
+  return all;
+}
+
+export async function fetchAtRecord(atUri: string): Promise<AtRecord> {
+  const { did, collection, rkey } = parseAtUri(atUri);
+  const data = await idResolver.did.resolveAtprotoData(did);
+  const pdsUrl = data.pds;
+
+  const url = new URL(`${pdsUrl}/xrpc/com.atproto.repo.getRecord`);
+  url.searchParams.set('repo', did);
+  url.searchParams.set('collection', collection);
+  url.searchParams.set('rkey', rkey);
+
+  const resp = await fetch(url);
+  if (!resp.ok)
+    throw new Error(`Failed to fetch record ${atUri}: ${resp.status}`);
+  return resp.json() as Promise<AtRecord>;
 }
 
 /**
@@ -35,7 +98,7 @@ export async function createRecord(
     return { uri: `at://${did}/${collection}/test${mockSeq}`, cid: FAKE_CID };
   }
 
-  const session = await oauthClient.restore(did);
+  const session = await (await getClient()).restore(did);
   const resp = await session.fetchHandler(
     '/xrpc/com.atproto.repo.createRecord',
     {
@@ -57,7 +120,7 @@ export async function deleteRecord(atUri: string): Promise<void> {
   if (process.env.PDS_MOCK === 'true') return;
 
   const { did, collection, rkey } = parseAtUri(atUri);
-  const session = await oauthClient.restore(did);
+  const session = await (await getClient()).restore(did);
   const resp = await session.fetchHandler(
     '/xrpc/com.atproto.repo.deleteRecord',
     {

@@ -181,7 +181,14 @@ export async function insertSurvey(
       ${sql.json(record.location as Parameters<typeof sql.json>[0])},
       ${record.createdAt}
     )
-    ON CONFLICT (at_uri) DO NOTHING
+    ON CONFLICT (at_uri) DO UPDATE SET
+      protocol_uri = EXCLUDED.protocol_uri,
+      protocol_cid = EXCLUDED.protocol_cid,
+      event_date = EXCLUDED.event_date,
+      event_duration_value = EXCLUDED.event_duration_value,
+      event_duration_unit = EXCLUDED.event_duration_unit,
+      location = EXCLUDED.location,
+      created_at = EXCLUDED.created_at
   `;
 }
 
@@ -215,6 +222,12 @@ export async function insertOccurrence(
       ${record.organismQuantityType ?? null},
       ${geomExpr}
     )
-    ON CONFLICT (at_uri) DO NOTHING
+    ON CONFLICT (at_uri) DO UPDATE SET
+      survey_uri = EXCLUDED.survey_uri,
+      survey_target_uri = EXCLUDED.survey_target_uri,
+      taxon_id = EXCLUDED.taxon_id,
+      organism_quantity = EXCLUDED.organism_quantity,
+      organism_quantity_type = EXCLUDED.organism_quantity_type,
+      geom = EXCLUDED.geom
   `;
 }

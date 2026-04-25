@@ -66,6 +66,57 @@ Everything under `/app` is designed to work without a network connection:
 - **Pending surveys** created offline are stored in the `pending-surveys` IDB
   store and uploaded via `/api/surveys` once the device is back online.
 
+## Deploying to Railway
+
+### Services
+
+Create three Railway services in a project:
+
+1. **PostGIS** — deploy the `postgis/postgis:16-3.4` Docker image
+2. **TAP** — deploy `ghcr.io/bluesky-social/indigo/tap:latest` as a Docker image service
+3. **App** — an empty repo and connect it with the CLI (`railway connect`) or deploy from Github
+
+### Environment variables
+
+**App service:**
+
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | Injected automatically if you use the Railway Postgres plugin |
+| `PUBLIC_URL` | The public URL of the app, e.g. `https://cuanto.bio` |
+| `PUBLIC_OAUTH_CLIENT_ID` | Same as `PUBLIC_URL` (ATProto uses the app URL as the OAuth client ID) |
+| `PRIVATE_OAUTH_KEY` | JWK for signing OAuth tokens — generate with `pnpm gen-key` |
+| `TAP_ADMIN_PASSWORD` | Shared secret for authenticating TAP webhook requests |
+| `TAP_URL` | Internal Railway URL of the TAP service |
+
+**TAP service:**
+
+| Variable | Description |
+|---|---|
+| `TAP_WEBHOOK_URL` | Internal Railway URL of the app's webhook endpoint, e.g. `https://<app-internal>/api/tap/webhook` |
+| `TAP_ADMIN_PASSWORD` | Must match the value set on the app service |
+| `TAP_SIGNAL_COLLECTION` | `bio.lexicons.temp.surveyProtocol` |
+| `TAP_COLLECTION_FILTERS` | `bio.lexicons.temp.surveyProtocol,bio.lexicons.temp.surveyTarget,bio.lexicons.temp.survey,bio.cuanto.surveyProtocol.follow,bio.lexicons.temp.occurrence` |
+
+### Migrations
+
+Run migrations via the Railway CLI before or after deploying:
+
+```sh
+railway run --service <app-service-name> pnpm migrate:up
+```
+
+### Replaying historical data
+
+To backfill records created before the webhook was live, unset `TAP_NO_REPLAY` on the TAP service and redeploy:
+
+```sh
+railway variable delete --service <tap-service-name> TAP_NO_REPLAY
+railway redeploy --service <tap-service-name>
+```
+
+TAP will replay all known records through the webhook on startup. Set `TAP_NO_REPLAY=true` again afterward to prevent re-replaying on future restarts.
+
 ## Development setup
 
 **Prerequisites:** Node.js 20+, pnpm, Docker

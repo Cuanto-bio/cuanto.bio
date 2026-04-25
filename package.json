@@ -31,7 +31,7 @@
     "@internationalized/date": "^3.12.0",
     "@lucide/svelte": "^1.8.0",
     "@playwright/test": "latest",
-    "@sveltejs/adapter-auto": "^7.0.1",
+    "@sveltejs/adapter-node": "^5.5.4",
     "@sveltejs/kit": "^2.57.0",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "@tailwindcss/vite": "^4.2.2",
@@ -60,6 +60,7 @@
     ]
   },
   "dependencies": {
+    "@atproto/identity": "^0.4.12",
     "@atproto/lexicon": "^0.6.2",
     "@atproto/oauth-client-node": "^0.3.17",
     "@atproto/tap": "^0.2.12",

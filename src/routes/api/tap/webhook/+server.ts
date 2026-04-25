@@ -1,6 +1,6 @@
 import { assureAdminAuth, parseTapEvent } from '@atproto/tap';
 import { json } from '@sveltejs/kit';
-import { TAP_ADMIN_PASSWORD } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 import type { Main as Follow } from '$lib/lexicons/bio/cuanto/surveyProtocol/follow.defs';
 import type { Main as Occurrence } from '$lib/lexicons/bio/lexicons/temp/occurrence.defs';
 import type { Main as Survey } from '$lib/lexicons/bio/lexicons/temp/survey.defs';
@@ -9,7 +9,14 @@ import type { Main as SurveyTarget } from '$lib/lexicons/bio/lexicons/temp/surve
 import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
 import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
 import { insertOccurrence, insertSurvey } from '$lib/server/db/surveys';
+import { insertUser } from '$lib/server/db/users';
 import logger from '$lib/server/logger';
+import {
+  fetchAtRecord,
+  listAtRecords,
+  parseAtUri,
+  resolveHandle,
+} from '$lib/server/pds';
 import type { RequestHandler } from './$types';
 
 const PROTOCOL_NSID = 'bio.lexicons.temp.surveyProtocol';
@@ -20,10 +27,80 @@ const FOLLOW_NSID = 'bio.cuanto.surveyProtocol.follow';
 
 const log = logger.child({ component: 'tap-webhook' });
 
+function isFkViolation(e: unknown): boolean {
+  return (e as { code?: string }).code === '23503';
+}
+
+async function ensureUser(did: string): Promise<void> {
+  const handle = await resolveHandle(did);
+  if (handle) await insertUser(did, handle);
+}
+
+async function backfillProtocol(protocolUri: string): Promise<void> {
+  const rec = await fetchAtRecord(protocolUri);
+  const { did, rkey } = parseAtUri(protocolUri);
+  await ensureUser(did);
+  await insertProtocol(
+    did,
+    rkey,
+    rec.value as SurveyProtocol,
+    rec.uri,
+    rec.cid,
+  );
+
+  // listAtRecords has no server-side field filter, so we fetch all targets for
+  // the DID and filter client-side.
+  const targets = (await listAtRecords(did, TARGET_NSID)) ?? [];
+  for (const t of targets) {
+    const target = t.value as SurveyTarget;
+    if (target.protocol === protocolUri) {
+      const { rkey: tRkey } = parseAtUri(t.uri);
+      await insertTarget(did, tRkey, target, t.uri);
+    }
+  }
+
+  log.info({ protocolUri }, 'backfilled missing protocol');
+}
+
+async function ingestOccurrencesForSurvey(
+  did: string,
+  surveyUri: string,
+): Promise<void> {
+  // listAtRecords has no server-side field filter, so we fetch all occurrences
+  // for the DID and filter client-side.
+  const occurrences = (await listAtRecords(did, OCCURRENCE_NSID)) ?? [];
+  for (const o of occurrences) {
+    const occurrence = o.value as Occurrence;
+    if (occurrence.eventID === surveyUri) {
+      const { rkey: oRkey } = parseAtUri(o.uri);
+      await insertOccurrence(did, oRkey, occurrence, o.uri);
+    }
+  }
+}
+
+async function backfillSurvey(surveyUri: string): Promise<void> {
+  const rec = await fetchAtRecord(surveyUri);
+  const { did, rkey } = parseAtUri(surveyUri);
+  const surveyRecord = rec.value as Survey;
+  await ensureUser(did);
+  try {
+    await insertSurvey(did, rkey, surveyRecord, rec.uri);
+  } catch (e) {
+    if (isFkViolation(e)) {
+      await backfillProtocol(surveyRecord.protocol.uri);
+      await insertSurvey(did, rkey, surveyRecord, rec.uri);
+    } else {
+      throw e;
+    }
+  }
+  await ingestOccurrencesForSurvey(did, surveyUri);
+  log.info({ surveyUri }, 'backfilled missing survey');
+}
+
 export const POST: RequestHandler = async ({ request }) => {
   try {
     assureAdminAuth(
-      TAP_ADMIN_PASSWORD,
+      env.TAP_ADMIN_PASSWORD,
       request.headers.get('Authorization') ?? '',
     );
   } catch {
@@ -43,6 +120,12 @@ export const POST: RequestHandler = async ({ request }) => {
     },
     'tap event received',
   );
+
+  if (evt.type === 'identity') {
+    await insertUser(evt.did, evt.handle);
+    log.info({ did: evt.did }, 'upserted user from identity event');
+    return json({ ok: true });
+  }
 
   if (evt.type !== 'record') {
     return json({ ok: true });
@@ -68,11 +151,12 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ ok: true });
   }
 
-  if (evt.action !== 'create' || !evt.record) {
+  if (!evt.record || evt.action === 'delete') {
     return json({ ok: true });
   }
 
   if (evt.collection === PROTOCOL_NSID) {
+    await ensureUser(evt.did);
     await insertProtocol(
       evt.did,
       evt.rkey,
@@ -82,28 +166,40 @@ export const POST: RequestHandler = async ({ request }) => {
     );
     log.info({ atUri }, 'ingested survey protocol');
   } else if (evt.collection === TARGET_NSID) {
-    await insertTarget(
-      evt.did,
-      evt.rkey,
-      evt.record as unknown as SurveyTarget,
-      atUri,
-    );
+    const target = evt.record as unknown as SurveyTarget;
+    try {
+      await insertTarget(evt.did, evt.rkey, target, atUri);
+    } catch (e) {
+      if (isFkViolation(e)) {
+        await backfillProtocol(target.protocol);
+        await insertTarget(evt.did, evt.rkey, target, atUri);
+      } else throw e;
+    }
     log.info({ atUri }, 'ingested survey target');
   } else if (evt.collection === SURVEY_NSID) {
-    await insertSurvey(
-      evt.did,
-      evt.rkey,
-      evt.record as unknown as Survey,
-      atUri,
-    );
+    await ensureUser(evt.did);
+    const survey = evt.record as unknown as Survey;
+    try {
+      await insertSurvey(evt.did, evt.rkey, survey, atUri);
+    } catch (e) {
+      if (isFkViolation(e)) {
+        await backfillProtocol(survey.protocol.uri);
+        await insertSurvey(evt.did, evt.rkey, survey, atUri);
+      } else throw e;
+    }
+    await ingestOccurrencesForSurvey(evt.did, atUri);
     log.info({ atUri }, 'ingested survey');
   } else if (evt.collection === OCCURRENCE_NSID) {
-    await insertOccurrence(
-      evt.did,
-      evt.rkey,
-      evt.record as unknown as Occurrence,
-      atUri,
-    );
+    const occurrence = evt.record as unknown as Occurrence;
+    const surveyUri = occurrence.eventID;
+    try {
+      await insertOccurrence(evt.did, evt.rkey, occurrence, atUri);
+    } catch (e) {
+      if (isFkViolation(e) && surveyUri) {
+        await backfillSurvey(surveyUri);
+        await insertOccurrence(evt.did, evt.rkey, occurrence, atUri);
+      } else throw e;
+    }
     log.info({ atUri }, 'ingested occurrence');
   }
 
