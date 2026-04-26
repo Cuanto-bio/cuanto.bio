@@ -1,6 +1,7 @@
 <script lang="ts">
 import * as Card from '$lib/components/ui/card';
 import type { PendingSurvey, Survey } from '$lib/offline/db';
+import Handle from './handle.svelte';
 
 let { survey }: { survey: Survey | PendingSurvey } = $props();
 
@@ -40,6 +41,9 @@ function formatDuration(value: number | null, unit: string | null): string {
     <Card.Description>{locationName}</Card.Description>
   </Card.Header>
   <Card.Content class="text-muted-foreground flex gap-4 text-sm">
+    {#if isSurvey(survey)}
+      <Handle handle={survey.handle} avatarUrl={survey.avatarUrl} />
+    {/if}
     <span>{formatDate(eventDate)}</span>
     {#if eventDurationValue != null}
       <span>{formatDuration(eventDurationValue, eventDurationUnit)}</span>

@@ -1,4 +1,6 @@
 <script lang="ts">
+import Handle from '$lib/components/handle.svelte';
+import ProtocolCard from '$lib/components/ProtocolCard.svelte';
 import * as Card from '$lib/components/ui/card';
 
 let { data } = $props();
@@ -14,17 +16,7 @@ let { data } = $props();
       {#each data.follows as protocol (protocol.atUri)}
         <li>
           <a href="/app/protocols/{protocol.handle}/{protocol.rkey}">
-            <Card.Root class="hover:bg-muted transition-colors">
-              <Card.Header>
-                <Card.Title>{protocol.record.title}</Card.Title>
-                <Card.Description>{protocol.record.description}</Card.Description>
-              </Card.Header>
-              <Card.Content>
-                <div class="text-muted-foreground text-sm">
-                  <span>by @{protocol.handle}</span>
-                </div>
-              </Card.Content>
-            </Card.Root>
+            <ProtocolCard protocol={protocol} />
           </a>
         </li>
       {/each}

@@ -406,6 +406,7 @@ describe('POST /api/tap/webhook', () => {
     expect(insertUser).toHaveBeenCalledWith(
       'did:plc:abc123',
       'test.bsky.social',
+      null,
     );
     expect(resolveHandle).not.toHaveBeenCalled();
   });
@@ -430,6 +431,7 @@ describe('POST /api/tap/webhook', () => {
     expect(insertUser).toHaveBeenCalledWith(
       'did:plc:abc123',
       'test.bsky.social',
+      null,
     );
     expect(insertProtocol).toHaveBeenCalled();
   });
@@ -444,6 +446,7 @@ describe('POST /api/tap/webhook', () => {
     expect(insertUser).toHaveBeenCalledWith(
       'did:plc:abc123',
       'test.bsky.social',
+      null,
     );
     expect(insertSurvey).toHaveBeenCalled();
   });

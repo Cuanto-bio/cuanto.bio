@@ -1,5 +1,5 @@
 <script lang="ts">
-import * as Card from '$lib/components/ui/card';
+import ProtocolCard from '$lib/components/ProtocolCard.svelte';
 
 let { data } = $props();
 </script>
@@ -11,18 +11,10 @@ let { data } = $props();
     <p class="text-muted-foreground text-sm">No protocols yet.</p>
   {:else}
     <ul class="flex flex-col gap-3">
-      {#each data.protocols as protocol (protocol.at_uri)}
+      {#each data.protocols as protocol (protocol.atUri)}
         <li>
           <a href="/protocols/{data.handle}/{protocol.rkey}">
-            <Card.Root class="hover:bg-muted transition-colors">
-              <Card.Header>
-                <Card.Title>{protocol.title}</Card.Title>
-                <Card.Description>{protocol.description}</Card.Description>
-              </Card.Header>
-              <Card.Content>
-                <p class="text-muted-foreground text-sm">by @{data.handle}</p>
-              </Card.Content>
-            </Card.Root>
+            <ProtocolCard protocol={protocol} />
           </a>
         </li>
       {/each}

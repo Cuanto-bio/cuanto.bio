@@ -46,7 +46,7 @@ onMount(() => {
   <link rel="icon" href={favicon} />
 </svelte:head>
 <SidebarProvider>
-  <AppSidebar did={page.data.did ?? undefined} handle={page.data.handle ?? undefined} />
+  <AppSidebar did={page.data.did ?? undefined} handle={page.data.handle ?? undefined} avatarUrl={page.data.avatarUrl ?? undefined} />
   <main class="flex-1">
     <SidebarTrigger />
     {#if !online.value}

@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onMount } from 'svelte';
 import { afterNavigate } from '$app/navigation';
+import Handle from '$lib/components/handle.svelte';
 import {
   Sidebar,
   SidebarContent,
@@ -20,7 +21,11 @@ import { useOnline } from '$lib/composables/online.svelte';
 const sidebar = useSidebar();
 afterNavigate(() => sidebar.setOpenMobile(false));
 
-let { did, handle }: { did?: string; handle?: string } = $props();
+let {
+  did,
+  handle,
+  avatarUrl,
+}: { did?: string; handle?: string; avatarUrl?: string } = $props();
 
 const online = useOnline();
 
@@ -146,7 +151,7 @@ async function signOut() {
       <button onclick={refreshServiceWorkerInfo} class="underline">refresh</button>
     </div>
     {#if handle}
-      <p class="text-muted-foreground px-2 text-xs font-bold">@{handle}</p>
+      <p class="text-muted-foreground px-2 text-xs font-bold"><Handle {handle} {avatarUrl} /></p>
       <SidebarMenu>
         {#if online.value}
           <SidebarMenuItem>

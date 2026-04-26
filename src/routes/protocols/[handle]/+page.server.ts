@@ -1,30 +1,20 @@
 import { error } from '@sveltejs/kit';
 import sql from '$lib/server/db';
+import { getProtocolsPageByDid } from '$lib/server/db/survey-protocols';
 import type { PageServerLoad } from './$types';
-
-interface ProtocolRow {
-  at_uri: string;
-  rkey: string;
-  title: string;
-  description: string;
-}
 
 export const load: PageServerLoad = async ({ params }) => {
   const [user] = await sql<{ did: string }[]>`
     SELECT did FROM users WHERE handle = ${params.handle.toLowerCase()}
   `;
   if (!user) error(404, 'User not found');
+  console.log('[+page.server.ts] here');
 
-  const protocols = await sql<ProtocolRow[]>`
-    SELECT
-      at_uri,
-      rkey,
-      record->>'title' AS title,
-      record->>'description' AS description
-    FROM survey_protocols
-    WHERE did = ${user.did}
-    ORDER BY indexed_at DESC
-  `;
+  const protocols = await getProtocolsPageByDid(user.did);
+  console.log('[+page.server.ts] protocols: ', protocols);
 
-  return { protocols, handle: params.handle };
+  return {
+    protocols,
+    handle: params.handle,
+  };
 };

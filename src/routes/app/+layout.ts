@@ -15,7 +15,11 @@ export const load: LayoutLoad = async ({ fetch }) => {
     if (res.ok) {
       // Server says we're signed in, make sure our local auth state is
       // up-to-date and sync data
-      const user = (await res.json()) as { did: string; handle: string };
+      const user = (await res.json()) as {
+        did: string;
+        handle: string;
+        avatarUrl?: string;
+      };
       await saveIdbUser(user);
       syncOfflineData(fetch); // intentionally not awaited
       return user;

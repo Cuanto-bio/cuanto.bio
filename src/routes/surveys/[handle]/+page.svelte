@@ -1,5 +1,5 @@
 <script lang="ts">
-import * as Card from '$lib/components/ui/card';
+import SurveyCard from '$lib/components/SurveyCard.svelte';
 
 let { data } = $props();
 
@@ -21,25 +21,10 @@ function formatDuration(value: number | null, unit: string | null): string {
     <p class="text-muted-foreground text-sm">No surveys yet.</p>
   {:else}
     <ul class="flex flex-col gap-3">
-      {#each data.surveys as survey (survey.at_uri)}
+      {#each data.surveys as survey (survey.atUri)}
         <li>
           <a href="/surveys/{data.handle}/{survey.rkey}">
-            <Card.Root class="hover:bg-muted transition-colors">
-              <Card.Header>
-                <Card.Title>{survey.protocol_title}</Card.Title>
-                <Card.Description>{survey.location_name}</Card.Description>
-              </Card.Header>
-              <Card.Content class="text-muted-foreground flex gap-4 text-sm">
-                <span>{formatDate(survey.event_date)}</span>
-                {#if survey.event_duration_value != null}
-                  <span>{formatDuration(survey.event_duration_value, survey.event_duration_unit)}</span>
-                {/if}
-                <span>
-                  {survey.occurrence_count}
-                  {survey.occurrence_count === 1 ? 'occurrence' : 'occurrences'}
-                </span>
-              </Card.Content>
-            </Card.Root>
+            <SurveyCard survey={survey} />
           </a>
         </li>
       {/each}

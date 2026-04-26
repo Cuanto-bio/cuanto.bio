@@ -4,6 +4,7 @@ import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import { getClient } from '$lib/server/auth';
 import { insertUser } from '$lib/server/db/users';
+import { fetchAvatarUrl } from '$lib/server/pds';
 import type { RequestHandler } from './$types';
 
 // User has authorized access to their PDS, put their DID in a cookie and show
@@ -23,7 +24,8 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 
   if (didDoc.alsoKnownAs && didDoc.alsoKnownAs.length > 0) {
     const handle = didDoc.alsoKnownAs[0].replace(/^at:\/\//, '');
-    await insertUser(session.did, handle);
+    const avatarUrl = await fetchAvatarUrl(session.did);
+    await insertUser(session.did, handle, avatarUrl);
   }
 
   // Register DID with tap so it begins tracking the user's records from the firehose.

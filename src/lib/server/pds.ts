@@ -32,6 +32,19 @@ export async function resolveHandle(did: string): Promise<string | null> {
   }
 }
 
+/** Returns the Bluesky avatar URL for a DID, or null if unavailable. */
+export async function fetchAvatarUrl(did: string): Promise<string | null> {
+  try {
+    const url = `https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=${encodeURIComponent(did)}`;
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as { avatar?: string };
+    return data.avatar ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function listAtRecords(
   did: string,
   collection: string,
