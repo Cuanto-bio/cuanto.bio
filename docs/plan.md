@@ -73,12 +73,22 @@ FWIW, this was much trickier than anticipated.
 - [x] Figure out what it will take to deploy this on railway
 
 ## UI Massage
-- [ ] logo & wordmark
+- [ ] logo
+- [x] wordmark
 - [x] home page that explains what this is and encourages sign in
-- [ ] autocomplete for Atmosphere handle
-- [ ] show Bluesky profile pic
-- [ ] Merge pending and completed surveys; pending should be a section at the top of the surveys page
-- [ ] nav in mobile; at least need crumbs if not an actual navigator; maybe persistent bottom tabs
+- [x] autocomplete for Atmosphere handle
+- [x] show Bluesky profile pic
+- [x] Merge pending and completed surveys; pending should be a section at the top of the surveys page
+- [ ] brainstorm some nav ideas for mobile because a sidebar is a little weird in that context; we at least need crumbs if not an actual navigator; maybe persistent bottom tabs
+
+
+## Closer to Spec
+- [ ] come up with a plan for allowing the protocol author to specify a controlled list of org.atgeo.place locations surveyors can choose from; this will require an update to the protocol lexicon
+- [ ] gps location should only be asked for when the user asks to use it
+- [ ] survey form UI closer to ebird: taps add but you have to open a modal to subtract or otherwise edit the count
+- [ ] search within targets on the survey form
+- [ ] allow incidental occurrences: user can enter verbatimVernacularName or verbatimScientificName
+
 
 
 ## Analysis
@@ -98,7 +108,6 @@ Vague for now, but things that are on my mind.
 
 1. Users - attempt to populate profile info w/ bsky profiles
 1. this might need to happen after converting to a PWA, and maybe after recording a track, but occurences should record the coordinates when the user changes the count from 0 to 1, and remove them before submitting if the count is 0, which would record the exact location of the first occurrence
-1. Design overhaul (rethink IA, come up with a logo / icon)
 1. Sync local ATGeo lexicon copies with upstream: `lexicons/org/atgeo/place.json` has two
    local patches for `@atproto/lex` compatibility (`"key": "record-key"` → `"key": "any"`,
    `"type": "object"` → `"type": "unknown"` on `relations`). Monitor the
