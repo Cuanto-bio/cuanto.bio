@@ -1,5 +1,5 @@
 <script lang="ts">
-import * as Card from '$lib/components/ui/card';
+import ProtocolCard from '$lib/components/ProtocolCard.svelte';
 import { useOnline } from '$lib/composables/online.svelte';
 
 let { data } = $props();
@@ -18,20 +18,10 @@ const online = useOnline();
     <p class="text-muted-foreground text-sm">No protocols yet.</p>
   {:else}
     <ul class="flex flex-col gap-3">
-      {#each data.protocols as protocol (protocol.at_uri)}
+      {#each data.protocols as protocol (protocol.atUri)}
         <li>
           <a href="/app/protocols/{protocol.handle}/{protocol.rkey}">
-            <Card.Root class="hover:bg-muted transition-colors">
-              <Card.Header>
-                <Card.Title>{protocol.title}</Card.Title>
-                <Card.Description>{protocol.description}</Card.Description>
-              </Card.Header>
-              <Card.Content>
-                <div class="text-muted-foreground flex gap-4 text-sm">
-                  <span>by @{protocol.handle}</span>
-                </div>
-              </Card.Content>
-            </Card.Root>
+            <ProtocolCard protocol={protocol} />
           </a>
         </li>
       {/each}

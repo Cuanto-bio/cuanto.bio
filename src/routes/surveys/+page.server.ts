@@ -1,38 +1,6 @@
-import sql from '$lib/server/db';
+import { getSurveysPage } from '$lib/server/db/surveys';
 import type { PageServerLoad } from './$types';
 
-interface SurveyRow {
-  at_uri: string;
-  rkey: string;
-  event_date: string | null;
-  event_duration_value: number | null;
-  event_duration_unit: string | null;
-  location_name: string;
-  protocol_title: string;
-  handle: string;
-  occurrence_count: number;
-}
-
 export const load: PageServerLoad = async () => {
-  const surveys = await sql<SurveyRow[]>`
-    SELECT
-      s.at_uri,
-      s.rkey,
-      s.event_date,
-      (s.record->>'eventDurationValue')::int  AS event_duration_value,
-      s.record->>'eventDurationUnit'          AS event_duration_unit,
-      s.record->'location'->>'name'           AS location_name,
-      sp.record->>'title'                     AS protocol_title,
-      u.handle,
-      COUNT(o.id)::int                        AS occurrence_count
-    FROM surveys s
-    JOIN survey_protocols sp ON sp.at_uri = s.protocol_uri
-    JOIN users u ON u.did = s.did
-    LEFT JOIN occurrences o ON o.survey_uri = s.at_uri
-    GROUP BY
-      s.at_uri, s.rkey, s.event_date, s.record, sp.record, u.handle, s.indexed_at
-    ORDER BY s.event_date DESC NULLS LAST, s.indexed_at DESC
-  `;
-
-  return { surveys };
+  return { surveys: await getSurveysPage() };
 };

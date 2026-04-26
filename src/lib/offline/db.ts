@@ -20,6 +20,7 @@ export interface Protocol {
   atUri: string;
   rkey: string;
   handle: string;
+  avatarUrl?: string;
   record: AtSurveyProtocol;
   targets: Target[];
 }
@@ -37,6 +38,7 @@ export interface Survey {
   atUri: string;
   rkey: string;
   handle: string;
+  avatarUrl?: string;
   protocolHandle: string;
   protocolRkey: string;
   protocolTitle: string;
@@ -66,6 +68,7 @@ export interface PendingSurvey {
 export interface IdbUser {
   did: string;
   handle: string;
+  avatarUrl?: string;
 }
 
 interface CuantoDB extends DBSchema {

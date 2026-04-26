@@ -56,6 +56,7 @@ interface ProtocolRow {
   rkey: string;
   cid: string | null;
   handle: string;
+  avatar_url: string | null;
   record: AtSurveyProtocol;
 }
 
@@ -84,7 +85,7 @@ export async function getProtocolByUri(
   uri: string,
 ): Promise<ProtocolRow | null> {
   const [row] = await sql<ProtocolRow[]>`
-    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle
+    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle, u.avatar_url
     FROM survey_protocols sp
     JOIN users u ON u.did = sp.did
     WHERE sp.at_uri = ${uri}
@@ -98,7 +99,7 @@ async function getProtocolByDidAndRkey(
   rkey: string,
 ): Promise<ProtocolRow | null> {
   const [row] = await sql<ProtocolRow[]>`
-    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle
+    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle, u.avatar_url
     FROM survey_protocols sp
     JOIN users u ON u.did = sp.did
     WHERE sp.did = ${did} AND sp.rkey = ${rkey}
@@ -112,6 +113,7 @@ function toProtocol(row: ProtocolRow, targets: TargetRow[]): Protocol {
     atUri: row.at_uri,
     rkey: row.rkey,
     handle: row.handle,
+    avatarUrl: row.avatar_url ?? undefined,
     record: row.record,
     targets: targets.map(toTarget),
   };
@@ -147,7 +149,7 @@ export async function getFollowedProtocolsByDid(
   did: string,
 ): Promise<Protocol[]> {
   const rows = await sql<ProtocolRow[]>`
-    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle
+    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle, u.avatar_url
     FROM protocol_follows pf
     JOIN survey_protocols sp ON sp.at_uri = pf.protocol_uri
     JOIN users u ON u.did = sp.did
@@ -157,4 +159,37 @@ export async function getFollowedProtocolsByDid(
   const targetRows = await getTargetsForProtocols(protocolUris);
   const byProtocol = groupTargetsByProtocol(targetRows);
   return rows.map((p) => toProtocol(p, byProtocol.get(p.at_uri) ?? []));
+}
+
+export async function getProtocolsPage(
+  offset: number = 0,
+  limit: number = 100,
+) {
+  const rows = await sql<ProtocolRow[]>`
+    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle, u.avatar_url
+    FROM survey_protocols sp
+    JOIN users u ON u.did = sp.did
+    ORDER BY sp.indexed_at DESC
+    LIMIT ${limit}
+    OFFSET ${offset}
+  `;
+  return rows.map((r) => toProtocol(r, []));
+}
+
+export async function getProtocolsPageByDid(
+  did: string,
+  offset: number = 0,
+  limit: number = 100,
+) {
+  const rows = await sql<ProtocolRow[]>`
+    SELECT
+      sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle, u.avatar_url
+    FROM survey_protocols sp
+    JOIN users u ON u.did = sp.did
+    WHERE sp.did = ${did}
+    ORDER BY sp.indexed_at DESC
+    LIMIT ${limit}
+    OFFSET ${offset}
+  `;
+  return rows.map((r) => toProtocol(r, []));
 }

@@ -9,7 +9,12 @@ export const load: LayoutLoad = async () => {
   if (browser && !navigator.onLine) {
     try {
       const user = await getIdbUser();
-      if (user) return { did: user.did, handle: user.handle };
+      if (user)
+        return {
+          did: user.did,
+          handle: user.handle,
+          avatarUrl: user.avatarUrl,
+        };
     } catch {
       // IDB unavailable — fall through
     }

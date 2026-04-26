@@ -7,6 +7,7 @@ interface SurveyRow {
   at_uri: string;
   rkey: string;
   handle: string;
+  avatar_url: string | null;
   protocol_handle: string;
   protocol_rkey: string;
   protocol_title: string;
@@ -24,6 +25,7 @@ const surveysFromJoin = sql`
     s.at_uri,
     s.rkey,
     u.handle,
+    u.avatar_url,
     pu.handle           AS protocol_handle,
     sp.rkey             AS protocol_rkey,
     sp.record->>'title' AS protocol_title,
@@ -89,6 +91,7 @@ export function toSurveyResponse(
     atUri: s.at_uri,
     rkey: s.rkey,
     handle: s.handle,
+    avatarUrl: s.avatar_url ?? undefined,
     protocolHandle: s.protocol_handle,
     protocolRkey: s.protocol_rkey,
     protocolTitle: s.protocol_title,
@@ -109,6 +112,61 @@ export async function getSurveyDetailByHandleAndRkey(
   if (!survey) return null;
   const occurrences = await getOccurrencesForSurveys([survey.at_uri]);
   return toSurveyResponse([survey], groupOccurrencesBySurvey(occurrences))[0];
+}
+
+export async function getSurveysPage(limit: number = 100, offset: number = 0) {
+  const surveyRows = await sql<SurveyRow[]>`
+    SELECT
+      s.at_uri,
+      s.rkey,
+      u.handle,
+      u.avatar_url,
+      spu.handle                              AS protocol_handle,
+      sp.rkey                                 AS protocol_rkey,
+      sp.record->>'title'                     AS protocol_title,
+      s.record
+    FROM surveys s
+    JOIN survey_protocols sp ON sp.at_uri = s.protocol_uri
+    JOIN users u ON u.did = s.did
+    JOIN users spu ON spu.did = sp.did
+    ORDER BY s.event_date DESC NULLS LAST, s.indexed_at DESC
+    LIMIT ${limit}
+    OFFSET ${offset}
+  `;
+  const occurrences = await getOccurrencesForSurveys(
+    surveyRows.map((s) => s.at_uri),
+  );
+  return toSurveyResponse(surveyRows, groupOccurrencesBySurvey(occurrences));
+}
+
+export async function getSurveysPageByDid(
+  did: string,
+  limit: number = 100,
+  offset: number = 0,
+) {
+  const surveyRows = await sql<SurveyRow[]>`
+    SELECT
+      s.at_uri,
+      s.rkey,
+      u.handle,
+      u.avatar_url,
+      spu.handle                              AS protocol_handle,
+      sp.rkey                                 AS protocol_rkey,
+      sp.record->>'title'                     AS protocol_title,
+      s.record
+    FROM surveys s
+    JOIN survey_protocols sp ON sp.at_uri = s.protocol_uri
+    JOIN users u ON u.did = s.did
+    JOIN users spu ON spu.did = sp.did
+    WHERE s.did = ${did}
+    ORDER BY s.event_date DESC NULLS LAST, s.indexed_at DESC
+    LIMIT ${limit}
+    OFFSET ${offset}
+  `;
+  const occurrences = await getOccurrencesForSurveys(
+    surveyRows.map((s) => s.at_uri),
+  );
+  return toSurveyResponse(surveyRows, groupOccurrencesBySurvey(occurrences));
 }
 
 export function parseCoords(

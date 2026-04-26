@@ -5,6 +5,7 @@ import { enhance } from '$app/forms';
 import { Button } from '$lib/components/ui/button';
 import * as Card from '$lib/components/ui/card';
 import type { Protocol, TaxonScope, VerbatimScope } from '$lib/offline/db';
+import Handle from './handle.svelte';
 import * as Table from './ui/table';
 
 interface Props {
@@ -111,7 +112,7 @@ function formatDate(iso: string) {
     <Table.Body>
       <Table.Row>
         <Table.Head>Author</Table.Head>
-        <Table.Cell>@{protocol.handle}</Table.Cell>
+        <Table.Cell><Handle handle={protocol.handle} avatarUrl={protocol.avatarUrl} /></Table.Cell>
       </Table.Row>
       <Table.Row>
         <Table.Head>Created</Table.Head>

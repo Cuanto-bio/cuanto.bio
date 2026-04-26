@@ -13,6 +13,7 @@ import { insertUser } from '$lib/server/db/users';
 import logger from '$lib/server/logger';
 import {
   fetchAtRecord,
+  fetchAvatarUrl,
   listAtRecords,
   parseAtUri,
   resolveHandle,
@@ -32,8 +33,11 @@ function isFkViolation(e: unknown): boolean {
 }
 
 async function ensureUser(did: string): Promise<void> {
-  const handle = await resolveHandle(did);
-  if (handle) await insertUser(did, handle);
+  const [handle, avatarUrl] = await Promise.all([
+    resolveHandle(did),
+    fetchAvatarUrl(did),
+  ]);
+  if (handle) await insertUser(did, handle, avatarUrl);
 }
 
 async function backfillProtocol(protocolUri: string): Promise<void> {
@@ -122,7 +126,8 @@ export const POST: RequestHandler = async ({ request }) => {
   );
 
   if (evt.type === 'identity') {
-    await insertUser(evt.did, evt.handle);
+    const avatarUrl = await fetchAvatarUrl(evt.did);
+    await insertUser(evt.did, evt.handle, avatarUrl);
     log.info({ did: evt.did }, 'upserted user from identity event');
     return json({ ok: true });
   }
