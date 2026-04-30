@@ -16,6 +16,7 @@ import {
 } from '$lib/offline/db';
 import { uploadPendingSurvey } from '$lib/offline/upload';
 import { LOCATION_COMBOBOX_THRESHOLD } from '$lib/places';
+import { calcElapsed, formatElapsed } from '$lib/surveys';
 
 let protocol = $state<CachedProtocol | null>(null);
 let notFound = $state(false);
@@ -34,9 +35,15 @@ let locationPickerOpen = $state(false);
 onMount(() => {
   startedAt = Date.now();
 
-  const id = setInterval(() => {
-    elapsedSeconds++;
-  }, 1000);
+  const tick = () => {
+    elapsedSeconds = calcElapsed(startedAt);
+  };
+  const id = setInterval(tick, 1000);
+
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') tick();
+  };
+  document.addEventListener('visibilitychange', onVisible);
 
   const rkey = page.params.protocolRkey ?? '';
   getCachedProtocolByRkey(rkey).then((cached) => {
@@ -47,16 +54,11 @@ onMount(() => {
     }
   });
 
-  return () => clearInterval(id);
+  return () => {
+    clearInterval(id);
+    document.removeEventListener('visibilitychange', onVisible);
+  };
 });
-
-function formatElapsed(s: number): string {
-  const m = Math.floor(s / 60)
-    .toString()
-    .padStart(2, '0');
-  const sec = (s % 60).toString().padStart(2, '0');
-  return `${m}:${sec}`;
-}
 
 function targetLabel(scope: unknown[]): string {
   const first = scope[0] as Record<string, string> | undefined;
