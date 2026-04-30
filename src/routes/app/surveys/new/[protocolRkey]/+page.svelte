@@ -5,14 +5,17 @@ import { goto } from '$app/navigation';
 import { page } from '$app/state';
 import { Button } from '$lib/components/ui/button';
 import * as Command from '$lib/components/ui/command';
+import * as Dialog from '$lib/components/ui/dialog';
 import { Input } from '$lib/components/ui/input';
 import { Label } from '$lib/components/ui/label';
 import * as Popover from '$lib/components/ui/popover';
+import * as Sheet from '$lib/components/ui/sheet';
 import type { Main as AtgeoPlaceMain } from '$lib/lexicons/org/atgeo/place.defs';
 import {
   type CachedProtocol,
   getCachedProtocolByRkey,
   savePendingSurvey,
+  type Target,
 } from '$lib/offline/db';
 import { uploadPendingSurvey } from '$lib/offline/upload';
 import { LOCATION_COMBOBOX_THRESHOLD } from '$lib/places';
@@ -23,7 +26,7 @@ let notFound = $state(false);
 
 let startedAt = $state(0);
 let elapsedSeconds = $state(0);
-let counts = $state<Record<string, number>>({});
+let organismQuantities = $state<Record<string, string>>({});
 let latitude = $state<string | null>(null);
 let longitude = $state<string | null>(null);
 let locationName = $state('');
@@ -31,6 +34,11 @@ let submitting = $state(false);
 let error = $state<string | null>(null);
 let gpsLoading = $state(false);
 let locationPickerOpen = $state(false);
+
+let sheetOpen = $state(false);
+let selectedTarget = $state<Target | null>(null);
+let editingQuantity = $state('');
+let isWide = $state(false);
 
 onMount(() => {
   startedAt = Date.now();
@@ -45,6 +53,13 @@ onMount(() => {
   };
   document.addEventListener('visibilitychange', onVisible);
 
+  const mq = window.matchMedia('(min-width: 768px)');
+  isWide = mq.matches;
+  const onMqChange = (e: MediaQueryListEvent) => {
+    isWide = e.matches;
+  };
+  mq.addEventListener('change', onMqChange);
+
   const rkey = page.params.protocolRkey ?? '';
   getCachedProtocolByRkey(rkey).then((cached) => {
     if (cached) {
@@ -57,6 +72,7 @@ onMount(() => {
   return () => {
     clearInterval(id);
     document.removeEventListener('visibilitychange', onVisible);
+    mq.removeEventListener('change', onMqChange);
   };
 });
 
@@ -76,12 +92,36 @@ function targetTaxonID(scope: unknown[]): string | undefined {
   return undefined;
 }
 
+// for now this assumes organismQuantityType is always individuals-count and
+// not something categorical like '1-5'. We'll need to update that if we
+// support other quantity types
 function increment(uri: string) {
-  counts[uri] = (counts[uri] ?? 0) + 1;
+  const current = parseInt(organismQuantities[uri] ?? '0', 10);
+  organismQuantities[uri] = String(Number.isNaN(current) ? 1 : current + 1);
 }
 
-function decrement(uri: string) {
-  counts[uri] = Math.max(0, (counts[uri] ?? 0) - 1);
+function openTargetSheet(target: Target) {
+  selectedTarget = target;
+  editingQuantity = organismQuantities[target.atUri] ?? '';
+  sheetOpen = true;
+}
+
+function saveSheet() {
+  if (!selectedTarget) return;
+  const trimmed = editingQuantity.trim();
+  if (trimmed) {
+    organismQuantities[selectedTarget.atUri] = trimmed;
+  } else {
+    delete organismQuantities[selectedTarget.atUri];
+  }
+  sheetOpen = false;
+}
+
+function resetTarget() {
+  if (!selectedTarget) return;
+  delete organismQuantities[selectedTarget.atUri];
+  editingQuantity = '';
+  sheetOpen = false;
 }
 
 function requestGps() {
@@ -130,7 +170,7 @@ async function finish() {
   const occurrences = protocol.targets.map((t) => ({
     surveyTargetUri: t.atUri,
     taxonID: targetTaxonID(t.record.scope),
-    count: counts[t.atUri] ?? 0,
+    organismQuantity: organismQuantities[t.atUri] || '0',
   }));
 
   const survey = {
@@ -160,6 +200,14 @@ async function finish() {
 
   await savePendingSurvey(survey);
   await goto('/app/surveys');
+}
+
+function displayCount(qty: undefined | string | number) {
+  if (qty === undefined) return 0;
+  if (typeof qty === 'number') return qty.toLocaleString();
+  const num = parseInt(qty, 10);
+  const val = Number.isNaN(num) ? qty : num;
+  return val.toLocaleString();
 }
 </script>
 
@@ -264,26 +312,29 @@ async function finish() {
     {#if protocol.targets.length === 0}
       <p class="text-muted-foreground mb-6 text-sm">No targets defined for this protocol.</p>
     {:else}
-      <ul class="mb-6 flex flex-col gap-2">
+      <ul class="-mx-4 mb-6 divide-y border-y sm:mx-0 sm:rounded-lg sm:border">
         {#each protocol.targets as target (target.atUri)}
-          <li class="flex items-center justify-between rounded border px-4 py-3">
-            <span class="text-sm">{targetLabel(target.record.scope)}</span>
-            <div class="flex items-center gap-3">
-              <button
-                type="button"
-                onclick={() => decrement(target.atUri)}
-                disabled={(counts[target.atUri] ?? 0) === 0}
-                class="flex h-8 w-8 items-center justify-center rounded-full border text-lg font-semibold disabled:opacity-40"
-                aria-label="Decrease count"
-              >−</button>
-              <span class="w-8 text-center tabular-nums">{counts[target.atUri] ?? 0}</span>
-              <button
-                type="button"
-                onclick={() => increment(target.atUri)}
-                class="flex h-8 w-8 items-center justify-center rounded-full border text-lg font-semibold"
-                aria-label="Increase count"
-              >+</button>
-            </div>
+          {@const qty = organismQuantities[target.atUri]}
+          {@const hasCount = qty !== undefined && qty !== '' && qty !== '0'}
+          <li class="flex items-center p-2">
+            <button
+              type="button"
+              class="flex flex-1 items-center gap-2 px-4 py-3 text-left"
+              onclick={() => openTargetSheet(target)}
+            >
+              <span class="flex-1 text-sm font-medium">{targetLabel(target.record.scope)}</span>
+            </button>
+            <button
+              type="button"
+              class="mr-3 flex min-h-11 min-w-11 p-2 items-center justify-center rounded-full text-sm font-bold tabular-nums transition-colors
+                {hasCount
+                  ? 'bg-primary text-primary-foreground'
+                  : 'border-2 border-border text-muted-foreground hover:border-primary hover:text-foreground'}"
+              onclick={() => increment(target.atUri)}
+              aria-label="Increase count"
+            >
+              {displayCount(qty)}
+            </button>
           </li>
         {/each}
       </ul>
@@ -297,4 +348,64 @@ async function finish() {
       {submitting ? 'Saving…' : 'Finish Survey'}
     </Button>
   </main>
+
+  {#snippet occurrenceForm()}
+    <div class="flex flex-col gap-4">
+      <div class="flex flex-col gap-2">
+        <Label for="organism-qty">Organism quantity</Label>
+        <Input
+          id="organism-qty"
+          type="number"
+          bind:value={
+            // editingQuantity is a string to match the lexicon which supports
+            // different quantity types, but the input is a number (for now)
+            // to ensure the user only enters numbers... until the UI
+            // supports alternative quantity types too
+            () => editingQuantity,
+            (newVal) => editingQuantity = String(newVal)
+          }
+          onkeydown={(e) => {
+            if (e.key === 'Enter') {
+              e.stopPropagation();
+              e.preventDefault();
+              saveSheet();
+              return false;
+            }
+          }}
+        />
+      </div>
+      <div class="flex gap-2">
+        <Button variant="outline" class="flex-1" onclick={resetTarget}>Reset</Button>
+        <Button class="flex-1" onclick={saveSheet}>Done</Button>
+      </div>
+    </div>
+  {/snippet}
+
+  {#if isWide}
+    <Dialog.Root bind:open={sheetOpen}>
+      <Dialog.Content>
+        <Dialog.Header>
+          <Dialog.Title>
+            {selectedTarget ? targetLabel(selectedTarget.record.scope) : 'Details'}
+          </Dialog.Title>
+          <Dialog.Description>Edit occurrence details</Dialog.Description>
+        </Dialog.Header>
+        {@render occurrenceForm()}
+      </Dialog.Content>
+    </Dialog.Root>
+  {:else}
+    <Sheet.Root bind:open={sheetOpen}>
+      <Sheet.Content side="bottom">
+        <Sheet.Header>
+          <Sheet.Title>
+            {selectedTarget ? targetLabel(selectedTarget.record.scope) : 'Details'}
+          </Sheet.Title>
+          <Sheet.Description>Edit occurrence details</Sheet.Description>
+        </Sheet.Header>
+        <div class="px-6 pb-6">
+          {@render occurrenceForm()}
+        </div>
+      </Sheet.Content>
+    </Sheet.Root>
+  {/if}
 {/if}

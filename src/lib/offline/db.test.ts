@@ -208,7 +208,10 @@ const pendingSurvey1: Omit<import('./db').PendingSurvey, 'id'> = {
   eventDurationValue: 60,
   eventDurationUnit: 'minutes',
   occurrences: [
-    { surveyTargetUri: 'at://did:test:1/surveyTarget/t1', count: 3 },
+    {
+      surveyTargetUri: 'at://did:test:1/surveyTarget/t1',
+      organismQuantity: '3',
+    },
   ],
   createdAt: Date.now(),
 };

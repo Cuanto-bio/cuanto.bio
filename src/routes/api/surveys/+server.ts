@@ -31,7 +31,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 type OccurrenceInput = {
   surveyTargetUri: string;
   taxonID?: string;
-  count: number;
+  organismQuantity?: string;
 };
 
 type SurveyInput = {
@@ -106,13 +106,13 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   await insertSurvey(did, surveyRkey, surveyRecord, surveyUri);
 
   for (const input of body.occurrences) {
-    if (input.count <= 0) continue;
+    if (!input.organismQuantity) continue;
 
     const occurrenceRecord = Occurrence.$build({
       eventID: surveyUri as l.AtUriString,
       surveyTargetID: input.surveyTargetUri as l.AtUriString,
       ...(input.taxonID ? { taxonID: input.taxonID as l.UriString } : {}),
-      organismQuantity: String(input.count),
+      organismQuantity: input.organismQuantity,
       organismQuantityType: 'individuals',
     });
 

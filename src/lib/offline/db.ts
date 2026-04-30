@@ -61,7 +61,11 @@ export interface PendingSurvey {
   eventDurationUnit: string | null;
   latitude: string | null;
   longitude: string | null;
-  occurrences: { surveyTargetUri: string; taxonID?: string; count: number }[];
+  occurrences: {
+    surveyTargetUri: string;
+    taxonID?: string;
+    organismQuantity?: string;
+  }[];
   createdAt: number;
 }
 
@@ -130,6 +134,9 @@ async function getDB(): Promise<IDBPDatabase<CuantoDB>> {
         tx.objectStore('followed-protocols').clear();
         tx.objectStore('cached-surveys').clear();
       }
+      // v8: occurrence shape changed from {count: number} to {organismQuantity: string}.
+      // Data migration is handled lazily in getPendingSurveys() because the upgrade
+      // callback is synchronous and cannot await IDB requests.
     },
   });
   return _db;
@@ -163,9 +170,39 @@ export async function savePendingSurvey(
   return db.add('pending-surveys', survey as PendingSurvey);
 }
 
+// Shape of the PendingSurvey Occurrence in db v7
+type LegacyPendingSurveyOccurrence7 = {
+  surveyTargetUri: string;
+  taxonID?: string;
+  count?: number;
+  organismQuantity?: string;
+};
+
+function migratePendingSurvey(survey: PendingSurvey): PendingSurvey {
+  // Lazy handling of data migration from 7 to 8
+  const occs = survey.occurrences as LegacyPendingSurveyOccurrence7[];
+  if (!occs.some((o) => typeof o.count === 'number')) return survey;
+  return {
+    ...survey,
+    occurrences: occs.map(({ count, ...rest }) => ({
+      ...rest,
+      organismQuantity:
+        rest.organismQuantity ??
+        (count !== undefined ? String(count) : undefined),
+    })),
+  };
+}
+
 export async function getPendingSurveys(): Promise<PendingSurvey[]> {
   const db = await getDB();
-  return db.getAll('pending-surveys');
+  const raw = await db.getAll('pending-surveys');
+  const surveys = raw.map(migratePendingSurvey);
+  const dirty = surveys.filter((s, i) => s !== raw[i]);
+  if (dirty.length > 0) {
+    const tx = db.transaction('pending-surveys', 'readwrite');
+    await Promise.all([...dirty.map((s) => tx.store.put(s)), tx.done]);
+  }
+  return surveys;
 }
 
 export async function deletePendingSurvey(id: number): Promise<void> {
