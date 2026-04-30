@@ -6,6 +6,10 @@
 
 ---
 
+# Planning
+- plans go in docs/
+- when asked to save a plan, write it to a new file
+
 # Development Workflow
 - Branch names: start with the issue number, e.g. `123-fix-broken-embedded-photos`
 - ALWAYS run `pnpm check` after changes and run `pnpm format` to address biome issues

@@ -27,7 +27,7 @@ test('follow button visible when authenticated', async ({
     {
       name: 'did',
       value: DID,
-      domain: 'localhost',
+      domain: '127.0.0.1',
       path: '/',
       httpOnly: true,
       sameSite: 'Lax',
@@ -53,7 +53,7 @@ test('follow flow', async ({ page, sql, context }) => {
     {
       name: 'did',
       value: DID,
-      domain: 'localhost',
+      domain: '127.0.0.1',
       path: '/',
       httpOnly: true,
       sameSite: 'Lax',
@@ -91,7 +91,7 @@ test('unfollow flow', async ({ page, sql, context }) => {
     {
       name: 'did',
       value: DID,
-      domain: 'localhost',
+      domain: '127.0.0.1',
       path: '/',
       httpOnly: true,
       sameSite: 'Lax',
@@ -153,7 +153,7 @@ test('/protocols/following empty state', async ({ page, sql, context }) => {
     {
       name: 'did',
       value: DID,
-      domain: 'localhost',
+      domain: '127.0.0.1',
       path: '/',
       httpOnly: true,
       sameSite: 'Lax',

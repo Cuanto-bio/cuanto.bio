@@ -4,7 +4,11 @@ import PlusIcon from '@lucide/svelte/icons/plus';
 import { enhance } from '$app/forms';
 import { Button } from '$lib/components/ui/button';
 import * as Card from '$lib/components/ui/card';
+import type { Main as LocationAddress } from '$lib/lexicons/community/lexicon/location/address.defs';
+import type { Main as LocationBbox } from '$lib/lexicons/community/lexicon/location/bbox.defs';
+import type { Main as LocationGeo } from '$lib/lexicons/community/lexicon/location/geo.defs';
 import type { Protocol, TaxonScope, VerbatimScope } from '$lib/offline/db';
+import { LOCATION_COMBOBOX_THRESHOLD } from '$lib/places';
 import Handle from './handle.svelte';
 import * as Table from './ui/table';
 
@@ -30,6 +34,7 @@ let {
 let isFollowing = $state(!!initialIsFollowing);
 // svelte-ignore state_referenced_locally -- intentional: local optimistic state
 let followerCount = $state(initialFollowerCount);
+let showAllPlaces = $state(false);
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString();
@@ -184,5 +189,59 @@ function formatDate(iso: string) {
         {/each}
       </Table.Body>
     </Table.Root>
+  {/if}
+
+  {#if protocol.record.locationOptions && protocol.record.locationOptions.length > 0}
+    <h2 class="mb-3 mt-6 text-lg font-semibold">
+      Place Options ({protocol.record.locationOptions.length})
+    </h2>
+    {@const visiblePlaces = showAllPlaces
+      ? protocol.record.locationOptions
+      : protocol.record.locationOptions.slice(0, LOCATION_COMBOBOX_THRESHOLD)}
+    <ul class="ml-4 list-disc">
+      {#each visiblePlaces as place}
+        <li>
+          <span class="font-medium">{place.name}</span>
+          {#if place.locations}
+            {#each place.locations as loc}
+              {#if loc.$type === 'community.lexicon.location.geo'}
+                <span class="text-muted-foreground ml-1 text-sm">
+                  ({(loc as LocationGeo).latitude}, {(loc as LocationGeo).longitude})
+                </span>
+              {:else if loc.$type === 'community.lexicon.location.address'}
+                <span class="text-muted-foreground ml-1 text-sm">
+                  {[
+                    (loc as LocationAddress).street,
+                    (loc as LocationAddress).locality,
+                    (loc as LocationAddress).region,
+                    (loc as LocationAddress).postalCode,
+                    (loc as LocationAddress).country,
+                  ]
+                    .filter(Boolean)
+                    .join(', ')}
+                </span>
+              {:else if loc.$type === 'community.lexicon.location.bbox'}
+                <span class="text-muted-foreground ml-1 text-sm">
+                  (N {(loc as LocationBbox).north}, S {(loc as LocationBbox).south},
+                  E {(loc as LocationBbox).east}, W {(loc as LocationBbox).west})
+                </span>
+              {/if}
+            {/each}
+          {/if}
+        </li>
+      {/each}
+    </ul>
+    {#if protocol.record.locationOptions.length > LOCATION_COMBOBOX_THRESHOLD}
+      <Button
+        variant="ghost"
+        size="sm"
+        class="mt-2"
+        onclick={() => (showAllPlaces = !showAllPlaces)}
+      >
+        {showAllPlaces
+          ? 'Show less'
+          : `${protocol.record.locationOptions.length - LOCATION_COMBOBOX_THRESHOLD} more…`}
+      </Button>
+    {/if}
   {/if}
 </main>

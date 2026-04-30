@@ -16,6 +16,6 @@ export default defineConfig({
   testMatch: '**/*.spec.{ts,js}',
   testIgnore: '**/*.pwa.spec.{ts,js}',
   use: {
-    baseURL: `http://localhost:${PORT}`,
+    baseURL: `http://127.0.0.1:${PORT}`,
   },
 });

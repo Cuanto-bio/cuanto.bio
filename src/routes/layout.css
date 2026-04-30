@@ -138,7 +138,7 @@
   }
 
   p {
-    @apply text-muted-foreground leading-7 [&:not(:first-child)]:mt-6;
+    @apply text-muted-foreground leading-7 [&:not(:last-child)]:mb-6;
     letter-spacing: 2%;
   }
   p a {

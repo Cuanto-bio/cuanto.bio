@@ -29,7 +29,7 @@
     "@biomejs/biome": "^2.4.11",
     "@fontsource-variable/inter": "^5.2.8",
     "@internationalized/date": "^3.12.0",
-    "@lucide/svelte": "^1.8.0",
+    "@lucide/svelte": "^1.12.0",
     "@playwright/test": "latest",
     "@sveltejs/adapter-node": "^5.5.4",
     "@sveltejs/kit": "^2.57.0",
@@ -67,6 +67,7 @@
     "@fontsource-variable/dynapuff": "^5.2.8",
     "@fontsource-variable/nunito": "^5.2.7",
     "idb": "^8.0.3",
+    "maplibre-gl": "^5.24.0",
     "pino": "^10.3.1",
     "postgres": "^3.4.9"
   }

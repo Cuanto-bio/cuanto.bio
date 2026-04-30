@@ -1,11 +1,16 @@
 <script lang="ts">
 import Autocomplete from '$lib/components/Autocomplete.svelte';
+import FormSection from '$lib/components/FormSection.svelte';
+import GeoMap from '$lib/components/GeoMap.svelte';
 import { Button } from '$lib/components/ui/button';
 import * as Card from '$lib/components/ui/card';
 import { Input } from '$lib/components/ui/input';
 import { Label } from '$lib/components/ui/label';
 import { Textarea } from '$lib/components/ui/textarea';
 import { useOnline } from '$lib/composables/online.svelte';
+import type { Main as AtAddress } from '$lib/lexicons/community/lexicon/location/address.defs';
+import type { Main as AtGeo } from '$lib/lexicons/community/lexicon/location/geo.defs';
+import type { PlaceResult } from '$lib/places';
 
 const onlineState = useOnline();
 
@@ -34,10 +39,23 @@ type InatResult = {
   taxonID: string;
 };
 
+// Local type because it's slightly easier to track coordinates and addresses
+// in the UI with indexed arrays for each
+type PlaceEntry = {
+  name: string;
+  geos: AtGeo[];
+  addresses: AtAddress[];
+};
+
 let targets = $state<Target[]>([]);
 let taxonQuery = $state('');
 let taxonResults = $state<InatResult[]>([]);
 let searching = $state(false);
+let places = $state<PlaceEntry[]>([]);
+let placeQuery = $state('');
+let placeResults = $state<PlaceResult[]>([]);
+let searchingPlaces = $state(false);
+let placeSearched = $state(false);
 
 $effect(() => {
   if (taxonQuery.trim().length < 2) {
@@ -110,6 +128,111 @@ function labelFor(target: Target): string {
   }
   return target.verbatimTargetScope || '(empty)';
 }
+
+function placesJson(): string {
+  return JSON.stringify(
+    places.map((p) => ({
+      $type: 'org.atgeo.place',
+      name: p.name,
+      locations: [...p.geos, ...p.addresses],
+    })),
+  );
+}
+
+function addLocation() {
+  places = [...places, { name: '', geos: [], addresses: [] }];
+}
+
+function removeLocation(i: number) {
+  places = places.filter((_, idx) => idx !== i);
+}
+
+function addGeo(i: number) {
+  places[i].geos = [
+    ...places[i].geos,
+    {
+      $type: 'community.lexicon.location.geo',
+      latitude: '',
+      longitude: '',
+    },
+  ];
+}
+
+function removeGeo(i: number, j: number) {
+  places[i].geos = places[i].geos.filter((_, idx) => idx !== j);
+}
+
+async function searchPlace() {
+  if (placeQuery.trim().length < 2) return;
+  searchingPlaces = true;
+  try {
+    const resp = await fetch(
+      `/api/places?q=${encodeURIComponent(placeQuery.trim())}`,
+    );
+    const data = await resp.json();
+    placeResults = data.results ?? [];
+  } finally {
+    searchingPlaces = false;
+    placeSearched = true;
+  }
+}
+
+function shortName(displayName: string): string {
+  return displayName.split(',')[0].trim();
+}
+
+function addPlaceFromResult(result: PlaceResult) {
+  const name = shortName(result.displayName);
+  const hasAddress =
+    result.address.countryCode ||
+    result.address.region ||
+    result.address.locality;
+  places = [
+    ...places,
+    {
+      name,
+      geos: [
+        {
+          $type: 'community.lexicon.location.geo',
+          latitude: result.lat,
+          longitude: result.lon,
+        },
+      ],
+      addresses: hasAddress
+        ? [
+            {
+              $type: 'community.lexicon.location.address',
+              country: result.address.countryCode ?? '',
+              region: result.address.region ?? '',
+              locality: result.address.locality ?? '',
+              postalCode: result.address.postalCode ?? '',
+              street: result.address.street ?? '',
+            },
+          ]
+        : [],
+    },
+  ];
+  placeQuery = '';
+  placeResults = [];
+}
+
+function addAddress(i: number) {
+  places[i].addresses = [
+    ...places[i].addresses,
+    {
+      $type: 'community.lexicon.location.address',
+      country: '',
+      postalCode: '',
+      region: '',
+      locality: '',
+      street: '',
+    },
+  ];
+}
+
+function removeAddress(i: number, j: number) {
+  places[i].addresses = places[i].addresses.filter((_, idx) => idx !== j);
+}
 </script>
 
 <main class="mx-auto max-w-2xl px-4 py-8">
@@ -155,13 +278,15 @@ function labelFor(target: Target): string {
           </div>
         </div>
 
-        <div class="flex flex-col gap-2">
-          <Label>Survey targets</Label>
+        <FormSection title="SURVEY TARGETS">
+          <div class="text-muted-foreground text-xs mb-4">
+            Choose what surveyors will be looking for, either taxa or something custom.
+          </div>
 
           {#if targets.length > 0}
             <ul class="flex flex-col gap-1">
               {#each targets as target, i (i)}
-                <li class="flex items-center justify-between rounded border px-3 py-2 text-sm">
+                <li class="flex items-center justify-between rounded-lg border px-3 py-2 text-sm bg-background">
                   {#if target.kind === 'verbatim'}
                     <input
                       class="flex-1 bg-transparent outline-none"
@@ -184,31 +309,191 @@ function labelFor(target: Target): string {
             </ul>
           {/if}
 
-          <Autocomplete
-            placeholder="Search taxa (e.g. Quercus)"
-            autocomplete="off"
-            bind:value={taxonQuery}
-            items={taxonResults}
-            onselect={addTaxon}
-          >
-            {#snippet item(result)}
-              <span class="font-medium">{result.scientificName}</span>
-              <span class="text-muted-foreground text-xs">{result.taxonRank}</span>
-              {#if result.commonName}
-                <span class="text-muted-foreground">— {result.commonName}</span>
-              {/if}
-            {/snippet}
-          </Autocomplete>
-          {#if searching && taxonResults.length === 0}
-            <p class="text-muted-foreground mt-1 text-xs">Searching…</p>
+          <div class="bg-background flex flex-col gap-2 rounded-lg border p-3 mt-4">
+            <Autocomplete
+              placeholder="Search iNaturalist taxa (e.g. Quercus)"
+              autocomplete="off"
+              bind:value={taxonQuery}
+              items={taxonResults}
+              onselect={addTaxon}
+            >
+              {#snippet item(result)}
+                <span class="font-medium">{result.scientificName}</span>
+                <span class="text-muted-foreground text-xs">{result.taxonRank}</span>
+                {#if result.commonName}
+                  <span class="text-muted-foreground">— {result.commonName}</span>
+                {/if}
+              {/snippet}
+            </Autocomplete>
+            {#if searching && taxonResults.length === 0}
+              <div class="text-muted-foreground text-xs">Searching…</div>
+            {/if}
+            <Button type="button" variant="outline" onclick={addVerbatim} class="w-fit text-xs">
+              + Add custom target
+            </Button>
+          </div>
+        </FormSection>
+
+        <FormSection title="LOCATION OPTIONS" optional>
+          <div class="text-muted-foreground text-xs mb-4">
+            Define a controlled list of locations surveyors must choose from. Leave empty to allow
+            free-form location entry.
+          </div>
+
+          {#if places.length > 0}
+            <ul class="flex flex-col gap-3">
+              {#each places as location, i (i)}
+                <li class="flex flex-col gap-2 rounded-lg border p-3">
+                  <div class="flex items-center gap-2">
+                    <Input
+                      placeholder="Location name"
+                      bind:value={location.name}
+                      class="flex-1"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onclick={() => removeLocation(i)}
+                      class="text-muted-foreground hover:text-foreground"
+                      aria-label="Remove location"
+                    >✕</button>
+                  </div>
+
+                  {#each location.geos as geo, j (j)}
+                    <div class="flex flex-col gap-1 pl-2">
+                      <div class="flex items-center gap-2">
+                        <Input
+                          placeholder="Latitude"
+                          bind:value={geo.latitude}
+                          class="w-32"
+                          type="number"
+                          step="any"
+                        />
+                        <Input
+                          placeholder="Longitude"
+                          bind:value={geo.longitude}
+                          class="w-32"
+                          type="number"
+                          step="any"
+                        />
+                        <button
+                          type="button"
+                          onclick={() => removeGeo(i, j)}
+                          class="text-muted-foreground hover:text-foreground text-xs"
+                          aria-label="Remove coordinates"
+                        >✕</button>
+                      </div>
+                      {#if !Number.isNaN(parseFloat(String(geo.latitude ?? ''))) && !Number.isNaN(parseFloat(String(geo.longitude ?? '')))}
+                        <GeoMap
+                          latitude={String(geo.latitude)}
+                          longitude={String(geo.longitude)}
+                          oncoordinate={(lat, lng) => {
+                            geo.latitude = lat;
+                            geo.longitude = lng;
+                          }}
+                        />
+                      {/if}
+                    </div>
+                  {/each}
+
+                  {#each location.addresses as addr, j (j)}
+                    <div class="flex flex-col gap-1 pl-2">
+                      <div class="flex items-center gap-2">
+                        <span class="text-muted-foreground w-20 text-xs">Country *</span>
+                        <Input
+                          placeholder="US"
+                          bind:value={addr.country}
+                          class="w-20"
+                          maxlength={10}
+                          required
+                        />
+                        <span class="text-muted-foreground w-20 text-xs">Postal code</span>
+                        <Input placeholder="94103" bind:value={addr.postalCode} class="w-24" />
+                        <button
+                          type="button"
+                          onclick={() => removeAddress(i, j)}
+                          class="text-muted-foreground hover:text-foreground text-xs"
+                          aria-label="Remove address"
+                        >✕</button>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <span class="text-muted-foreground w-20 text-xs">Region</span>
+                        <Input placeholder="CA" bind:value={addr.region} class="w-24" />
+                        <span class="text-muted-foreground w-20 text-xs">Locality</span>
+                        <Input placeholder="San Francisco" bind:value={addr.locality} class="flex-1" />
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <span class="text-muted-foreground w-20 text-xs">Street</span>
+                        <Input placeholder="123 Main St" bind:value={addr.street} class="flex-1" />
+                      </div>
+                    </div>
+                  {/each}
+
+                  <div class="flex gap-2 pl-2">
+                    {#if location.geos.length === 0}
+                      <Button type="button" variant="ghost" onclick={() => addGeo(i)} class="h-7 text-xs">
+                        + Add coordinates
+                      </Button>
+                    {/if}
+                    {#if location.addresses.length === 0}
+                      <Button type="button" variant="ghost" onclick={() => addAddress(i)} class="h-7 text-xs">
+                        + Add address
+                      </Button>
+                    {/if}
+                  </div>
+                </li>
+              {/each}
+            </ul>
           {/if}
 
-          <Button type="button" variant="outline" onclick={addVerbatim} class="w-fit">
-            + Add verbatim target
-          </Button>
-        </div>
+          <div class="bg-background flex flex-col gap-2 rounded-lg border p-3 mt-4">
+            <div class="flex gap-2">
+              <Input
+                placeholder="Search for a place on OpenStreetMap…"
+                bind:value={placeQuery}
+                class="flex-1"
+                autocomplete="off"
+                oninput={() => { placeSearched = false; placeResults = []; }}
+                onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); searchPlace(); } }}
+                onblur={() => { placeSearched = false; }}
+              />
+              <Button
+                type="button"
+                variant={placeQuery.trim().length >= 2 && !placeSearched ? 'default' : 'outline'}
+                onclick={searchPlace}
+                disabled={searchingPlaces}
+              >
+                {searchingPlaces ? 'Searching…' : 'Search'}
+              </Button>
+            </div>
+            {#if placeResults.length > 0}
+              <ul class="flex flex-col divide-y overflow-hidden rounded border">
+                {#each placeResults as result (result.placeId)}
+                  <li>
+                    <button
+                      type="button"
+                      onclick={() => addPlaceFromResult(result)}
+                      class="hover:bg-accent flex w-full min-w-0 flex-col px-3 py-2 text-left text-sm"
+                    >
+                      <div class="font-medium">{shortName(result.displayName)}</div>
+                      <div class="text-muted-foreground text-xs line-clamp-1">
+                        {result.displayName}
+                      </div>
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            {:else if !searchingPlaces && placeSearched}
+              <p class="text-muted-foreground text-xs">No results. Try a different search.</p>
+            {/if}
+            <Button type="button" variant="outline" onclick={addLocation} class="w-fit text-xs">
+              + Add manually
+            </Button>
+          </div>
+        </FormSection>
 
         <input type="hidden" name="targets" value={targetsJson()} />
+        <input type="hidden" name="locationOptions" value={placesJson()} />
 
         <Button type="submit">Create protocol</Button>
       </form>

@@ -73,6 +73,101 @@ export async function seedProtocol(
   return { protocolRkey: rkey };
 }
 
+export async function seedProtocolWithLocationOptions(
+  sql: Sql,
+  did: string,
+): Promise<{ protocolRkey: string }> {
+  const handle = `user-${did.split(':').pop()}`;
+  await sql`
+    INSERT INTO users (did, handle) VALUES (${did}, ${handle})
+    ON CONFLICT (did) DO NOTHING
+  `;
+
+  const rkey = `testproto${Date.now()}`;
+  const atUri = `at://${did}/bio.lexicons.temp.surveyProtocol/${rkey}`;
+
+  const protocolRecord = {
+    $type: 'bio.lexicons.temp.surveyProtocol',
+    title: 'Location Options Protocol',
+    description: 'A protocol with controlled location options',
+    createdAt: new Date().toISOString(),
+    requiredFields: [],
+    locationOptions: [
+      {
+        $type: 'org.atgeo.place',
+        name: 'China Camp',
+        locations: [
+          {
+            $type: 'community.lexicon.location.geo',
+            latitude: '38.004',
+            longitude: '-122.4978',
+          },
+        ],
+      },
+      {
+        $type: 'org.atgeo.place',
+        name: 'Mission Creek',
+      },
+    ],
+  };
+
+  await sql`
+    INSERT INTO survey_protocols (at_uri, did, rkey, cid, record, indexed_at)
+    VALUES (${atUri}, ${did}, ${rkey}, ${FAKE_CID}, ${sql.json(protocolRecord)}, now())
+  `;
+
+  return { protocolRkey: rkey };
+}
+
+export async function seedProtocolWithManyLocationOptions(
+  sql: Sql,
+  did: string,
+): Promise<{ protocolRkey: string }> {
+  const handle = `user-${did.split(':').pop()}`;
+  await sql`
+    INSERT INTO users (did, handle) VALUES (${did}, ${handle})
+    ON CONFLICT (did) DO NOTHING
+  `;
+
+  const rkey = `testproto${Date.now()}`;
+  const atUri = `at://${did}/bio.lexicons.temp.surveyProtocol/${rkey}`;
+
+  const locationOptions = [
+    {
+      $type: 'org.atgeo.place',
+      name: 'China Camp',
+      locations: [
+        {
+          $type: 'community.lexicon.location.geo',
+          latitude: '38.004',
+          longitude: '-122.4978',
+        },
+      ],
+    },
+    { $type: 'org.atgeo.place', name: 'Mission Creek' },
+    { $type: 'org.atgeo.place', name: 'Coyote Hills' },
+    { $type: 'org.atgeo.place', name: 'Point Reyes' },
+    { $type: 'org.atgeo.place', name: 'Muir Woods' },
+    { $type: 'org.atgeo.place', name: 'Año Nuevo' },
+  ];
+
+  const protocolRecord = {
+    $type: 'bio.lexicons.temp.surveyProtocol',
+    title: 'Many Locations Protocol',
+    description: 'A protocol with 6+ location options (triggers combobox)',
+    createdAt: new Date().toISOString(),
+    requiredFields: [],
+    locationOptions,
+  };
+
+  await sql`
+    INSERT INTO survey_protocols (at_uri, did, rkey, cid, record, indexed_at)
+    VALUES (${atUri}, ${did}, ${rkey}, ${FAKE_CID}, ${sql.json(protocolRecord)}, now())
+  `;
+
+  return { protocolRkey: rkey };
+}
+
 export async function seedSurvey(
   sql: Sql,
   did: string,
@@ -123,7 +218,7 @@ export const test = base.extend<TestFixtures>({
       {
         name: 'did',
         value: did,
-        domain: 'localhost',
+        domain: '127.0.0.1',
         path: '/',
         httpOnly: true,
         sameSite: 'Lax',

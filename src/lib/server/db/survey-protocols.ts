@@ -21,11 +21,8 @@ export async function insertProtocol(
       now()
     )
     ON CONFLICT (at_uri) DO UPDATE SET
-      title = EXCLUDED.title,
-      description = EXCLUDED.description,
-      required_fields = EXCLUDED.required_fields,
-      created_at = EXCLUDED.created_at,
-      cid = EXCLUDED.cid
+      cid = EXCLUDED.cid,
+      record = EXCLUDED.record
   `;
 }
 
@@ -47,7 +44,7 @@ export async function insertTarget(
     )
     ON CONFLICT (at_uri) DO UPDATE SET
       protocol_uri = EXCLUDED.protocol_uri,
-      scope = EXCLUDED.scope
+      record = EXCLUDED.record
   `;
 }
 

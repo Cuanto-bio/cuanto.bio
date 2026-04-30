@@ -32,7 +32,7 @@
           },
           "locationOptions": {
             "type": "array",
-            "description": "Pre-selected list of locations where surveys can occur.",
+            "description": "Controlled list of locations where surveys may occur. When present, surveyors must choose from this list rather than entering a free-form location name.",
             "items": {
               "type": "ref",
               "ref": "org.atgeo.place"
