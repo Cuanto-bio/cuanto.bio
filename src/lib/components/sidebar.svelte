@@ -17,6 +17,7 @@ import {
 } from '$lib/components/ui/sidebar';
 import Wordmark from '$lib/components/wordmark.svelte';
 import { useOnline } from '$lib/composables/online.svelte';
+import { signOut } from '$lib/offline/auth';
 
 const sidebar = useSidebar();
 afterNavigate(() => sidebar.setOpenMobile(false));
@@ -78,12 +79,6 @@ onMount(() => {
     refreshServiceWorkerInfo,
   );
 });
-
-async function signOut() {
-  const { clearIdbUser } = await import('$lib/offline/db');
-  await clearIdbUser();
-  window.location.href = '/auth/signout';
-}
 </script>
 
 <Sidebar>

@@ -1,19 +1,28 @@
 <script lang="ts">
 import { onMount } from 'svelte';
+import { afterNavigate } from '$app/navigation';
 import { page } from '$app/state';
+import { nav } from '$lib/navigation.svelte';
 import './layout.css';
 import favicon from '$lib/assets/favicon.svg';
+import MobileHeader from '$lib/components/mobile-header.svelte';
+import MobileNav from '$lib/components/mobile-nav.svelte';
 import AppSidebar from '$lib/components/sidebar.svelte';
-import {
-  SidebarProvider,
-  SidebarTrigger,
-  useSidebar,
-} from '$lib/components/ui/sidebar';
+import { SidebarProvider, SidebarTrigger } from '$lib/components/ui/sidebar';
 import { useOnline } from '$lib/composables/online.svelte';
 
 let { children } = $props();
 
 const online = useOnline();
+
+// Record every client-side navigation so the mobile header can show a
+// contextual back link. `from` is null on the initial page load (no previous
+// route within the app), so we skip it — the stack starts empty.
+// The server-side guard lives in navigation.svelte.ts; afterNavigate only
+// fires in the browser, but the browser import is kept there for clarity.
+afterNavigate(({ from, to }) => {
+  if (from) nav.navigate(from.url?.href, to?.url?.href ?? '');
+});
 
 onMount(() => {
   if ('serviceWorker' in navigator) {
@@ -47,13 +56,17 @@ onMount(() => {
 </svelte:head>
 <SidebarProvider>
   <AppSidebar did={page.data.did ?? undefined} handle={page.data.handle ?? undefined} avatarUrl={page.data.avatarUrl ?? undefined} />
-  <main class="flex-1">
-    <SidebarTrigger />
+  <main class="flex-1 mobile-main">
+    <div class="sidebar-trigger-wrapper"><SidebarTrigger /></div>
+    <MobileHeader />
     {#if !online.value}
       <div class="bg-muted text-muted-foreground px-4 py-1 text-center text-xs">
         You're offline
       </div>
     {/if}
-    {@render children()}
+    <div class="mobile-scroll">
+      {@render children()}
+    </div>
+    <MobileNav did={page.data.did ?? undefined} avatarUrl={page.data.avatarUrl ?? undefined} />
   </main>
 </SidebarProvider>

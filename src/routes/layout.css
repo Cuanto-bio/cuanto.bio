@@ -117,6 +117,29 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+@media (max-width: 767px) and (pointer: coarse) {
+  .sidebar-trigger-wrapper {
+    display: none;
+  }
+
+  [data-slot="sidebar-wrapper"] {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .mobile-main {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .mobile-scroll {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
