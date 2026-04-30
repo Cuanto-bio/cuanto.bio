@@ -21,11 +21,12 @@ test('shows "Followed Protocols" after navigating from /app/protocols/following 
   sql,
   context,
 }) => {
+  await teardownDid(sql, DID);
   await context.addCookies([
     {
       name: 'did',
       value: DID,
-      domain: 'localhost',
+      domain: '127.0.0.1',
       path: '/',
       httpOnly: true,
       sameSite: 'Lax',
