@@ -5,7 +5,7 @@ import { Button } from '$lib/components/ui/button/index.js';
 let { data } = $props();
 </script>
 
-<main class="mx-auto max-w-2xl px-4 py-8">
+<main class="mx-auto max-w-2xl px-4 pb-8">
   <div class="flex justify-between">
     <h1 class="mb-6 text-2xl font-semibold">Protocols</h1>
     <Button href="/protocols/new">

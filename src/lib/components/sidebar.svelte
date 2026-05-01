@@ -134,7 +134,7 @@ onMount(() => {
   </SidebarContent>
 
   <SidebarFooter>
-    <div class="text-muted-foreground border-t space-y-0.5 px-2 pt-2 font-mono text-xs">
+    <div class="text-muted-foreground border-t space-y-0.5 px-2 pt-2 font-mono text-xs hidden">
       <div>net: {online.value ? 'online' : 'offline'}</div>
       {#if serviceWorkerInfo}
         <div>sw: {serviceWorkerInfo.state}{serviceWorkerInfo.controlled ? ' ✓' : ' (no ctrl)'}</div>
@@ -146,7 +146,7 @@ onMount(() => {
       <button onclick={refreshServiceWorkerInfo} class="underline">refresh</button>
     </div>
     {#if handle}
-      <p class="text-muted-foreground px-2 text-xs font-bold"><Handle {handle} {avatarUrl} /></p>
+      <div class="text-muted-foreground px-2 text-xs font-bold"><Handle {handle} {avatarUrl} /></div>
       <SidebarMenu>
         {#if online.value}
           <SidebarMenuItem>

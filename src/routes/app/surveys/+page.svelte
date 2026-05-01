@@ -39,7 +39,7 @@ async function tryUpload() {
 }
 </script>
 
-<main class="mx-auto max-w-2xl px-4 py-8">
+<main class="mx-auto max-w-2xl px-4 pb-8">
   <h1 class="mb-6 text-2xl font-semibold">Your Surveys</h1>
 
   {#if pendingSurveys.length > 0}

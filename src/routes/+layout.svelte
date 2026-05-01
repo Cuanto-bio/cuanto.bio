@@ -4,10 +4,13 @@ import { afterNavigate } from '$app/navigation';
 import { page } from '$app/state';
 import { nav } from '$lib/navigation.svelte';
 import './layout.css';
+import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+import { Collapsible } from 'bits-ui';
 import favicon from '$lib/assets/favicon.svg';
 import MobileHeader from '$lib/components/mobile-header.svelte';
 import MobileNav from '$lib/components/mobile-nav.svelte';
 import AppSidebar from '$lib/components/sidebar.svelte';
+import * as Alert from '$lib/components/ui/alert';
 import { SidebarProvider, SidebarTrigger } from '$lib/components/ui/sidebar';
 import { useOnline } from '$lib/composables/online.svelte';
 
@@ -64,6 +67,23 @@ onMount(() => {
         You're offline
       </div>
     {/if}
+    <div class="p-4">
+      <Collapsible.Root>
+        <Collapsible.Trigger class="flex w-full">
+          <Alert.Root class="border-primary bg-primary/10 text-primary-foreground">
+            <Alert.Title class="flex flex-row w-full justify-between">
+              <span>🚧 Under Construction</span>
+              <ChevronDownIcon class="-mb-1" />
+            </Alert.Title>
+            <Collapsible.Content>
+              <Alert.Description>
+                Cuanto.bio is under active development. You're welcome to test it out, but functionality may change, data may disappear, etc. Use at your own risk.
+              </Alert.Description>
+            </Collapsible.Content>
+          </Alert.Root>
+        </Collapsible.Trigger>
+      </Collapsible.Root>
+    </div>
     <div class="mobile-scroll">
       {@render children()}
     </div>

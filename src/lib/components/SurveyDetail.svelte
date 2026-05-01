@@ -26,7 +26,7 @@ function targetLabel(scope: unknown[] | null): string {
 }
 </script>
 
-<main class="mx-auto max-w-2xl px-4 py-8">
+<main class="mx-auto max-w-2xl px-4 pb-8">
   <div class="text-muted-foreground text-xs mb-4">SURVEY</div>
   <Card.Root class="mb-6">
     <Card.Header>

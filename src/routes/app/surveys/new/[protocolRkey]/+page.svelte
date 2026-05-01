@@ -230,13 +230,13 @@ function displayCount(qty: undefined | string | number) {
 </script>
 
 {#if notFound}
-  <main class="mx-auto max-w-2xl px-4 py-8">
+  <main class="mx-auto max-w-2xl px-4 pb-8">
     <p class="text-muted-foreground text-sm">
       Protocol not cached. Visit the protocol page while online to enable offline surveys.
     </p>
   </main>
 {:else if !protocol}
-  <main class="mx-auto max-w-2xl px-4 py-8">
+  <main class="mx-auto max-w-2xl px-4 pb-8">
     <p class="text-muted-foreground text-sm">Loading…</p>
   </main>
 {:else}

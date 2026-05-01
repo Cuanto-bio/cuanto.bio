@@ -43,7 +43,7 @@ function formatDate(iso: string) {
 }
 </script>
 
-<main class="mx-auto max-w-2xl px-4 py-8">
+<main class="mx-auto max-w-2xl px-4 pb-8">
   <div class="mb-6 flex items-center justify-between">
     <div class="flex items-center gap-3">
       {#if canFollow}

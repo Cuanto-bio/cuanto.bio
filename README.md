@@ -1,3 +1,7 @@
+# 🚧 Under Construction
+
+Things are still pretty rough, FYI.
+
 # Cuanto.bio
 
 Cuanto.bio is a tool for counting organisms as part of a biolgical survey. Researchers can create protocols that define what organisms surveyors should look for and what information they should collect about them, and surveyors complete surveys that follow those protocols. Think of it like eBird but for everything!
@@ -12,7 +16,7 @@ Cuanto.bio is built on the [AT Protocol](https://atproto.com), which means user 
 
 ## Architecture
 
-The app is a [SvelteKit](https://svelte.dev/docs/kit) application with a PostgreSQL database (w/ Docker Compose config if desired) used for server-side session and sync state. The offline-capable client stores data in IndexedDB (IDB).
+The app is a [SvelteKit](https://svelte.dev/docs/kit) application with a PostgreSQL database (w/ Docker Compose config if desired) used for server-side session and sync state. Signed-in functionality like completing surveys works offline as a Progressive Web App with local data stored in IndexedDB.
 
 ### Route layout
 
@@ -68,13 +72,15 @@ Everything under `/app` is designed to work without a network connection:
 
 ## Deploying to Railway
 
+I'm currently using Railway to host cuanto.bio in case you need a reference setup.
+
 ### Services
 
 Create three Railway services in a project:
 
 1. **PostGIS** — deploy the `postgis/postgis:16-3.4` Docker image
-2. **TAP** — deploy `ghcr.io/bluesky-social/indigo/tap:latest` as a Docker image service
-3. **App** — an empty repo and connect it with the CLI (`railway connect`) or deploy from Github
+2. **tap** — deploy `ghcr.io/bluesky-social/indigo/tap:latest` as a Docker image service
+3. **app** — an empty repo and connect it with the CLI (`railway connect`) or deploy from Github
 
 ### Environment variables
 
@@ -121,8 +127,10 @@ TAP will replay all known records through the webhook on startup. Set `TAP_NO_RE
 
 **Prerequisites:** Node.js 20+, pnpm, Docker
 
+This should get you running at 127.0.0.1:5173, with the caveat that not all PWA functionality will work. For that you'll probably need to use `pnpm build && pnpm preview` and a reverse proxy of some kind to get a public URL with SSL.
+
 ```sh
-cp .env.example .env   # fill in PRIVATE_OAUTH_KEY
+cp .env.example .env
 docker compose up -d
 pnpm install
 pnpm migrate:up
@@ -130,6 +138,11 @@ pnpm dev
 ```
 
 ## Running tests
+
+```sh
+pnpm test:db:setup # once
+pnpm test
+```
 
 ### Unit tests
 
