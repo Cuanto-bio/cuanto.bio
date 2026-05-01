@@ -24,7 +24,10 @@ function toPageData(
   };
 }
 
-export const load: PageLoad = async ({ fetch, params }) => {
+export const load: PageLoad = async ({ fetch, params, parent, url }) => {
+  const { handle: currentUserHandle } = await parent();
+  const updated = url.searchParams.has('updated');
+
   const findCached = async () => {
     const all = await getCachedProtocols();
     return all.find(
@@ -33,7 +36,7 @@ export const load: PageLoad = async ({ fetch, params }) => {
   };
 
   const cachedProtocol = await findCached();
-  if (cachedProtocol) {
+  if (cachedProtocol && !updated) {
     // Update the cache if possible
     fetch(`/api/protocols/${params.handle}/${params.rkey}`)
       .then(async (res) => {
@@ -49,11 +52,14 @@ export const load: PageLoad = async ({ fetch, params }) => {
       cachedProtocol.rkey,
     );
 
-    return toPageData(
-      cachedProtocol,
-      !navigator.onLine,
-      !!cachedFollowedProtocol,
-    );
+    return {
+      ...toPageData(
+        cachedProtocol,
+        !navigator.onLine,
+        !!cachedFollowedProtocol,
+      ),
+      isOwner: cachedProtocol.handle === currentUserHandle,
+    };
   }
 
   try {
@@ -64,11 +70,31 @@ export const load: PageLoad = async ({ fetch, params }) => {
       const cachedFollowedProtocol = await getCachedFollowedProtocolByRkey(
         params.rkey,
       );
-      return { ...data, offline: false, isFollowing: !!cachedFollowedProtocol };
+      return {
+        ...data,
+        offline: false,
+        isFollowing: !!cachedFollowedProtocol,
+        isOwner: data.protocol.handle === currentUserHandle,
+      };
     }
     if (res.status === 404) error(404, 'Protocol not found');
   } catch (err) {
     log.error({ err }, 'Failed to fetch protocol');
+  }
+
+  // updated=1 but network unavailable — fall back to cache
+  if (cachedProtocol) {
+    const cachedFollowedProtocol = await getCachedFollowedProtocolByRkey(
+      cachedProtocol.rkey,
+    );
+    return {
+      ...toPageData(
+        cachedProtocol,
+        !navigator.onLine,
+        !!cachedFollowedProtocol,
+      ),
+      isOwner: cachedProtocol.handle === currentUserHandle,
+    };
   }
 
   error(503, 'Unavailable offline');

@@ -18,6 +18,7 @@ interface Props {
   isFollowing?: boolean;
   canFollow?: boolean;
   offline?: boolean;
+  isOwner?: boolean;
   onAfterFollowChange?: () => void;
 }
 
@@ -27,6 +28,7 @@ let {
   isFollowing: initialIsFollowing,
   canFollow,
   offline = false,
+  isOwner = false,
   onAfterFollowChange = () => {},
 }: Props = $props();
 
@@ -104,9 +106,19 @@ function formatDate(iso: string) {
         {followerCount === 1 ? 'follower' : 'followers'}
       </span>
     </div>
-    <Button href="/app/surveys/new/{protocol.atUri.split('/').at(-1)}">
-      Start Survey
-    </Button>
+    <div class="flex items-center gap-2">
+      {#if isOwner}
+        <Button
+          href="/protocols/{protocol.handle}/{protocol.rkey}/edit"
+          variant="outline"
+        >
+          Edit
+        </Button>
+      {/if}
+      <Button href="/app/surveys/new/{protocol.atUri.split('/').at(-1)}">
+        Start Survey
+      </Button>
+    </div>
   </div>
 
   <div class="text-muted-foreground text-xs mb-1">PROTOCOL</div>

@@ -125,6 +125,31 @@ export async function createRecord(
 }
 
 /**
+ * Updates (or creates) a record on the PDS at a specific rkey.
+ *
+ * When PDS_MOCK=true, returns the expected AT-URI/CID without making any HTTP call.
+ */
+export async function putRecord(
+  did: string,
+  collection: string,
+  rkey: string,
+  record: unknown,
+): Promise<{ uri: string; cid: string }> {
+  if (process.env.PDS_MOCK === 'true') {
+    return { uri: `at://${did}/${collection}/${rkey}`, cid: FAKE_CID };
+  }
+
+  const session = await (await getClient()).restore(did);
+  const resp = await session.fetchHandler('/xrpc/com.atproto.repo.putRecord', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repo: did, collection, rkey, record }),
+  });
+  if (!resp.ok) throw new Error(await resp.text());
+  return resp.json() as Promise<{ uri: string; cid: string }>;
+}
+
+/**
  * Deletes a record from the PDS by AT-URI.
  *
  * When PDS_MOCK=true, does nothing (the record was never really created).

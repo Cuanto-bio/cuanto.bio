@@ -48,6 +48,15 @@ export async function insertTarget(
   `;
 }
 
+export async function deleteTargetsByProtocolUri(
+  protocolUri: string,
+): Promise<{ at_uri: string }[]> {
+  return sql<{ at_uri: string }[]>`
+    DELETE FROM survey_targets WHERE protocol_uri = ${protocolUri}
+    RETURNING at_uri
+  `;
+}
+
 interface ProtocolRow {
   at_uri: string;
   rkey: string;
