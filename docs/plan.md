@@ -79,15 +79,18 @@ FWIW, this was much trickier than anticipated.
 - [x] autocomplete for Atmosphere handle
 - [x] show Bluesky profile pic
 - [x] Merge pending and completed surveys; pending should be a section at the top of the surveys page
-- [ ] brainstorm some nav ideas for mobile because a sidebar is a little weird in that context; we at least need crumbs if not an actual navigator; maybe persistent bottom tabs
+- [x] brainstorm some nav ideas for mobile because a sidebar is a little weird in that context; we at least need crumbs if not an actual navigator; maybe persistent bottom tabs
 
 
 ## Closer to Spec
-- [ ] come up with a plan for allowing the protocol author to specify a controlled list of org.atgeo.place locations surveyors can choose from; this will require an update to the protocol lexicon
-- [ ] gps location should only be asked for when the user asks to use it
-- [ ] survey form UI closer to ebird: taps add but you have to open a modal to subtract or otherwise edit the count
-- [ ] search within targets on the survey form
+- [x] come up with a plan for allowing the protocol author to specify a controlled list of org.atgeo.place locations surveyors can choose from; this will require an update to the protocol lexicon
+- [x] gps location should only be asked for when the user asks to use it
+- [x] survey form UI closer to ebird: taps add but you have to open a modal to subtract or otherwise edit the count
+- [x] search within targets on the survey form; sticky control bar at top of list
 - [ ] allow incidental occurrences: user can enter verbatimVernacularName or verbatimScientificName
+- [ ] survey form should not show nav; you should have to explicitly cancel your survey, not navigate away
+- [ ] separate survey form for entering old surveys that doesn't have the duration timer
+- [ ] support common names in surveyTargets, allow sort and search by common name
 
 
 
@@ -115,3 +118,4 @@ Vague for now, but things that are on my mind.
 1. Consider publishing our own bio.cuanto.surveyProtocol.follow lexicon per atproto DNS guidance (maybe premature until we've worked out the kinks)
 1. Edit surveys
 1. Enter old surveys
+1. Loading state for sign in button
