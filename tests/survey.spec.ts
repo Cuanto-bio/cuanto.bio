@@ -186,6 +186,94 @@ test('clicking Add GPS location button requests geolocation', async ({
   expect(geoRequested).toBe(true);
 });
 
+// ── Target search filter ──────────────────────────────────────────────────────
+
+test.describe('target search filter', () => {
+  test('shows search field when protocol has targets', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await expect(page.getByPlaceholder('Search targets…')).toBeVisible();
+  });
+
+  test('filters taxon targets by scientificName', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.getByPlaceholder('Search targets…').fill('Quercus');
+    await expect(page.getByText('Quercus agrifolia')).toBeVisible();
+    await expect(page.getByText('All birds')).not.toBeVisible();
+  });
+
+  test('filters verbatim targets by verbatimTargetScope', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.getByPlaceholder('Search targets…').fill('bird');
+    await expect(page.getByText('All birds')).toBeVisible();
+    await expect(page.getByText('Quercus agrifolia')).not.toBeVisible();
+  });
+
+  test('clearing the filter restores all targets', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    const searchInput = page.getByPlaceholder('Search targets…');
+    await searchInput.fill('Quercus');
+    await expect(page.getByText('All birds')).not.toBeVisible();
+    await searchInput.clear();
+    await expect(page.getByText('All birds')).toBeVisible();
+    await expect(page.getByText('Quercus agrifolia')).toBeVisible();
+  });
+
+  test('shows no-match message when filter matches nothing', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.getByPlaceholder('Search targets…').fill('zzznomatch');
+    await expect(page.getByText(/No targets match/)).toBeVisible();
+  });
+});
+
+// ── Cancel survey guard ───────────────────────────────────────────────────────
+
+test.describe('cancel survey guard', () => {
+  test('Cancel Survey button opens confirmation dialog', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.getByRole('button', { name: 'Cancel Survey' }).click();
+    await expect(page.getByRole('heading', { name: 'Cancel survey?' })).toBeVisible();
+  });
+
+  test('Keep surveying dismisses the dialog without navigating', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.getByRole('button', { name: 'Cancel Survey' }).click();
+    await page.getByRole('button', { name: 'Keep surveying' }).click();
+    await expect(page.getByRole('heading', { name: 'Cancel survey?' })).not.toBeVisible();
+    await expect(page).toHaveURL(/\/app\/surveys\/new\//);
+  });
+
+  test('confirming cancel navigates back to the protocol page', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.getByRole('button', { name: 'Cancel Survey' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel survey' }).click();
+    await expect(page).toHaveURL(/\/app\/protocols\/user-survey-spec\//);
+  });
+});
+
 // ── Survey page with locationOptions ─────────────────────────────────────────
 
 const LOC_SURVEY_DID = 'did:test:survey-loc-spec';

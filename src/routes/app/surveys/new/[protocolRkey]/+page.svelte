@@ -39,6 +39,15 @@ let sheetOpen = $state(false);
 let selectedTarget = $state<Target | null>(null);
 let editingQuantity = $state('');
 let isWide = $state(false);
+let filterQuery = $state('');
+let cancelDialogOpen = $state(false);
+const filteredTargets = $derived(
+  (protocol?.targets ?? []).filter((t) => {
+    if (!filterQuery.trim()) return true;
+    const label = targetLabel(t.record.scope);
+    return label.toLowerCase().includes(filterQuery.toLowerCase());
+  }),
+);
 
 onMount(() => {
   startedAt = Date.now();
@@ -202,6 +211,15 @@ async function finish() {
   await goto('/app/surveys');
 }
 
+function cancel() {
+  cancelDialogOpen = true;
+}
+
+function confirmCancel() {
+  if (!protocol) return;
+  goto(`/app/protocols/${protocol.handle}/${protocol.rkey}`);
+}
+
 function displayCount(qty: undefined | string | number) {
   if (qty === undefined) return 0;
   if (typeof qty === 'number') return qty.toLocaleString();
@@ -222,7 +240,8 @@ function displayCount(qty: undefined | string | number) {
     <p class="text-muted-foreground text-sm">Loading…</p>
   </main>
 {:else}
-  <main class="mx-auto max-w-2xl px-4 py-8">
+  <main class="mx-auto max-w-2xl px-4">
+    <div class="flex min-h-dvh flex-col pt-8">
     <div class="mb-6 flex items-start justify-between">
       <div>
         <h1 class="text-xl font-semibold">{protocol.record.title}</h1>
@@ -309,44 +328,63 @@ function displayCount(qty: undefined | string | number) {
       {/if}
     </div>
 
-    {#if protocol.targets.length === 0}
-      <p class="text-muted-foreground mb-6 text-sm">No targets defined for this protocol.</p>
-    {:else}
-      <ul class="-mx-4 mb-6 divide-y border-y sm:mx-0 sm:rounded-lg sm:border">
-        {#each protocol.targets as target (target.atUri)}
-          {@const qty = organismQuantities[target.atUri]}
-          {@const hasCount = qty !== undefined && qty !== '' && qty !== '0'}
-          <li class="flex items-center p-2">
-            <button
-              type="button"
-              class="flex flex-1 items-center gap-2 px-4 py-3 text-left"
-              onclick={() => openTargetSheet(target)}
-            >
-              <span class="flex-1 text-sm font-medium">{targetLabel(target.record.scope)}</span>
-            </button>
-            <button
-              type="button"
-              class="mr-3 flex min-h-11 min-w-11 p-2 items-center justify-center rounded-full text-sm font-bold tabular-nums transition-colors
-                {hasCount
-                  ? 'bg-primary text-primary-foreground'
-                  : 'border-2 border-border text-muted-foreground hover:border-primary hover:text-foreground'}"
-              onclick={() => increment(target.atUri)}
-              aria-label="Increase count"
-            >
-              {displayCount(qty)}
-            </button>
-          </li>
-        {/each}
-      </ul>
-    {/if}
+    <div class="flex-1">
+      {#if protocol.targets.length === 0}
+        <p class="text-muted-foreground mb-6 text-sm">No targets defined for this protocol.</p>
+      {:else}
+        <div class="sticky top-0 z-10 -mx-4 bg-background px-4 py-2 sm:mx-0">
+          <Input
+            type="search"
+            placeholder="Search targets…"
+            bind:value={filterQuery}
+          />
+        </div>
+        {#if filteredTargets.length === 0}
+          <p class="text-muted-foreground mb-6 mt-2 text-sm">No targets match "{filterQuery}".</p>
+        {:else}
+          <ul class="-mx-4 mb-6 divide-y border-y sm:mx-0 sm:rounded-lg sm:border">
+            {#each filteredTargets as target (target.atUri)}
+              {@const qty = organismQuantities[target.atUri]}
+              {@const hasCount = qty !== undefined && qty !== '' && qty !== '0'}
+              <li class="flex items-center p-2">
+                <button
+                  type="button"
+                  class="flex flex-1 items-center gap-2 px-4 py-3 text-left"
+                  onclick={() => openTargetSheet(target)}
+                >
+                  <span class="flex-1 text-sm font-medium">{targetLabel(target.record.scope)}</span>
+                </button>
+                <button
+                  type="button"
+                  class="mr-3 flex min-h-11 min-w-11 p-2 items-center justify-center rounded-full text-sm font-bold tabular-nums transition-colors
+                    {hasCount
+                      ? 'bg-primary text-primary-foreground'
+                      : 'border-2 border-border text-muted-foreground hover:border-primary hover:text-foreground'}"
+                  onclick={() => increment(target.atUri)}
+                  aria-label="Increase count"
+                >
+                  {displayCount(qty)}
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      {/if}
+    </div>
 
     {#if error}
-      <p class="text-destructive mb-4 text-sm">{error}</p>
+      <p class="text-destructive mb-2 text-sm">{error}</p>
     {/if}
 
-    <Button onclick={finish} disabled={submitting} class="w-full">
-      {submitting ? 'Saving…' : 'Finish Survey'}
-    </Button>
+    <div class="sticky bottom-0 -mx-4 border-t bg-background px-4 py-4 sm:mx-0">
+      <div class="flex gap-2">
+        <Button variant="outline" class="flex-1" onclick={cancel}>Cancel Survey</Button>
+        <Button class="flex-1" onclick={finish} disabled={submitting}>
+          {submitting ? 'Saving…' : 'Finish Survey'}
+        </Button>
+      </div>
+    </div>
+    </div>
   </main>
 
   {#snippet occurrenceForm()}
@@ -380,6 +418,23 @@ function displayCount(qty: undefined | string | number) {
       </div>
     </div>
   {/snippet}
+
+  <Dialog.Root bind:open={cancelDialogOpen}>
+    <Dialog.Content>
+      <Dialog.Header>
+        <Dialog.Title>Cancel survey?</Dialog.Title>
+        <Dialog.Description>Your progress will be lost.</Dialog.Description>
+      </Dialog.Header>
+      <div class="flex gap-2">
+        <Button variant="outline" class="flex-1" onclick={() => (cancelDialogOpen = false)}>
+          Keep surveying
+        </Button>
+        <Button variant="destructive" class="flex-1" onclick={confirmCancel}>
+          Cancel survey
+        </Button>
+      </div>
+    </Dialog.Content>
+  </Dialog.Root>
 
   {#if isWide}
     <Dialog.Root bind:open={sheetOpen}>
