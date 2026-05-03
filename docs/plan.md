@@ -87,10 +87,11 @@ FWIW, this was much trickier than anticipated.
 - [x] gps location should only be asked for when the user asks to use it
 - [x] survey form UI closer to ebird: taps add but you have to open a modal to subtract or otherwise edit the count
 - [x] search within targets on the survey form; sticky control bar at top of list
-- [ ] allow incidental occurrences: user can enter verbatimVernacularName or verbatimScientificName
-- [ ] survey form should not show nav; you should have to explicitly cancel your survey, not navigate away
-- [ ] separate survey form for entering old surveys that doesn't have the duration timer
 - [ ] support common names in surveyTargets, allow sort and search by common name
+- [ ] survey form should not show nav; you should have to explicitly cancel your survey, not navigate away
+- [ ] allow incidental occurrences: user can enter verbatimVernacularName or verbatimScientificName
+- [ ] separate survey form for entering old surveys that doesn't have the duration timer
+
 
 
 
@@ -109,6 +110,7 @@ Researchers are surveyors will both be interested in the outcomes of all the sur
 ## Future Plans
 Vague for now, but things that are on my mind.
 
+1. auth improvement: add a name to the client, request granular permissions
 1. Users - attempt to populate profile info w/ bsky profiles
 1. this might need to happen after converting to a PWA, and maybe after recording a track, but occurences should record the coordinates when the user changes the count from 0 to 1, and remove them before submitting if the count is 0, which would record the exact location of the first occurrence
 1. Sync local ATGeo lexicon copies with upstream: `lexicons/org/atgeo/place.json` has two

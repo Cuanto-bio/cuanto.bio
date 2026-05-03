@@ -249,7 +249,9 @@ test.describe('cancel survey guard', () => {
   }) => {
     await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
     await page.getByRole('button', { name: 'Cancel Survey' }).click();
-    await expect(page.getByRole('heading', { name: 'Cancel survey?' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Cancel survey?' }),
+    ).toBeVisible();
   });
 
   test('Keep surveying dismisses the dialog without navigating', async ({
@@ -259,7 +261,9 @@ test.describe('cancel survey guard', () => {
     await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
     await page.getByRole('button', { name: 'Cancel Survey' }).click();
     await page.getByRole('button', { name: 'Keep surveying' }).click();
-    await expect(page.getByRole('heading', { name: 'Cancel survey?' })).not.toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Cancel survey?' }),
+    ).not.toBeVisible();
     await expect(page).toHaveURL(/\/app\/surveys\/new\//);
   });
 
@@ -269,7 +273,10 @@ test.describe('cancel survey guard', () => {
   }) => {
     await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
     await page.getByRole('button', { name: 'Cancel Survey' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Cancel survey' }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Cancel survey' })
+      .click();
     await expect(page).toHaveURL(/\/app\/protocols\/user-survey-spec\//);
   });
 });

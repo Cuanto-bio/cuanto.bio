@@ -31,7 +31,8 @@ let latitude = $state<string | null>(null);
 let longitude = $state<string | null>(null);
 let locationName = $state('');
 let submitting = $state(false);
-let error = $state<string | null>(null);
+let locationError = $state<string | null>(null);
+let locationFieldEl = $state<HTMLElement | null>(null);
 let gpsLoading = $state(false);
 let locationPickerOpen = $state(false);
 
@@ -149,6 +150,7 @@ function requestGps() {
 }
 
 function selectLocation(option: AtgeoPlaceMain) {
+  locationError = null;
   locationName = option.name;
   latitude = null;
   longitude = null;
@@ -170,11 +172,12 @@ function selectLocation(option: AtgeoPlaceMain) {
 async function finish() {
   if (!protocol) return;
   if (!locationName.trim()) {
-    error = 'Location name is required';
+    locationError = 'Location name is required';
+    locationFieldEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
   submitting = true;
-  error = null;
+  locationError = null;
 
   const occurrences = protocol.targets.map((t) => ({
     surveyTargetUri: t.atUri,
@@ -252,7 +255,7 @@ function displayCount(qty: undefined | string | number) {
       <div class="font-mono text-3xl tabular-nums">{formatElapsed(elapsedSeconds)}</div>
     </div>
 
-    <div class="mb-6 flex flex-col gap-2">
+    <div class="mb-6 flex flex-col gap-2" bind:this={locationFieldEl}>
       {#if (protocol.record.locationOptions?.length ?? 0) > LOCATION_COMBOBOX_THRESHOLD}
         <div class="flex flex-col gap-2">
           <Label>Location</Label>
@@ -316,6 +319,9 @@ function displayCount(qty: undefined | string | number) {
           bind:value={locationName}
           required
           placeholder="e.g. Mission Dolores Park"
+          oninput={() => (locationError = null)}
+          aria-invalid={locationError ? 'true' : undefined}
+          aria-describedby={locationError ? 'location-error' : undefined}
         />
         <div class="flex items-center gap-2">
           <Button type="button" variant="outline" size="sm" onclick={requestGps} disabled={gpsLoading}>
@@ -325,6 +331,9 @@ function displayCount(qty: undefined | string | number) {
             <span class="text-muted-foreground text-xs">{latitude}, {longitude}</span>
           {/if}
         </div>
+      {/if}
+      {#if locationError}
+        <p id="location-error" class="text-destructive text-sm">{locationError}</p>
       {/if}
     </div>
 
@@ -371,10 +380,6 @@ function displayCount(qty: undefined | string | number) {
         {/if}
       {/if}
     </div>
-
-    {#if error}
-      <p class="text-destructive mb-2 text-sm">{error}</p>
-    {/if}
 
     <div class="sticky bottom-0 -mx-4 border-t bg-background px-4 py-4 sm:mx-0">
       <div class="flex gap-2">
