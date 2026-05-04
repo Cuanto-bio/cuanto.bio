@@ -1,8 +1,9 @@
 <script lang="ts">
 import Autocomplete from '$lib/components/Autocomplete.svelte';
+import Button from '$lib/components/Button.svelte';
+import Form from '$lib/components/Form.svelte';
 import FormSection from '$lib/components/FormSection.svelte';
 import GeoMap from '$lib/components/GeoMap.svelte';
-import { Button } from '$lib/components/ui/button';
 import * as Card from '$lib/components/ui/card';
 import { Input } from '$lib/components/ui/input';
 import { Label } from '$lib/components/ui/label';
@@ -315,7 +316,7 @@ function removeAddress(i: number, j: number) {
         Editing a protocol requires an internet connection. Please reconnect and try again.
       </p>
     {:else}
-    <form method="POST" class="flex flex-col gap-6">
+    <Form method="POST" class="flex flex-col gap-6">
       <div class="flex flex-col gap-2">
         <Label for="title">Title</Label>
         <Input
@@ -603,7 +604,7 @@ function removeAddress(i: number, j: number) {
       <input type="hidden" name="locationOptions" value={placesJson()} />
 
       <Button type="submit">{protocol ? 'Save changes' : 'Create protocol'}</Button>
-    </form>
+    </Form>
     {/if}
   </Card.Content>
 </Card.Root>

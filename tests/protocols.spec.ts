@@ -352,11 +352,15 @@ test.describe('protocol editing', () => {
     await page.goto(`/protocols/${EDIT_HANDLE}/${protocolRkey}/edit`);
 
     await page.fill('[name="title"]', 'Updated Protocol Title');
-    await page.click('text=Save changes');
 
+    await page.click('text=Save changes');
     await expect(page).toHaveURL(
-      new RegExp(`/protocols/${EDIT_HANDLE}/${protocolRkey}`),
+      `/app/protocols/${EDIT_HANDLE}/${protocolRkey}`,
     );
+    await expect(
+      page.getByRole('heading', { name: 'Updated Protocol Title' }),
+    ).toBeVisible();
+
     const [row] = await sql<{ record: Record<string, unknown> }[]>`
       SELECT record FROM survey_protocols WHERE did = ${EDIT_DID} LIMIT 1
     `;
@@ -385,7 +389,7 @@ test.describe('protocol editing', () => {
 
     await page.click('text=Save changes');
     await expect(page).toHaveURL(
-      new RegExp(`/protocols/${EDIT_HANDLE}/${protocolRkey}`),
+      `/app/protocols/${EDIT_HANDLE}/${protocolRkey}`,
     );
 
     const targets = await sql<{ record: Record<string, unknown> }[]>`

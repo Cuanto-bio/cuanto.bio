@@ -34,3 +34,6 @@ playwright-report
 test-results
 .playwright-cli
 .playwright-mcp
+
+*.sublime-project
+*.sublime-workspace

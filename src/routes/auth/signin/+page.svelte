@@ -1,6 +1,7 @@
 <script lang="ts">
 import Autocomplete from '$lib/components/Autocomplete.svelte';
-import { Button } from '$lib/components/ui/button';
+import Button from '$lib/components/Button.svelte';
+import Form from '$lib/components/Form.svelte';
 import * as Card from '$lib/components/ui/card';
 
 interface Actor {
@@ -50,7 +51,7 @@ $effect(() => {
       <Card.Description>Enter your Atmosphere handle to continue.</Card.Description>
     </Card.Header>
     <Card.Content>
-      <form method="POST" class="flex flex-col gap-4">
+      <Form method="POST" class="flex flex-col gap-4">
         <Autocomplete
           type="text"
           name="handle"
@@ -78,7 +79,7 @@ $effect(() => {
           {/snippet}
         </Autocomplete>
         <Button type="submit">Sign in</Button>
-      </form>
+      </Form>
     </Card.Content>
     <Card.Footer>
       <Card.Description>

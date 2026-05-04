@@ -121,3 +121,4 @@ Vague for now, but things that are on my mind.
 1. Edit surveys
 1. Enter old surveys
 1. Loading state for sign in button
+1. Don't reload the page when the PWA is out of date; prompt the user instead

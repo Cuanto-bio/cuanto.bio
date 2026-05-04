@@ -3,7 +3,7 @@ import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
 import { onMount } from 'svelte';
 import { goto } from '$app/navigation';
 import { page } from '$app/state';
-import { Button } from '$lib/components/ui/button';
+import Button from '$lib/components/Button.svelte';
 import * as Command from '$lib/components/ui/command';
 import * as Dialog from '$lib/components/ui/dialog';
 import { Input } from '$lib/components/ui/input';

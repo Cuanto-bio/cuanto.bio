@@ -131,6 +131,6 @@ export const actions: Actions = {
       }
     }
 
-    redirect(302, `/protocols/${handle}/${rkey}?updated=1`);
+    redirect(302, `/app/protocols/${handle}/${rkey}?updated=1`);
   },
 };

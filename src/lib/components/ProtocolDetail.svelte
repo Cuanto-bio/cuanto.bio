@@ -1,9 +1,8 @@
 <script lang="ts">
 import MinusIcon from '@lucide/svelte/icons/minus';
 import PlusIcon from '@lucide/svelte/icons/plus';
-import { enhance } from '$app/forms';
-import { Button } from '$lib/components/ui/button';
-import * as Card from '$lib/components/ui/card';
+import Button from '$lib/components/Button.svelte';
+import Form from '$lib/components/Form.svelte';
 import type { Main as LocationAddress } from '$lib/lexicons/community/lexicon/location/address.defs';
 import type { Main as LocationBbox } from '$lib/lexicons/community/lexicon/location/bbox.defs';
 import type { Main as LocationGeo } from '$lib/lexicons/community/lexicon/location/geo.defs';
@@ -48,10 +47,10 @@ function formatDate(iso: string) {
     <div class="flex items-center gap-3">
       {#if canFollow}
         {#if isFollowing}
-          <form
+          <Form
             method="POST"
             action="?/unfollow"
-            use:enhance={() => {
+            onEnhance={() => {
               const ogFollowerCount = followerCount;
               isFollowing = false;
               followerCount = Math.max(0, followerCount - 1);
@@ -71,12 +70,12 @@ function formatDate(iso: string) {
               <MinusIcon />
               Unfollow
             </Button>
-          </form>
+          </Form>
         {:else}
-          <form
+          <Form
             method="POST"
             action="?/follow"
-            use:enhance={() => {
+            onEnhance={() => {
               const ogFollowerCount = followerCount;
               isFollowing = true;
               followerCount += 1;
@@ -96,7 +95,7 @@ function formatDate(iso: string) {
               <PlusIcon />
               Follow this protocol
             </Button>
-          </form>
+          </Form>
         {/if}
       {:else if offline}
         <span class="text-muted-foreground text-xs">(follow requires connection)</span>
