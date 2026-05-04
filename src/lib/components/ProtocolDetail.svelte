@@ -1,5 +1,8 @@
 <script lang="ts">
+import ClipboardClockIcon from '@lucide/svelte/icons/clipboard-clock';
+import ClipboardPlusIcon from '@lucide/svelte/icons/clipboard-plus';
 import MinusIcon from '@lucide/svelte/icons/minus';
+import PencilIcon from '@lucide/svelte/icons/pencil';
 import PlusIcon from '@lucide/svelte/icons/plus';
 import Button from '$lib/components/Button.svelte';
 import Form from '$lib/components/Form.svelte';
@@ -44,85 +47,103 @@ function formatDate(iso: string) {
 
 <main class="mx-auto max-w-2xl px-4 pb-8">
   <div class="mb-6 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-      {#if canFollow}
-        {#if isFollowing}
-          <Form
-            method="POST"
-            action="?/unfollow"
-            onEnhance={() => {
-              const ogFollowerCount = followerCount;
-              isFollowing = false;
-              followerCount = Math.max(0, followerCount - 1);
-              return ({ result }) => {
-                if (result.type === 'success') {
-                  isFollowing = false;
-                  followerCount = Math.max(0, ogFollowerCount - 1);
-                  onAfterFollowChange();
-                } else{
-                  isFollowing = true;
-                  followerCount = ogFollowerCount;
-                }
-              };
-            }}
-          >
-            <Button type="submit" variant="outline">
-              <MinusIcon />
-              Unfollow
-            </Button>
-          </Form>
-        {:else}
-          <Form
-            method="POST"
-            action="?/follow"
-            onEnhance={() => {
-              const ogFollowerCount = followerCount;
-              isFollowing = true;
-              followerCount += 1;
-              return ({ result }) => {
-                if (result.type === 'success') {
-                  isFollowing = true;
-                  followerCount = ogFollowerCount + 1;
-                  onAfterFollowChange();
-                } else {
-                  isFollowing = false;
-                  followerCount = ogFollowerCount;
-                }
-              };
-            }}
-          >
-            <Button type="submit" variant="outline">
-              <PlusIcon />
-              Follow this protocol
-            </Button>
-          </Form>
-        {/if}
-      {:else if offline}
-        <span class="text-muted-foreground text-xs">(follow requires connection)</span>
-      {/if}
-      <span class="text-muted-foreground text-sm">
-        {followerCount}
-        {followerCount === 1 ? 'follower' : 'followers'}
-      </span>
-    </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center justify-between gap-2 w-full">
       {#if isOwner}
         <Button
           href="/protocols/{protocol.handle}/{protocol.rkey}/edit"
           variant="outline"
         >
+          <PencilIcon />
           Edit
         </Button>
       {/if}
-      <Button href="/app/surveys/new/{protocol.atUri.split('/').at(-1)}">
-        Start Survey
-      </Button>
+      <div class="flex gap-2">
+        <Button
+          href="/app/surveys/new/{protocol.atUri.split('/').at(-1)}?past=1"
+          variant="outline"
+          title="Enter past survey data"
+        >
+          <ClipboardPlusIcon />
+          <span class="sm:hidden">Add</span>
+          <span class="hidden sm:inline">Add Past Survey</span>
+        </Button>
+        <Button
+          href="/app/surveys/new/{protocol.atUri.split('/').at(-1)}"
+          title="Start a field survey now"
+        >
+          <ClipboardClockIcon />
+          <span class="sm:hidden">Start</span>
+          <span class="hidden sm:inline">Start Survey</span>
+        </Button>
+      </div>
     </div>
   </div>
 
   <div class="text-muted-foreground text-xs mb-1">PROTOCOL</div>
   <h1>{protocol.record.title}</h1>
   <p>{protocol.record.description}</p>
+
+  <div class="flex items-center gap-3">
+    {#if canFollow}
+      {#if isFollowing}
+        <Form
+          method="POST"
+          action="?/unfollow"
+          onEnhance={() => {
+            const ogFollowerCount = followerCount;
+            isFollowing = false;
+            followerCount = Math.max(0, followerCount - 1);
+            return ({ result }) => {
+              if (result.type === 'success') {
+                isFollowing = false;
+                followerCount = Math.max(0, ogFollowerCount - 1);
+                onAfterFollowChange();
+              } else{
+                isFollowing = true;
+                followerCount = ogFollowerCount;
+              }
+            };
+          }}
+        >
+          <Button type="submit" variant="outline">
+            <MinusIcon />
+            Unfollow
+          </Button>
+        </Form>
+      {:else}
+        <Form
+          method="POST"
+          action="?/follow"
+          onEnhance={() => {
+            const ogFollowerCount = followerCount;
+            isFollowing = true;
+            followerCount += 1;
+            return ({ result }) => {
+              if (result.type === 'success') {
+                isFollowing = true;
+                followerCount = ogFollowerCount + 1;
+                onAfterFollowChange();
+              } else {
+                isFollowing = false;
+                followerCount = ogFollowerCount;
+              }
+            };
+          }}
+        >
+          <Button type="submit" variant="outline">
+            <PlusIcon />
+            Follow this protocol
+          </Button>
+        </Form>
+      {/if}
+    {:else if offline}
+      <span class="text-muted-foreground text-xs">(follow requires connection)</span>
+    {/if}
+    <span class="text-muted-foreground text-sm">
+      {followerCount}
+      {followerCount === 1 ? 'follower' : 'followers'}
+    </span>
+  </div>
 
   <Table.Root class="my-2">
     <Table.Body>

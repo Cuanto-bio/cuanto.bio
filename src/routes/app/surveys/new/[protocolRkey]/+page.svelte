@@ -19,13 +19,25 @@ import {
 } from '$lib/offline/db';
 import { uploadPendingSurvey } from '$lib/offline/upload';
 import { LOCATION_COMBOBOX_THRESHOLD } from '$lib/places';
-import { calcElapsed, formatElapsed } from '$lib/surveys';
+import {
+  buildSurveyTiming,
+  calcElapsed,
+  formatElapsed,
+  validatePastTiming,
+} from '$lib/surveys';
 
 let protocol = $state<CachedProtocol | null>(null);
 let notFound = $state(false);
 
+const mode = $derived(
+  page.url.searchParams.get('past') === '1' ? 'past' : 'now',
+);
 let startedAt = $state(0);
 let elapsedSeconds = $state(0);
+let pastDate = $state('');
+let pastDurationMinutes = $state('');
+let pastDateError = $state<string | null>(null);
+let pastDurationError = $state<string | null>(null);
 let organismQuantities = $state<Record<string, string>>({});
 let latitude = $state<string | null>(null);
 let longitude = $state<string | null>(null);
@@ -176,14 +188,35 @@ async function finish() {
     locationFieldEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
+  if (mode === 'past') {
+    const { dateError, durationError } = validatePastTiming(
+      pastDate,
+      pastDurationMinutes,
+    );
+    if (dateError || durationError) {
+      pastDateError = dateError;
+      pastDurationError = durationError;
+      return;
+    }
+  }
   submitting = true;
   locationError = null;
+  pastDateError = null;
+  pastDurationError = null;
 
   const occurrences = protocol.targets.map((t) => ({
     surveyTargetUri: t.atUri,
     taxonID: targetTaxonID(t.record.scope),
     organismQuantity: organismQuantities[t.atUri] || '0',
   }));
+
+  const { eventDate, eventDurationValue } = buildSurveyTiming(
+    mode,
+    startedAt,
+    elapsedSeconds,
+    pastDate,
+    pastDurationMinutes,
+  );
 
   const survey = {
     protocolUri: protocol.atUri,
@@ -192,8 +225,8 @@ async function finish() {
     locationName: locationName.trim(),
     latitude,
     longitude,
-    eventDate: new Date(startedAt).toISOString(),
-    eventDurationValue: Math.max(1, Math.round(elapsedSeconds / 60)),
+    eventDate,
+    eventDurationValue,
     eventDurationUnit: 'minutes',
     occurrences,
     createdAt: Date.now(),
@@ -252,8 +285,45 @@ function displayCount(qty: undefined | string | number) {
           ← Protocol
         </a>
       </div>
-      <div class="font-mono text-3xl tabular-nums">{formatElapsed(elapsedSeconds)}</div>
+      {#if mode === 'now'}
+        <div class="font-mono text-3xl tabular-nums">{formatElapsed(elapsedSeconds)}</div>
+      {/if}
     </div>
+    {#if mode === 'past'}
+      <div class="mb-6 flex flex-col gap-4">
+        <div class="flex flex-col gap-2">
+          <Label for="pastDate">Survey date &amp; time</Label>
+          <Input
+            id="pastDate"
+            type="datetime-local"
+            bind:value={pastDate}
+            max={new Date().toISOString().slice(0, 16)}
+            oninput={() => (pastDateError = null)}
+            aria-invalid={pastDateError ? 'true' : undefined}
+            aria-describedby={pastDateError ? 'past-date-error' : undefined}
+          />
+          {#if pastDateError}
+            <p id="past-date-error" class="text-destructive text-sm">{pastDateError}</p>
+          {/if}
+        </div>
+        <div class="flex flex-col gap-2">
+          <Label for="pastDuration">Duration (minutes)</Label>
+          <Input
+            id="pastDuration"
+            type="number"
+            min="1"
+            bind:value={pastDurationMinutes}
+            placeholder="e.g. 45"
+            oninput={() => (pastDurationError = null)}
+            aria-invalid={pastDurationError ? 'true' : undefined}
+            aria-describedby={pastDurationError ? 'past-duration-error' : undefined}
+          />
+          {#if pastDurationError}
+            <p id="past-duration-error" class="text-destructive text-sm">{pastDurationError}</p>
+          {/if}
+        </div>
+      </div>
+    {/if}
 
     <div class="mb-6 flex flex-col gap-2" bind:this={locationFieldEl}>
       {#if (protocol.record.locationOptions?.length ?? 0) > LOCATION_COMBOBOX_THRESHOLD}

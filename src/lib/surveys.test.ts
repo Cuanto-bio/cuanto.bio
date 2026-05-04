@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { calcElapsed, formatElapsed } from './surveys';
+import {
+  buildSurveyTiming,
+  calcElapsed,
+  formatElapsed,
+  validatePastTiming,
+} from './surveys';
 
 describe('calcElapsed', () => {
   beforeEach(() => {
@@ -39,5 +44,77 @@ describe('formatElapsed', () => {
 
   test('formats 3600 seconds as 60:00', () => {
     expect(formatElapsed(3600)).toBe('60:00');
+  });
+});
+
+describe('validatePastTiming', () => {
+  test('returns no errors when date and duration are valid', () => {
+    expect(validatePastTiming('2025-10-12T14:30', '45')).toEqual({
+      dateError: null,
+      durationError: null,
+    });
+  });
+
+  test('returns dateError when pastDate is empty', () => {
+    const { dateError } = validatePastTiming('', '45');
+    expect(dateError).not.toBeNull();
+  });
+
+  test('returns durationError when pastDurationMinutes is empty', () => {
+    const { durationError } = validatePastTiming('2025-10-12T14:30', '');
+    expect(durationError).not.toBeNull();
+  });
+
+  test('returns durationError when duration is zero', () => {
+    const { durationError } = validatePastTiming('2025-10-12T14:30', '0');
+    expect(durationError).not.toBeNull();
+  });
+
+  test('returns durationError when duration is not a number', () => {
+    const { durationError } = validatePastTiming('2025-10-12T14:30', 'abc');
+    expect(durationError).not.toBeNull();
+  });
+});
+
+describe('buildSurveyTiming', () => {
+  const startedAt = new Date('2025-10-12T10:00:00Z').getTime();
+
+  test('now mode uses startedAt for eventDate', () => {
+    const { eventDate } = buildSurveyTiming('now', startedAt, 300, '', '');
+    expect(eventDate).toBe(new Date(startedAt).toISOString());
+  });
+
+  test('now mode rounds elapsedSeconds to minutes, minimum 1', () => {
+    expect(
+      buildSurveyTiming('now', startedAt, 0, '', '').eventDurationValue,
+    ).toBe(1);
+    expect(
+      buildSurveyTiming('now', startedAt, 90, '', '').eventDurationValue,
+    ).toBe(2);
+    expect(
+      buildSurveyTiming('now', startedAt, 300, '', '').eventDurationValue,
+    ).toBe(5);
+  });
+
+  test('past mode uses pastDate for eventDate', () => {
+    const { eventDate } = buildSurveyTiming(
+      'past',
+      startedAt,
+      0,
+      '2025-08-01T09:00',
+      '',
+    );
+    expect(eventDate).toBe(new Date('2025-08-01T09:00').toISOString());
+  });
+
+  test('past mode uses pastDurationMinutes for eventDurationValue', () => {
+    const { eventDurationValue } = buildSurveyTiming(
+      'past',
+      startedAt,
+      0,
+      '2025-08-01T09:00',
+      '45',
+    );
+    expect(eventDurationValue).toBe(45);
   });
 });
