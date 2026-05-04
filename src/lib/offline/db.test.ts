@@ -12,10 +12,12 @@ import {
   getCachedSurveyByRkey,
   getCachedSurveys,
   getIdbUser,
+  getPendingSurveyById,
   getPendingSurveys,
   saveIdbUser,
   savePendingSurvey,
   setCachedFollowedProtocols,
+  updatePendingSurvey,
 } from './db';
 
 // All tests in this file share one in-memory IDB (singleton _db). Each test
@@ -214,6 +216,7 @@ const pendingSurvey1: Omit<import('./db').PendingSurvey, 'id'> = {
     },
   ],
   createdAt: Date.now(),
+  complete: true,
 };
 
 describe('pending-surveys store', () => {
@@ -235,6 +238,57 @@ describe('pending-surveys store', () => {
     await deletePendingSurvey(id);
     const all = await getPendingSurveys();
     expect(all.find((s) => s.id === id)).toBeUndefined();
+  });
+
+  test('savePendingSurvey stores complete: false for in-progress surveys', async () => {
+    const id = await savePendingSurvey({ ...pendingSurvey1, complete: false });
+    const all = await getPendingSurveys();
+    const saved = all.find((s) => s.id === id);
+    expect(saved?.complete).toBe(false);
+    await deletePendingSurvey(id);
+  });
+
+  test('getPendingSurveyById returns the matching survey', async () => {
+    const id = await savePendingSurvey(pendingSurvey1);
+    const saved = await getPendingSurveyById(id);
+    expect(saved?.id).toBe(id);
+    expect(saved?.locationName).toBe(pendingSurvey1.locationName);
+    await deletePendingSurvey(id);
+  });
+
+  test('getPendingSurveyById returns undefined for unknown id', async () => {
+    const result = await getPendingSurveyById(99999);
+    expect(result).toBeUndefined();
+  });
+
+  test('updatePendingSurvey updates a record in place', async () => {
+    const id = await savePendingSurvey({ ...pendingSurvey1, complete: false });
+    const saved = await getPendingSurveyById(id);
+    if (saved?.id == null) throw new Error('expected saved record with id');
+    await updatePendingSurvey({
+      ...saved,
+      id: saved.id,
+      complete: true,
+      locationName: 'Updated Field',
+    });
+    const updated = await getPendingSurveyById(id);
+    expect(updated?.complete).toBe(true);
+    expect(updated?.locationName).toBe('Updated Field');
+    expect(updated?.id).toBe(id);
+    await deletePendingSurvey(id);
+  });
+
+  test('getPendingSurveys defaults complete to true for legacy records without the field', async () => {
+    // Simulate a pre-complete-field record by casting away the type
+    const legacy = { ...pendingSurvey1 } as Record<string, unknown>;
+    delete legacy.complete;
+    const id = await savePendingSurvey(
+      legacy as Omit<import('./db').PendingSurvey, 'id'>,
+    );
+    const all = await getPendingSurveys();
+    const migrated = all.find((s) => s.id === id);
+    expect(migrated?.complete).toBe(true);
+    await deletePendingSurvey(id);
   });
 });
 

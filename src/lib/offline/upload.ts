@@ -16,6 +16,7 @@ export async function uploadPendingSurvey(
 export async function uploadAllPending(): Promise<void> {
   const pending = await getPendingSurveys();
   for (const survey of pending) {
+    if (!survey.complete) continue;
     try {
       await uploadPendingSurvey(survey);
       if (survey.id != null) await deletePendingSurvey(survey.id);

@@ -23,7 +23,7 @@ let { title, optional = false, children }: Props = $props();
     p-4
   `}
 >
-  <legend class="flex w-full items-center justify-between float-left w-full">
+  <legend class="flex w-full items-center justify-between float-left">
     <span class="text-muted-foreground text-xs font-semibold tracking-wider">{title}</span>
     {#if optional}
       <span class="text-muted-foreground text-xs">optional</span>

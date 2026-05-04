@@ -14,7 +14,8 @@
 - Branch names: start with the issue number, e.g. `123-fix-broken-embedded-photos`
 - ALWAYS run `pnpm check` after changes and run `pnpm format` to address biome issues
 - ALWAYS run `pnpm test` after major changes to test for regressions
-- use playwrite-cli to control Playwright to verify frontend work
+- use playwright-cli to control Playwright to verify frontend work for signed out states
+- write integration tests to verify frontend work for signed in states
 - migrations should prefixed with YYYYMMDDXXX including the date and an integer to increment for that day, e.g. `20260415001_create_something.up.sql`
 - run integration tests with `pnpm test:integration`
 - run PWA integration tests with `pnpm test:pwa`

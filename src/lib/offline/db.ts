@@ -67,6 +67,7 @@ export interface PendingSurvey {
     organismQuantity?: string;
   }[];
   createdAt: number;
+  complete: boolean;
 }
 
 export interface IdbUser {
@@ -170,6 +171,20 @@ export async function savePendingSurvey(
   return db.add('pending-surveys', survey as PendingSurvey);
 }
 
+export async function updatePendingSurvey(
+  survey: PendingSurvey & { id: number },
+): Promise<void> {
+  const db = await getDB();
+  await db.put('pending-surveys', survey);
+}
+
+export async function getPendingSurveyById(
+  id: number,
+): Promise<PendingSurvey | undefined> {
+  const db = await getDB();
+  return db.get('pending-surveys', id);
+}
+
 // Shape of the PendingSurvey Occurrence in db v7
 type LegacyPendingSurveyOccurrence7 = {
   surveyTargetUri: string;
@@ -179,17 +194,24 @@ type LegacyPendingSurveyOccurrence7 = {
 };
 
 function migratePendingSurvey(survey: PendingSurvey): PendingSurvey {
-  // Lazy handling of data migration from 7 to 8
   const occs = survey.occurrences as LegacyPendingSurveyOccurrence7[];
-  if (!occs.some((o) => typeof o.count === 'number')) return survey;
+  // Lazy migration v7→v8: occurrence count field → organismQuantity
+  const needsOccMigration = occs.some((o) => typeof o.count === 'number');
+  // Lazy migration: records saved before the complete field was added default to true
+  const needsCompleteMigration =
+    (survey as { complete?: boolean }).complete === undefined;
+  if (!needsOccMigration && !needsCompleteMigration) return survey;
   return {
     ...survey,
-    occurrences: occs.map(({ count, ...rest }) => ({
-      ...rest,
-      organismQuantity:
-        rest.organismQuantity ??
-        (count !== undefined ? String(count) : undefined),
-    })),
+    complete: needsCompleteMigration ? true : survey.complete,
+    occurrences: needsOccMigration
+      ? occs.map(({ count, ...rest }) => ({
+          ...rest,
+          organismQuantity:
+            rest.organismQuantity ??
+            (count !== undefined ? String(count) : undefined),
+        }))
+      : survey.occurrences,
   };
 }
 

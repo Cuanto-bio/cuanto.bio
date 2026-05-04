@@ -21,6 +21,12 @@ async function cacheAndOpenNewSurvey(
   await page.waitForSelector('text=Finish Survey', { state: 'visible' });
 }
 
+// Opens the finish confirmation dialog and clicks Finish to submit.
+async function confirmFinishSurvey(page: import('@playwright/test').Page) {
+  await page.getByRole('button', { name: 'Finish Survey' }).click();
+  await page.getByRole('button', { name: 'Finish', exact: true }).click();
+}
+
 test('can create a survey and see it in the surveys list', async ({
   page,
   protocolRkey,
@@ -31,7 +37,7 @@ test('can create a survey and see it in the surveys list', async ({
   await page.fill(placeholder, 'Integration Test Park');
   await page.locator('[aria-label="Increase count"]').first().click();
   await page.locator('[aria-label="Increase count"]').first().click();
-  await page.click('text=Finish Survey');
+  await confirmFinishSurvey(page);
 
   await expect(page).toHaveURL(/\/app\/surveys\/user-survey-spec\/\w+/);
   await expect(page.getByText('Integration Test Park')).toBeVisible();
@@ -43,7 +49,7 @@ test('survey detail page shows occurrences', async ({ page, protocolRkey }) => {
   const placeholder = '[placeholder="e.g. Mission Dolores Park"]';
   await page.fill(placeholder, 'Detail Test Site');
   await page.locator('[aria-label="Increase count"]').nth(1).click();
-  await page.click('text=Finish Survey');
+  await confirmFinishSurvey(page);
 
   await expect(page).toHaveURL(/\/app\/surveys\/user-survey-spec\/\w+/);
   await expect(page.getByText('All birds')).toBeVisible();
@@ -77,7 +83,7 @@ test('can create survey from protocol created by different user', async ({
   const placeholder = '[placeholder="e.g. Mission Dolores Park"]';
   await page.fill(placeholder, 'Cross-user Survey');
   await page.locator('[aria-label="Increase count"]').first().click();
-  await page.click('text=Finish Survey');
+  await confirmFinishSurvey(page);
 
   await expect(page).toHaveURL(
     /\/app\/surveys\/user-survey-spec-other-user\/\w+/,
@@ -281,6 +287,215 @@ test.describe('cancel survey guard', () => {
   });
 });
 
+// ── Finish survey confirmation dialog ────────────────────────────────────────
+
+test.describe('finish survey confirmation dialog', () => {
+  test('Finish Survey button opens a confirmation dialog', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.getByRole('button', { name: 'Finish Survey' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Finish survey?' }),
+    ).toBeVisible();
+  });
+
+  test('Keep going dismisses the finish dialog without submitting', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.getByRole('button', { name: 'Finish Survey' }).click();
+    await page.getByRole('button', { name: 'Keep going' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Finish survey?' }),
+    ).not.toBeVisible();
+    await expect(page).toHaveURL(/\/app\/surveys\/new\//);
+  });
+
+  test('dialog shows location in summary', async ({ page, protocolRkey }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.fill('[placeholder="e.g. Mission Dolores Park"]', 'Owl Ridge');
+    await page.getByRole('button', { name: 'Finish Survey' }).click();
+    await expect(page.getByText('Owl Ridge')).toBeVisible();
+  });
+
+  test('finish dialog requires location before completing', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await confirmFinishSurvey(page);
+    await expect(page.getByText('Location name is required')).toBeVisible();
+    await expect(page).toHaveURL(/\/app\/surveys\/new\//);
+  });
+});
+
+// ── Protocol link removed ─────────────────────────────────────────────────────
+
+test('survey form does not show a back link to the protocol', async ({
+  page,
+  protocolRkey,
+}) => {
+  await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+  await expect(
+    page.getByRole('link', { name: /← Protocol/i }),
+  ).not.toBeVisible();
+});
+
+// ── Navigation guard: auto-save on navigate away ──────────────────────────────
+
+test.describe('navigation guard', () => {
+  test('navigating away from an in-progress survey saves a draft', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.fill(
+      '[placeholder="e.g. Mission Dolores Park"]',
+      'Nav Guard Park',
+    );
+
+    // Click the sidebar link to trigger beforeNavigate
+    await page.getByRole('link', { name: 'Your Surveys' }).click();
+    await page.waitForURL(/\/app\/surveys$/);
+
+    await expect(page.getByText('In progress')).toBeVisible();
+    await expect(page.getByText('Nav Guard Park')).toBeVisible();
+  });
+
+  test('draft from navigating away can be resumed with form state restored', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.fill(
+      '[placeholder="e.g. Mission Dolores Park"]',
+      'Resume Test Site',
+    );
+    await page.locator('[aria-label="Increase count"]').first().click();
+
+    // Navigate away to trigger auto-save
+    await page.getByRole('link', { name: 'Your Surveys' }).click();
+    await page.waitForURL(/\/app\/surveys$/);
+
+    // Resume the draft
+    await page.getByRole('link', { name: 'Resume', exact: true }).click();
+    await page.waitForSelector('text=Finish Survey', { state: 'visible' });
+
+    await expect(
+      page.locator('[placeholder="e.g. Mission Dolores Park"]'),
+    ).toHaveValue('Resume Test Site');
+    // The first count button should show 1 (was incremented before navigating away)
+    await expect(
+      page.locator('[aria-label="Increase count"]').first(),
+    ).toContainText('1');
+  });
+
+  test('canceling a survey with a draft removes it from the surveys list', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.fill(
+      '[placeholder="e.g. Mission Dolores Park"]',
+      'Cancel Draft Park',
+    );
+
+    // Navigate away to create a draft
+    await page.getByRole('link', { name: 'Your Surveys' }).click();
+    await page.waitForURL(/\/app\/surveys$/);
+    await expect(page.getByText('In progress')).toBeVisible();
+
+    // Resume the draft and cancel it
+    await page.getByRole('link', { name: 'Resume' }).click();
+    await page.waitForSelector('text=Finish Survey', { state: 'visible' });
+    await page.getByRole('button', { name: 'Cancel Survey' }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Cancel survey' })
+      .click();
+
+    // Canceling navigates to the protocol page; go to surveys list to confirm draft is gone
+    await page.getByRole('link', { name: 'Your Surveys' }).click();
+    await page.waitForURL(/\/app\/surveys$/);
+    await expect(page.getByText('In progress')).not.toBeVisible();
+  });
+
+  test('deleting an in-progress draft from Your Surveys removes it', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.fill(
+      '[placeholder="e.g. Mission Dolores Park"]',
+      'Delete Draft Park',
+    );
+
+    // Navigate away to create a draft
+    await page.getByRole('link', { name: 'Your Surveys' }).click();
+    await page.waitForURL(/\/app\/surveys$/);
+    await expect(page.getByText('In progress')).toBeVisible();
+    await expect(page.getByText('Delete Draft Park')).toBeVisible();
+
+    // Click the trash icon to open the delete dialog
+    await page.getByRole('button', { name: 'Delete survey' }).click();
+    await page.waitForSelector('text=Delete this survey?', {
+      state: 'visible',
+    });
+
+    // Confirm deletion
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: 'Delete' })
+      .click();
+
+    await expect(page.getByText('In progress')).not.toBeVisible();
+    await expect(page.getByText('Delete Draft Park')).not.toBeVisible();
+  });
+
+  test('deleting a finished pending survey from Your Surveys removes it', async ({
+    page,
+    protocolRkey,
+  }) => {
+    // Block the upload endpoint so the survey stays in the pending-upload queue
+    await page.route('**/api/surveys', (route) => {
+      if (route.request().method() === 'POST') {
+        route.abort('failed');
+      } else {
+        route.continue();
+      }
+    });
+
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.fill(
+      '[placeholder="e.g. Mission Dolores Park"]',
+      'Delete Finished Park',
+    );
+    await confirmFinishSurvey(page);
+
+    // Upload failed, so the survey stays in pending-upload and we stay on the survey list
+    await page.waitForURL(/\/app\/surveys$/);
+    await expect(page.getByText('Pending upload')).toBeVisible();
+    await expect(page.getByText('Delete Finished Park')).toBeVisible();
+
+    // Click the trash icon in the pending-upload section
+    await page.getByRole('button', { name: 'Delete survey' }).click();
+    await page.waitForSelector('text=Delete this survey?', {
+      state: 'visible',
+    });
+
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: 'Delete' })
+      .click();
+
+    await expect(page.getByText('Pending upload')).not.toBeVisible();
+    await expect(page.getByText('Delete Finished Park')).not.toBeVisible();
+  });
+});
+
 // ── Survey page with locationOptions ─────────────────────────────────────────
 
 const LOC_SURVEY_DID = 'did:test:survey-loc-spec';
@@ -340,7 +555,7 @@ test.describe('survey with locationOptions', () => {
   }) => {
     await cacheAndOpenNewSurvey(page, LOC_SURVEY_HANDLE, locProtocolRkey);
 
-    await page.click('text=Finish Survey');
+    await confirmFinishSurvey(page);
 
     await expect(page.getByText('Location name is required')).toBeVisible();
   });
@@ -352,7 +567,7 @@ test.describe('survey with locationOptions', () => {
     await cacheAndOpenNewSurvey(page, LOC_SURVEY_HANDLE, locProtocolRkey);
 
     await page.getByRole('radio', { name: 'China Camp' }).click();
-    await page.click('text=Finish Survey');
+    await confirmFinishSurvey(page);
 
     await expect(page).toHaveURL(
       new RegExp(`/app/surveys/${LOC_SURVEY_HANDLE}/\\w+`),
@@ -382,7 +597,7 @@ test.describe('survey with locationOptions', () => {
     // First pick the geo-tagged option, then switch to the name-only option.
     await page.getByRole('radio', { name: 'China Camp' }).click();
     await page.getByRole('radio', { name: 'Mission Creek' }).click();
-    await page.click('text=Finish Survey');
+    await confirmFinishSurvey(page);
 
     await expect(page).toHaveURL(
       new RegExp(`/app/surveys/${LOC_SURVEY_HANDLE}/\\w+`),
@@ -459,7 +674,7 @@ test.describe('survey with many locationOptions (combobox)', () => {
 
     await page.getByRole('button', { name: /Select a location/ }).click();
     await page.getByRole('option', { name: 'China Camp' }).click();
-    await page.click('text=Finish Survey');
+    await confirmFinishSurvey(page);
 
     await expect(page).toHaveURL(
       new RegExp(`/app/surveys/${COMBOBOX_HANDLE}/\\w+`),

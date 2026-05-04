@@ -7,11 +7,12 @@ import './layout.css';
 import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 import { Collapsible } from 'bits-ui';
 import favicon from '$lib/assets/favicon.svg';
+import * as Alert from '$lib/components/alert';
 import MobileHeader from '$lib/components/mobile-header.svelte';
 import MobileNav from '$lib/components/mobile-nav.svelte';
 import AppSidebar from '$lib/components/sidebar.svelte';
-import * as Alert from '$lib/components/ui/alert';
 import { SidebarProvider, SidebarTrigger } from '$lib/components/ui/sidebar';
+import { Toaster } from '$lib/components/ui/sonner';
 import { useOnline } from '$lib/composables/online.svelte';
 
 let { children } = $props();
@@ -70,7 +71,7 @@ onMount(() => {
     <div class="p-4">
       <Collapsible.Root>
         <Collapsible.Trigger class="flex w-full">
-          <Alert.Root class="border-primary bg-primary/10 text-primary-foreground">
+          <Alert.Root level="warning">
             <Alert.Title class="flex flex-row w-full justify-between">
               <span>🚧 Under Construction</span>
               <ChevronDownIcon class="-mb-1" />
@@ -90,3 +91,4 @@ onMount(() => {
     <MobileNav did={page.data.did ?? undefined} avatarUrl={page.data.avatarUrl ?? undefined} />
   </main>
 </SidebarProvider>
+<Toaster richColors />

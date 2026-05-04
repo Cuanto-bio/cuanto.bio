@@ -1,9 +1,11 @@
 <script lang="ts">
 import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
 import { onMount } from 'svelte';
-import { goto } from '$app/navigation';
+import { toast } from 'svelte-sonner';
+import { beforeNavigate, goto, replaceState } from '$app/navigation';
 import { page } from '$app/state';
 import Button from '$lib/components/Button.svelte';
+import * as AlertDialog from '$lib/components/ui/alert-dialog';
 import * as Command from '$lib/components/ui/command';
 import * as Dialog from '$lib/components/ui/dialog';
 import { Input } from '$lib/components/ui/input';
@@ -13,9 +15,12 @@ import * as Sheet from '$lib/components/ui/sheet';
 import type { Main as AtgeoPlaceMain } from '$lib/lexicons/org/atgeo/place.defs';
 import {
   type CachedProtocol,
+  deletePendingSurvey,
   getCachedProtocolByRkey,
+  getPendingSurveyById,
   savePendingSurvey,
   type Target,
+  updatePendingSurvey,
 } from '$lib/offline/db';
 import { uploadPendingSurvey } from '$lib/offline/upload';
 import { LOCATION_COMBOBOX_THRESHOLD } from '$lib/places';
@@ -54,12 +59,25 @@ let editingQuantity = $state('');
 let isWide = $state(false);
 let filterQuery = $state('');
 let cancelDialogOpen = $state(false);
+let finishDialogOpen = $state(false);
+
+// IDB id of the auto-saved draft for this session; null until first auto-save
+let pendingSurveyId = $state<number | null>(null);
+// prevents beforeNavigate from firing when finish()/confirmCancel() navigates away
+let navigatingAway = $state(false);
+// prevents concurrent autoSave() calls from both inserting a new IDB record
+let saving = false;
+
 const filteredTargets = $derived(
   (protocol?.targets ?? []).filter((t) => {
     if (!filterQuery.trim()) return true;
     const label = targetLabel(t.record.scope);
     return label.toLowerCase().includes(filterQuery.toLowerCase());
   }),
+);
+
+const nonZeroOccurrences = $derived(
+  Object.values(organismQuantities).filter((q) => q && q !== '0').length,
 );
 
 onMount(() => {
@@ -82,10 +100,34 @@ onMount(() => {
   };
   mq.addEventListener('change', onMqChange);
 
+  const saveInterval = setInterval(() => autoSave(), 10_000);
+
+  const onUnload = () => {
+    autoSave();
+  };
+  window.addEventListener('beforeunload', onUnload);
+
   const rkey = page.params.protocolRkey ?? '';
-  getCachedProtocolByRkey(rkey).then((cached) => {
+  const resumeId = page.url.searchParams.get('resumeId');
+
+  getCachedProtocolByRkey(rkey).then(async (cached) => {
     if (cached) {
       protocol = cached;
+      if (resumeId != null) {
+        const saved = await getPendingSurveyById(parseInt(resumeId, 10));
+        if (saved) {
+          pendingSurveyId = saved.id ?? null;
+          locationName = saved.locationName;
+          latitude = saved.latitude;
+          longitude = saved.longitude;
+          if (saved.eventDate) startedAt = new Date(saved.eventDate).getTime();
+          for (const occ of saved.occurrences) {
+            if (occ.organismQuantity && occ.organismQuantity !== '0') {
+              organismQuantities[occ.surveyTargetUri] = occ.organismQuantity;
+            }
+          }
+        }
+      }
     } else {
       notFound = true;
     }
@@ -93,10 +135,66 @@ onMount(() => {
 
   return () => {
     clearInterval(id);
+    clearInterval(saveInterval);
     document.removeEventListener('visibilitychange', onVisible);
+    window.removeEventListener('beforeunload', onUnload);
     mq.removeEventListener('change', onMqChange);
   };
 });
+
+beforeNavigate(() => {
+  if (navigatingAway || !protocol || !startedAt) return;
+  // Don't cancel — let navigation proceed. The IDB write is fast enough to
+  // complete before the new page's JS runs, and the toast renders via the
+  // global Toaster in the layout (survives navigation).
+  autoSave().then(
+    () => toast.info('Survey saved — resume from Surveys'),
+    () => toast.error('Could not save survey draft'),
+  );
+});
+
+function buildSurveyPayload(p: CachedProtocol, complete: boolean) {
+  const occurrences = p.targets.map((t) => ({
+    surveyTargetUri: t.atUri,
+    taxonID: targetTaxonID(t.record.scope),
+    organismQuantity: organismQuantities[t.atUri] || '0',
+  }));
+  return {
+    protocolUri: p.atUri,
+    protocolRkey: p.rkey,
+    protocolTitle: p.record.title,
+    locationName: locationName.trim(),
+    latitude,
+    longitude,
+    eventDate: new Date(startedAt).toISOString(),
+    eventDurationValue: complete
+      ? Math.max(1, Math.round(elapsedSeconds / 60))
+      : null,
+    eventDurationUnit: complete ? 'minutes' : null,
+    occurrences,
+    createdAt: Date.now(),
+    complete,
+  };
+}
+
+async function autoSave() {
+  if (!protocol || saving) return;
+  saving = true;
+  try {
+    const survey = buildSurveyPayload(protocol, false);
+    if (pendingSurveyId != null) {
+      await updatePendingSurvey({ ...survey, id: pendingSurveyId });
+    } else {
+      pendingSurveyId = await savePendingSurvey(survey);
+      // Stamp the draft ID into the URL so that if the user navigates back
+      // to this page via browser history, the existing draft is loaded rather
+      // than starting a new one.
+      replaceState(`?resumeId=${pendingSurveyId}`, {});
+    }
+  } finally {
+    saving = false;
+  }
+}
 
 function targetLabel(scope: unknown[]): string {
   const first = scope[0] as Record<string, string> | undefined;
@@ -186,6 +284,7 @@ async function finish() {
   if (!locationName.trim()) {
     locationError = 'Location name is required';
     locationFieldEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    finishDialogOpen = false;
     return;
   }
   if (mode === 'past') {
@@ -201,6 +300,7 @@ async function finish() {
   }
   submitting = true;
   locationError = null;
+  finishDialogOpen = false;
   pastDateError = null;
   pastDurationError = null;
 
@@ -218,32 +318,29 @@ async function finish() {
     pastDurationMinutes,
   );
 
-  const survey = {
-    protocolUri: protocol.atUri,
-    protocolRkey: protocol.rkey,
-    protocolTitle: protocol.record.title,
-    locationName: locationName.trim(),
-    latitude,
-    longitude,
-    eventDate,
-    eventDurationValue,
-    eventDurationUnit: 'minutes',
-    occurrences,
-    createdAt: Date.now(),
-  };
+  const survey = buildSurveyPayload(protocol, true);
+
+  // Persist as complete before attempting upload so data is safe if upload fails
+  if (pendingSurveyId != null) {
+    await updatePendingSurvey({ ...survey, id: pendingSurveyId });
+  } else {
+    pendingSurveyId = await savePendingSurvey(survey);
+  }
 
   if (navigator.onLine) {
     try {
       const { surveyUri, handle } = await uploadPendingSurvey(survey);
+      if (pendingSurveyId != null) await deletePendingSurvey(pendingSurveyId);
       const rkey = surveyUri.split('/').at(-1) ?? '';
+      navigatingAway = true;
       await goto(`/app/surveys/${handle}/${rkey}`);
       return;
     } catch {
-      // fall through to save pending
+      // fall through — survey is already saved as complete in IDB
     }
   }
 
-  await savePendingSurvey(survey);
+  navigatingAway = true;
   await goto('/app/surveys');
 }
 
@@ -251,8 +348,10 @@ function cancel() {
   cancelDialogOpen = true;
 }
 
-function confirmCancel() {
+async function confirmCancel() {
   if (!protocol) return;
+  if (pendingSurveyId != null) await deletePendingSurvey(pendingSurveyId);
+  navigatingAway = true;
   goto(`/app/protocols/${protocol.handle}/${protocol.rkey}`);
 }
 
@@ -267,9 +366,17 @@ function displayCount(qty: undefined | string | number) {
 
 {#if notFound}
   <main class="mx-auto max-w-2xl px-4 pb-8">
-    <p class="text-muted-foreground text-sm">
-      Protocol not cached. Visit the protocol page while online to enable offline surveys.
-    </p>
+    {#if page.url.searchParams.get('resumeId')}
+      <p class="text-muted-foreground text-sm">
+        This survey's protocol is no longer cached.
+        <a href="/app/surveys" class="text-primary underline">Go to Your Surveys</a>
+        to delete the draft.
+      </p>
+    {:else}
+      <p class="text-muted-foreground text-sm">
+        Protocol not cached. Visit the protocol page while online to enable offline surveys.
+      </p>
+    {/if}
   </main>
 {:else if !protocol}
   <main class="mx-auto max-w-2xl px-4 pb-8">
@@ -281,9 +388,6 @@ function displayCount(qty: undefined | string | number) {
     <div class="mb-6 flex items-start justify-between">
       <div>
         <h1 class="text-xl font-semibold">{protocol.record.title}</h1>
-        <a href="/app/protocols/{protocol.handle}/{protocol.rkey}" class="text-muted-foreground text-sm underline">
-          ← Protocol
-        </a>
       </div>
       {#if mode === 'now'}
         <div class="font-mono text-3xl tabular-nums">{formatElapsed(elapsedSeconds)}</div>
@@ -454,7 +558,7 @@ function displayCount(qty: undefined | string | number) {
     <div class="sticky bottom-0 -mx-4 border-t bg-background px-4 py-4 sm:mx-0">
       <div class="flex gap-2">
         <Button variant="outline" class="flex-1" onclick={cancel}>Cancel Survey</Button>
-        <Button class="flex-1" onclick={finish} disabled={submitting}>
+        <Button class="flex-1" onclick={() => (finishDialogOpen = true)} disabled={submitting}>
           {submitting ? 'Saving…' : 'Finish Survey'}
         </Button>
       </div>
@@ -510,6 +614,24 @@ function displayCount(qty: undefined | string | number) {
       </div>
     </Dialog.Content>
   </Dialog.Root>
+
+  <AlertDialog.Root bind:open={finishDialogOpen}>
+    <AlertDialog.Content>
+      <AlertDialog.Header>
+        <AlertDialog.Title>Finish survey?</AlertDialog.Title>
+        <AlertDialog.Description>
+          {protocol.record.title} · {locationName || 'no location set'} ·
+          {formatElapsed(elapsedSeconds)} ·
+          {nonZeroOccurrences}
+          {nonZeroOccurrences === 1 ? 'observation' : 'observations'}
+        </AlertDialog.Description>
+      </AlertDialog.Header>
+      <AlertDialog.Footer>
+        <AlertDialog.Cancel>Keep going</AlertDialog.Cancel>
+        <AlertDialog.Action onclick={finish}>Finish</AlertDialog.Action>
+      </AlertDialog.Footer>
+    </AlertDialog.Content>
+  </AlertDialog.Root>
 
   {#if isWide}
     <Dialog.Root bind:open={sheetOpen}>
