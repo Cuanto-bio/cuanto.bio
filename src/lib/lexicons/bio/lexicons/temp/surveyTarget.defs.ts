@@ -78,6 +78,11 @@ type TaxonScope = {
   scientificName: string
 
   /**
+   * Common or vernacular name for the taxon, following dwc:vernacularName. Set by the protocol author as the preferred label shown to surveyors.
+   */
+  vernacularName?: string
+
+  /**
    * Taxonomic rank, e.g. family, genus, subspecies, variety.
    */
   taxonRank: string
@@ -97,6 +102,7 @@ const taxonScope = l.typedObject<TaxonScope>(
   l.object({
     taxonID: l.optional(l.string({ format: 'uri' })),
     scientificName: l.string(),
+    vernacularName: l.optional(l.string()),
     taxonRank: l.string(),
     kingdom: l.optional(l.string()),
   }),

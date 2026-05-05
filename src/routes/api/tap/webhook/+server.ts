@@ -141,13 +141,23 @@ export const POST: RequestHandler = async ({ request }) => {
   if (evt.collection === FOLLOW_NSID) {
     if (evt.action === 'create' && evt.record) {
       const follow = evt.record as unknown as Follow;
-      await createFollow({
+      const followRecord = {
         atUri,
         did: evt.did,
         rkey: evt.rkey,
         protocolUri: follow.subject,
         createdAt: follow.createdAt,
-      });
+      };
+      try {
+        await createFollow(followRecord);
+      } catch (e) {
+        if (isFkViolation(e)) {
+          await backfillProtocol(followRecord.protocolUri);
+          await createFollow(followRecord);
+        } else {
+          throw e;
+        }
+      }
       log.info({ atUri }, 'ingested protocol follow');
     } else if (evt.action === 'delete') {
       await deleteFollow(atUri);

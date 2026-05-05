@@ -1,4 +1,5 @@
 <script lang="ts">
+import { l } from '@atproto/lex';
 import Autocomplete from '$lib/components/Autocomplete.svelte';
 import Button from '$lib/components/Button.svelte';
 import Form from '$lib/components/Form.svelte';
@@ -9,9 +10,11 @@ import { Input } from '$lib/components/ui/input';
 import { Label } from '$lib/components/ui/label';
 import { Textarea } from '$lib/components/ui/textarea';
 import { useOnline } from '$lib/composables/online.svelte';
-import type {
-  TaxonScope,
-  VerbatimScope,
+import {
+  type TaxonScope,
+  taxonScope as taxonScopeType,
+  type VerbatimScope,
+  verbatimScope as verbatimScopeType,
 } from '$lib/lexicons/bio/lexicons/temp/surveyTarget.defs';
 import type { Main as AtAddress } from '$lib/lexicons/community/lexicon/location/address.defs';
 import type { Main as AtGeo } from '$lib/lexicons/community/lexicon/location/geo.defs';
@@ -26,21 +29,7 @@ let { protocol }: Props = $props();
 
 const onlineState = useOnline();
 
-type TaxonTarget = {
-  kind: 'taxon';
-  scientificName: string;
-  taxonRank: string;
-  taxonID: string;
-  kingdom?: string;
-  commonName?: string;
-};
-
-type VerbatimTarget = {
-  kind: 'verbatim';
-  verbatimTargetScope: string;
-};
-
-type Target = TaxonTarget | VerbatimTarget;
+type Target = l.$Typed<TaxonScope> | l.$Typed<VerbatimScope>;
 
 type InatResult = {
   inatId: number;
@@ -76,25 +65,9 @@ let targets = $state<Target[]>(
   (protocol?.targets || []).flatMap((t): Target[] => {
     const scope = t.record.scope[0];
     if (!scope) return [];
-    if (scope.$type?.endsWith('taxonScope')) {
-      const s = scope as TaxonScope;
-      return [
-        {
-          kind: 'taxon',
-          scientificName: s.scientificName,
-          taxonRank: s.taxonRank,
-          taxonID: (s.taxonID as string | undefined) ?? '',
-          kingdom: s.kingdom,
-          commonName: undefined,
-        },
-      ];
-    }
-    return [
-      {
-        kind: 'verbatim',
-        verbatimTargetScope: (scope as VerbatimScope).verbatimTargetScope,
-      },
-    ];
+    if (taxonScopeType.isTypeOf(scope)) return [{ ...scope }];
+    if (verbatimScopeType.isTypeOf(scope)) return [{ ...scope }];
+    return [];
   }),
 );
 
@@ -138,57 +111,36 @@ $effect(() => {
   return () => clearTimeout(timer);
 });
 
-function toScope(target: Target): unknown {
-  if (target.kind === 'taxon') {
-    return {
-      $type: 'bio.lexicons.temp.surveyTarget#taxonScope',
-      scientificName: target.scientificName,
-      taxonRank: target.taxonRank,
-      taxonID: target.taxonID,
-      ...(target.kingdom ? { kingdom: target.kingdom } : {}),
-    };
-  }
-  return {
-    $type: 'bio.lexicons.temp.surveyTarget#verbatimScope',
-    verbatimTargetScope: target.verbatimTargetScope,
-  };
-}
-
 function targetsJson(): string {
-  return JSON.stringify(targets.map((t) => ({ scope: [toScope(t)] })));
+  return JSON.stringify(targets.map((t) => ({ scope: [t] })));
 }
 
 function addTaxon(result: InatResult) {
-  targets = [
-    ...targets,
-    {
-      kind: 'taxon',
-      scientificName: result.scientificName,
-      taxonRank: result.taxonRank,
-      taxonID: result.taxonID,
-      ...(result.kingdom ? { kingdom: result.kingdom } : {}),
-      ...(result.commonName ? { commonName: result.commonName } : {}),
-    },
-  ];
+  const target: l.$Typed<TaxonScope> = {
+    $type: 'bio.lexicons.temp.surveyTarget#taxonScope',
+    scientificName: result.scientificName,
+    taxonRank: result.taxonRank,
+    ...(result.taxonID ? { taxonID: result.taxonID as l.UriString } : {}),
+    ...(result.kingdom ? { kingdom: result.kingdom } : {}),
+    ...(result.commonName ? { vernacularName: result.commonName } : {}),
+  };
+  targets = [...targets, target];
   taxonQuery = '';
   taxonResults = [];
 }
 
 function addVerbatim() {
-  targets = [...targets, { kind: 'verbatim', verbatimTargetScope: '' }];
+  targets = [
+    ...targets,
+    {
+      $type: 'bio.lexicons.temp.surveyTarget#verbatimScope' as const,
+      verbatimTargetScope: '',
+    },
+  ];
 }
 
 function removeTarget(i: number) {
   targets = targets.filter((_, idx) => idx !== i);
-}
-
-function labelFor(target: Target): string {
-  if (target.kind === 'taxon') {
-    return target.commonName
-      ? `${target.scientificName} (${target.commonName})`
-      : target.scientificName;
-  }
-  return target.verbatimTargetScope || '(empty)';
 }
 
 function placesJson(): string {
@@ -370,17 +322,50 @@ function removeAddress(i: number, j: number) {
         </div>
 
         {#if targets.length > 0}
-          <ul class="flex flex-col gap-1">
+          <ul class="flex flex-col gap-4">
             {#each targets as target, i (i)}
-              <li class="flex items-center justify-between rounded-lg border px-3 py-2 text-sm bg-background">
-                {#if target.kind === 'verbatim'}
-                  <input
-                    class="flex-1 bg-transparent outline-none"
+              <li class="flex items-start justify-between rounded-lg border p-4 text-sm bg-background">
+                {#if verbatimScopeType.isTypeOf(target)}
+                  <Input
                     placeholder="Describe what to look for…"
                     bind:value={target.verbatimTargetScope}
                   />
-                {:else}
-                  <span class="flex-1">{labelFor(target)}</span>
+                {:else if taxonScopeType.isTypeOf(target)}
+                  <div class="flex flex-1 flex-col gap-2">
+                    <div class="flex flex-row gap-2">
+                      <div class="flex flex-col gap-2 grow">
+                        <Label for={`target-sciname-${i}`}>Scientific name</Label>
+                        <Input
+                          disabled
+                          value={target.scientificName}
+                          id={`target-sciname-${i}`}
+                        />
+                      </div>
+                      <div class="flex flex-col gap-2">
+                        <Label for={`target-rank-${i}`}>Rank</Label>
+                        <Input
+                          disabled
+                          value={target.taxonRank}
+                          id={`target-rank-${i}`}
+                        />
+                      </div>
+                    </div>
+                    <Label for={`target-vername-${i}`}>Common name</Label>
+                    <Input
+                      id={`target-vername-${i}`}
+                      placeholder="Common name (optional)"
+                      value={target.vernacularName ?? ''}
+                      oninput={(e) => {
+                        target.vernacularName =
+                          (e.target as HTMLInputElement).value || undefined;
+                      }}
+                    />
+                    {#if target.taxonID}
+                      <div class="text-xs text-muted-foreground">
+                        Source: <a href={target.taxonID} target="_blank">{target.taxonID}</a>
+                      </div>
+                    {/if}
+                  </div>
                 {/if}
                 <button
                   type="button"

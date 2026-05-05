@@ -1,6 +1,12 @@
 <script lang="ts">
+import Taxon from '$lib/components/Taxon.svelte';
 import * as Card from '$lib/components/ui/card';
-import type { Protocol, Survey } from '$lib/offline/db';
+import type {
+  Protocol,
+  Survey,
+  TaxonScope,
+  VerbatimScope,
+} from '$lib/offline/db';
 
 interface Props {
   protocol: Protocol;
@@ -12,17 +18,6 @@ let { protocol, survey }: Props = $props();
 function formatDate(iso: string | null): string {
   if (!iso) return 'Unknown date';
   return new Date(iso).toLocaleString();
-}
-
-function targetLabel(scope: unknown[] | null): string {
-  if (!scope) return 'Unknown target';
-  const first = scope[0] as Record<string, string> | undefined;
-  if (!first) return 'Unknown target';
-  if (first.$type?.endsWith('#taxonScope'))
-    return first.scientificName ?? 'Unknown';
-  if (first.$type?.endsWith('#verbatimScope'))
-    return first.verbatimTargetScope ?? 'Unknown';
-  return 'Unknown target';
 }
 </script>
 
@@ -66,8 +61,15 @@ function targetLabel(scope: unknown[] | null): string {
   {:else}
     <ul class="flex flex-col gap-3">
       {#each protocol.targets as target (target.atUri)}
+        {@const first = target.record.scope[0]}
         <li class="flex items-center justify-between rounded border px-4 py-3">
-          <span class="text-sm">{targetLabel(target.record.scope)}</span>
+          <span class="text-sm">
+            {#if first?.$type?.endsWith('#taxonScope')}
+              <Taxon taxon={first as TaxonScope} />
+            {:else if first?.$type?.endsWith('#verbatimScope')}
+              {(first as VerbatimScope).verbatimTargetScope ?? 'Unknown'}
+            {/if}
+          </span>
           <span class="font-mono text-sm font-semibold">{survey.occurrences.find(o => o.record.surveyTargetID === target.atUri)?.record.organismQuantity ?? 0}</span>
         </li>
       {/each}

@@ -40,7 +40,9 @@ export async function seedProtocol(
         {
           $type: 'bio.lexicons.temp.surveyTarget#taxonScope',
           scientificName: 'Quercus agrifolia',
+          taxonRank: 'species',
           taxonID: 'https://www.gbif.org/species/2878688',
+          vernacularName: 'Coast live oak',
         },
       ],
     },

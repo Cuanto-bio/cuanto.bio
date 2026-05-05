@@ -34,7 +34,7 @@ type Main = {
   requiredFields?: string[]
 
   /**
-   * Pre-selected list of locations where surveys can occur.
+   * Controlled list of locations where surveys may occur. When present, surveyors must choose from this list rather than entering a free-form location name.
    */
   locationOptions?: AtgeoPlace.Main[]
 }

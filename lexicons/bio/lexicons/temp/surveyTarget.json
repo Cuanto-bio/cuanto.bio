@@ -41,6 +41,10 @@
           "type": "string",
           "description": "Full scientific name without rank modifiers."
         },
+        "vernacularName": {
+          "type": "string",
+          "description": "Common or vernacular name for the taxon, following dwc:vernacularName. Set by the protocol author as the preferred label shown to surveyors."
+        },
         "taxonRank": {
           "type": "string",
           "description": "Taxonomic rank, e.g. family, genus, subspecies, variety."

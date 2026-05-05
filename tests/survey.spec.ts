@@ -209,7 +209,21 @@ test.describe('target search filter', () => {
   }) => {
     await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
     await page.getByPlaceholder('Search targets…').fill('Quercus');
-    await expect(page.getByText('Quercus agrifolia')).toBeVisible();
+    await expect(
+      page.getByText('Coast live oak (Quercus agrifolia)'),
+    ).toBeVisible();
+    await expect(page.getByText('All birds')).not.toBeVisible();
+  });
+
+  test('filters taxon targets by vernacularName', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.getByPlaceholder('Search targets…').fill('coast');
+    await expect(
+      page.getByText('Coast live oak (Quercus agrifolia)'),
+    ).toBeVisible();
     await expect(page.getByText('All birds')).not.toBeVisible();
   });
 
@@ -221,6 +235,16 @@ test.describe('target search filter', () => {
     await page.getByPlaceholder('Search targets…').fill('bird');
     await expect(page.getByText('All birds')).toBeVisible();
     await expect(page.getByText('Quercus agrifolia')).not.toBeVisible();
+  });
+
+  test('survey form shows vernacularName as primary label', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await expect(
+      page.getByText('Coast live oak (Quercus agrifolia)'),
+    ).toBeVisible();
   });
 
   test('clearing the filter restores all targets', async ({
@@ -693,4 +717,35 @@ test.describe('survey with many locationOptions (combobox)', () => {
     expect(location.locations).toHaveLength(1);
     expect(location.locations![0].latitude).toBe('38.004');
   });
+});
+
+// ── Past survey mode ──────────────────────────────────────────────────────────
+
+test('past survey saves the entered date and duration', async ({
+  page,
+  protocolRkey,
+  sql,
+}) => {
+  await page.goto(`/app/protocols/user-survey-spec/${protocolRkey}`);
+  await page.waitForLoadState('networkidle');
+  await page.goto(`/app/surveys/new/${protocolRkey}?past=1`);
+  await page.waitForSelector('text=Finish Survey', { state: 'visible' });
+
+  await page.fill(
+    '[placeholder="e.g. Mission Dolores Park"]',
+    'Past Test Site',
+  );
+  await page.fill('#pastDate', '2026-01-15T10:00');
+  await page.fill('#pastDuration', '45');
+  await confirmFinishSurvey(page);
+
+  await expect(page).toHaveURL(/\/app\/surveys\/user-survey-spec\/\w+/);
+
+  const [row] = await sql<{ record: Record<string, unknown> }[]>`
+    SELECT record FROM surveys WHERE did = 'did:test:survey-spec'
+    ORDER BY indexed_at DESC LIMIT 1
+  `;
+
+  expect(row.record.eventDate).toBe(new Date('2026-01-15T10:00').toISOString());
+  expect(row.record.eventDurationValue).toBe(45);
 });

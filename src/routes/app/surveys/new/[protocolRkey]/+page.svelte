@@ -5,6 +5,7 @@ import { toast } from 'svelte-sonner';
 import { beforeNavigate, goto, replaceState } from '$app/navigation';
 import { page } from '$app/state';
 import Button from '$lib/components/Button.svelte';
+import Taxon from '$lib/components/Taxon.svelte';
 import * as AlertDialog from '$lib/components/ui/alert-dialog';
 import * as Command from '$lib/components/ui/command';
 import * as Dialog from '$lib/components/ui/dialog';
@@ -20,7 +21,9 @@ import {
   getPendingSurveyById,
   savePendingSurvey,
   type Target,
+  type TaxonScope,
   updatePendingSurvey,
+  type VerbatimScope,
 } from '$lib/offline/db';
 import { uploadPendingSurvey } from '$lib/offline/upload';
 import { LOCATION_COMBOBOX_THRESHOLD } from '$lib/places';
@@ -159,6 +162,18 @@ function buildSurveyPayload(p: CachedProtocol, complete: boolean) {
     taxonID: targetTaxonID(t.record.scope),
     organismQuantity: organismQuantities[t.atUri] || '0',
   }));
+  const { eventDate, eventDurationValue } = complete
+    ? buildSurveyTiming(
+        mode,
+        startedAt,
+        elapsedSeconds,
+        pastDate,
+        pastDurationMinutes,
+      )
+    : {
+        eventDate: new Date(startedAt).toISOString(),
+        eventDurationValue: null,
+      };
   return {
     protocolUri: p.atUri,
     protocolRkey: p.rkey,
@@ -166,10 +181,8 @@ function buildSurveyPayload(p: CachedProtocol, complete: boolean) {
     locationName: locationName.trim(),
     latitude,
     longitude,
-    eventDate: new Date(startedAt).toISOString(),
-    eventDurationValue: complete
-      ? Math.max(1, Math.round(elapsedSeconds / 60))
-      : null,
+    eventDate,
+    eventDurationValue,
     eventDurationUnit: complete ? 'minutes' : null,
     occurrences,
     createdAt: Date.now(),
@@ -196,17 +209,22 @@ async function autoSave() {
   }
 }
 
-function targetLabel(scope: unknown[]): string {
+function targetLabel(scope: (TaxonScope | VerbatimScope | unknown)[]): string {
   const first = scope[0] as Record<string, string> | undefined;
   if (!first) return 'Unknown target';
-  if (first.$type?.endsWith('#taxonScope'))
-    return first.scientificName ?? 'Unknown';
+  if (first.$type?.endsWith('#taxonScope')) {
+    return first.vernacularName
+      ? `${first.vernacularName} (${first.scientificName})`
+      : (first.scientificName ?? 'Unknown');
+  }
   if (first.$type?.endsWith('#verbatimScope'))
     return first.verbatimTargetScope ?? 'Unknown';
   return 'Unknown target';
 }
 
-function targetTaxonID(scope: unknown[]): string | undefined {
+function targetTaxonID(
+  scope: (TaxonScope | VerbatimScope | unknown)[],
+): string | undefined {
   const first = scope[0] as Record<string, string> | undefined;
   if (first?.$type?.endsWith('#taxonScope')) return first.taxonID;
   return undefined;
@@ -303,20 +321,6 @@ async function finish() {
   finishDialogOpen = false;
   pastDateError = null;
   pastDurationError = null;
-
-  const occurrences = protocol.targets.map((t) => ({
-    surveyTargetUri: t.atUri,
-    taxonID: targetTaxonID(t.record.scope),
-    organismQuantity: organismQuantities[t.atUri] || '0',
-  }));
-
-  const { eventDate, eventDurationValue } = buildSurveyTiming(
-    mode,
-    startedAt,
-    elapsedSeconds,
-    pastDate,
-    pastDurationMinutes,
-  );
 
   const survey = buildSurveyPayload(protocol, true);
 
@@ -529,13 +533,20 @@ function displayCount(qty: undefined | string | number) {
             {#each filteredTargets as target (target.atUri)}
               {@const qty = organismQuantities[target.atUri]}
               {@const hasCount = qty !== undefined && qty !== '' && qty !== '0'}
+              {@const first = target.record.scope[0]}
               <li class="flex items-center p-2">
                 <button
                   type="button"
                   class="flex flex-1 items-center gap-2 px-4 py-3 text-left"
                   onclick={() => openTargetSheet(target)}
                 >
-                  <span class="flex-1 text-sm font-medium">{targetLabel(target.record.scope)}</span>
+                  <span class="flex-1 text-sm font-medium">
+                    {#if first?.$type?.endsWith('#taxonScope')}
+                      <Taxon taxon={first as TaxonScope} />
+                    {:else if first?.$type?.endsWith('#verbatimScope')}
+                      {(first as VerbatimScope).verbatimTargetScope ?? 'Unknown'}
+                    {/if}
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -638,7 +649,18 @@ function displayCount(qty: undefined | string | number) {
       <Dialog.Content>
         <Dialog.Header>
           <Dialog.Title>
-            {selectedTarget ? targetLabel(selectedTarget.record.scope) : 'Details'}
+            {#if selectedTarget}
+              {@const taxonScope = selectedTarget.record.scope.find(s => s.$type?.endsWith('#taxonScope'))}
+              {#if taxonScope}
+                <Taxon taxon={taxonScope as TaxonScope} />
+              {/if}
+              {@const verbatimScope = selectedTarget.record.scope.find(s => s.$type?.endsWith('#verbatimScope'))}
+              {#if verbatimScope}
+                {(verbatimScope as VerbatimScope).verbatimTargetScope}
+              {/if}
+            {:else}
+              Details
+            {/if}
           </Dialog.Title>
           <Dialog.Description>Edit occurrence details</Dialog.Description>
         </Dialog.Header>

@@ -12,6 +12,7 @@ import type { Main as LocationGeo } from '$lib/lexicons/community/lexicon/locati
 import type { Protocol, TaxonScope, VerbatimScope } from '$lib/offline/db';
 import { LOCATION_COMBOBOX_THRESHOLD } from '$lib/places';
 import Handle from './handle.svelte';
+import Taxon from './Taxon.svelte';
 import * as Table from './ui/table';
 
 interface Props {
@@ -205,14 +206,10 @@ function formatDate(iso: string) {
                 {/if}
                 <div>
                   {#if scope.$type?.endsWith('taxonScope')}
-                    {(scope as TaxonScope).taxonRank}
-                    {#if ['genus', 'species', 'subspecies', 'variety', 'infraspecies'].includes((scope as TaxonScope).taxonRank)}
-                      <i>{(scope as TaxonScope).scientificName}</i>
-                    {:else}
-                      {(scope as TaxonScope).scientificName}
-                    {/if}
+                    <Taxon taxon={scope as TaxonScope} />
                   {:else if scope.$type?.endsWith('verbatimScope')}
-                    {(scope as VerbatimScope).verbatimTargetScope}
+                    {@const verbatim = scope as VerbatimScope}
+                    {verbatim.verbatimTargetScope}
                   {/if}
                 </div>
               {/each}
