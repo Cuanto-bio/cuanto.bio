@@ -181,3 +181,8 @@ pnpm test:integration
 | `pnpm check` | Type-check and lint |
 | `pnpm format` | Auto-fix formatting |
 | `pnpm psql` | Open a psql shell against the dev database |
+| `pnpm gen-icons` | Regenerate PWA icons and favicon from `static/favicon.svg` (requires ImageMagick) |
+
+## Design
+
+`static/favicon.svg` is the authoritative icon that `pnpm gen-icons` uses to generate other icon assets.
