@@ -1,5 +1,5 @@
 export async function signOut() {
-  const { clearIdbUser } = await import('$lib/offline/db');
-  await clearIdbUser();
+  const { clearIdb } = await import('$lib/offline/db');
+  await clearIdb();
   window.location.href = '/auth/signout';
 }

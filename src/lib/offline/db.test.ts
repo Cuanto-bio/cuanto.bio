@@ -3,11 +3,13 @@ import { describe, expect, test } from 'vitest';
 import {
   cacheProtocol,
   cacheSurvey,
+  clearIdb,
   clearIdbUser,
   deletePendingSurvey,
   getCachedFollowedProtocolByRkey,
   getCachedFollowedProtocols,
   getCachedProtocolByRkey,
+  getCachedProtocols,
   getCachedSurvey,
   getCachedSurveyByRkey,
   getCachedSurveys,
@@ -398,5 +400,25 @@ describe('cached-surveys store', () => {
     expect(result?.occurrences[0].record.surveyTargetID).toBe(
       survey1.occurrences[0].record.surveyTargetID,
     );
+  });
+});
+
+// ── clearIdb ──────────────────────────────────────────────────────────────────
+
+describe('clearIdb', () => {
+  test('wipes all stores', async () => {
+    await saveIdbUser({ did: 'did:test:clear', handle: 'cleartest' });
+    await cacheProtocol(cachedProtocol1);
+    await setCachedFollowedProtocols([protocol1]);
+    await savePendingSurvey(pendingSurvey1);
+    await cacheSurvey(survey1);
+
+    await clearIdb();
+
+    expect(await getIdbUser()).toBeUndefined();
+    expect(await getCachedProtocols()).toHaveLength(0);
+    expect(await getCachedFollowedProtocols()).toHaveLength(0);
+    expect(await getPendingSurveys()).toHaveLength(0);
+    expect(await getCachedSurveys()).toHaveLength(0);
   });
 });

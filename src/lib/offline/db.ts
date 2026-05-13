@@ -310,3 +310,25 @@ export async function clearIdbUser(): Promise<void> {
   const db = await getDB();
   await db.delete('user', 'current');
 }
+
+export async function clearIdb(): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction(
+    [
+      'cached-protocols',
+      'pending-surveys',
+      'followed-protocols',
+      'cached-surveys',
+      'user',
+    ],
+    'readwrite',
+  );
+  await Promise.all([
+    tx.objectStore('cached-protocols').clear(),
+    tx.objectStore('pending-surveys').clear(),
+    tx.objectStore('followed-protocols').clear(),
+    tx.objectStore('cached-surveys').clear(),
+    tx.objectStore('user').clear(),
+    tx.done,
+  ]);
+}
