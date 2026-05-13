@@ -3,15 +3,15 @@
  */
 
 import { l } from '@atproto/lex'
-import * as AtgeoPlace from '../../../org/atgeo/place.defs.js'
+import * as AtgeoPlace from '../../../../org/atgeo/place.defs.js'
 
-const $nsid = 'bio.lexicons.temp.surveyProtocol'
+const $nsid = 'bio.lexicons.temp.v0-1.surveyProtocol'
 
 export { $nsid }
 
 /** Defines the contents of a Survey, including what participants should look for and what fields they must fill out. */
 type Main = {
-  $type: 'bio.lexicons.temp.surveyProtocol'
+  $type: 'bio.lexicons.temp.v0-1.surveyProtocol'
 
   /**
    * Name of the protocol (sensu DCMI dc:title).

@@ -1,6 +1,6 @@
 {
   "lexicon": 1,
-  "id": "bio.lexicons.temp.surveyProtocol",
+  "id": "bio.lexicons.temp.v0-1.surveyProtocol",
   "defs": {
     "main": {
       "type": "record",

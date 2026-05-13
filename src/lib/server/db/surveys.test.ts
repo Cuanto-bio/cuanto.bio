@@ -54,9 +54,9 @@ describe('parseCoords', () => {
 // ── insertSurvey ─────────────────────────────────────────────────────────────
 
 const baseSurveyRecord = {
-  $type: 'bio.lexicons.temp.survey' as const,
+  $type: 'bio.lexicons.temp.v0-1.survey' as const,
   protocol: {
-    uri: 'at://did:plc:abc/bio.lexicons.temp.surveyProtocol/3abc' as l.AtUriString,
+    uri: 'at://did:plc:abc/bio.lexicons.temp.v0-1.surveyProtocol/3abc' as l.AtUriString,
     cid: 'bafycid' as l.CidString,
   },
   createdAt: '2026-04-13T10:00:00.000Z' as l.DatetimeString,
@@ -72,7 +72,7 @@ describe('insertSurvey', () => {
       'did:plc:abc',
       '3xyz',
       baseSurveyRecord,
-      'at://did:plc:abc/bio.lexicons.temp.survey/3xyz',
+      'at://did:plc:abc/bio.lexicons.temp.v0-1.survey/3xyz',
     );
     expect(mockSql).toHaveBeenCalledOnce();
   });
@@ -84,7 +84,7 @@ describe('insertSurvey', () => {
         'did:plc:abc',
         '3xyz',
         record,
-        'at://did:plc:abc/bio.lexicons.temp.survey/3xyz',
+        'at://did:plc:abc/bio.lexicons.temp.v0-1.survey/3xyz',
       ),
     ).resolves.toBeUndefined();
     expect(mockSql).toHaveBeenCalledOnce();
@@ -97,7 +97,7 @@ describe('insertSurvey', () => {
         'did:plc:abc',
         '3xyz',
         record,
-        'at://did:plc:abc/bio.lexicons.temp.survey/3xyz',
+        'at://did:plc:abc/bio.lexicons.temp.v0-1.survey/3xyz',
       ),
     ).resolves.toBeUndefined();
     expect(mockSql).toHaveBeenCalledOnce();
@@ -107,13 +107,14 @@ describe('insertSurvey', () => {
 // ── insertOccurrence ─────────────────────────────────────────────────────────
 
 const baseOccurrenceRecord = {
-  $type: 'bio.lexicons.temp.occurrence' as const,
-  eventID: 'at://did:plc:abc/bio.lexicons.temp.survey/3xyz' as l.AtUriString,
+  $type: 'bio.lexicons.temp.v0-1.occurrence' as const,
+  eventID:
+    'at://did:plc:abc/bio.lexicons.temp.v0-1.survey/3xyz' as l.AtUriString,
   surveyTargetID:
-    'at://did:plc:abc/bio.lexicons.temp.surveyTarget/3tgt' as l.AtUriString,
+    'at://did:plc:abc/bio.lexicons.temp.v0-1.surveyTarget/3tgt' as l.AtUriString,
   taxonID: 'https://www.gbif.org/species/123' as l.UriString,
   organismQuantity: '5',
-  organismQuantityType: 'individuals',
+  organismQuantityType: 'individual-count',
 };
 
 describe('insertOccurrence', () => {
@@ -122,7 +123,7 @@ describe('insertOccurrence', () => {
       'did:plc:abc',
       '3occ',
       baseOccurrenceRecord,
-      'at://did:plc:abc/bio.lexicons.temp.occurrence/3occ',
+      'at://did:plc:abc/bio.lexicons.temp.v0-1.occurrence/3occ',
     );
     // Two calls: NULL geom fragment + INSERT
     expect(mockSql).toHaveBeenCalledTimes(2);
@@ -138,7 +139,7 @@ describe('insertOccurrence', () => {
       'did:plc:abc',
       '3occ',
       record,
-      'at://did:plc:abc/bio.lexicons.temp.occurrence/3occ',
+      'at://did:plc:abc/bio.lexicons.temp.v0-1.occurrence/3occ',
     );
     // sql called twice: once for the ST_MakePoint geom fragment, once for the INSERT
     expect(mockSql).toHaveBeenCalledTimes(2);
@@ -152,7 +153,7 @@ describe('insertOccurrence', () => {
       'did:plc:abc',
       '3occ',
       baseOccurrenceRecord,
-      'at://did:plc:abc/bio.lexicons.temp.occurrence/3occ',
+      'at://did:plc:abc/bio.lexicons.temp.v0-1.occurrence/3occ',
     );
     // sql called twice: once for NULL fragment, once for INSERT
     expect(mockSql).toHaveBeenCalledTimes(2);
@@ -168,7 +169,7 @@ describe('insertOccurrence', () => {
       'did:plc:abc',
       '3occ',
       record,
-      'at://did:plc:abc/bio.lexicons.temp.occurrence/3occ',
+      'at://did:plc:abc/bio.lexicons.temp.v0-1.occurrence/3occ',
     );
     // Still 2 calls: NULL fragment + INSERT
     expect(mockSql).toHaveBeenCalledTimes(2);
@@ -180,7 +181,7 @@ describe('insertOccurrence', () => {
       'did:plc:abc',
       '3occ',
       record,
-      'at://did:plc:abc/bio.lexicons.temp.occurrence/3occ',
+      'at://did:plc:abc/bio.lexicons.temp.v0-1.occurrence/3occ',
     );
     expect(mockSql).not.toHaveBeenCalled();
   });

@@ -15,6 +15,10 @@ interface Props {
 
 let { protocol, survey }: Props = $props();
 
+const incidentalOccs = $derived(
+  survey.occurrences.filter((o) => !o.record.surveyTargetID),
+);
+
 function formatDate(iso: string | null): string {
   if (!iso) return 'Unknown date';
   return new Date(iso).toLocaleString();
@@ -53,10 +57,10 @@ function formatDate(iso: string | null): string {
   </Card.Root>
 
   <h2 class="mb-3 text-lg font-semibold">
-    Occurrences ({survey.occurrences.length} / {protocol.targets.length})
+    Occurrences ({survey.occurrences.length - incidentalOccs.length} / {protocol.targets.length})
   </h2>
 
-  {#if survey.occurrences.length === 0}
+  {#if survey.occurrences.length === incidentalOccs.length}
     <p class="text-muted-foreground text-sm">No occurrences recorded.</p>
   {:else}
     <ul class="flex flex-col gap-3">
@@ -71,6 +75,27 @@ function formatDate(iso: string | null): string {
             {/if}
           </span>
           <span class="font-mono text-sm font-semibold">{survey.occurrences.find(o => o.record.surveyTargetID === target.atUri)?.record.organismQuantity ?? 0}</span>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+
+  {#if incidentalOccs.length > 0}
+    <h2 class="mb-3 mt-6 text-lg font-semibold">Incidentals ({incidentalOccs.length})</h2>
+    <ul class="flex flex-col gap-3">
+      {#each incidentalOccs as occ (occ.atUri)}
+        <li class="flex items-center justify-between rounded border px-4 py-3">
+          <span class="text-sm">
+            {#if occ.identification?.vernacularName}
+              <span class="font-medium">{occ.identification.vernacularName}</span>
+              <span class="text-muted-foreground ml-1 italic">({occ.identification.scientificName})</span>
+            {:else if occ.identification?.scientificName}
+              <span class="font-medium italic">{occ.identification.scientificName}</span>
+            {:else}
+              <span class="text-muted-foreground italic">Unknown taxon</span>
+            {/if}
+          </span>
+          <span class="font-mono text-sm font-semibold">{occ.record.organismQuantity ?? 0}</span>
         </li>
       {/each}
     </ul>

@@ -1,8 +1,8 @@
 import type { l } from '@atproto/lex';
 import { fail, redirect } from '@sveltejs/kit';
-import * as SurveyProtocol from '$lib/lexicons/bio/lexicons/temp/surveyProtocol';
-import * as SurveyTarget from '$lib/lexicons/bio/lexicons/temp/surveyTarget';
-import type { Main as SurveyTargetMain } from '$lib/lexicons/bio/lexicons/temp/surveyTarget.defs';
+import * as SurveyProtocol from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyProtocol';
+import * as SurveyTarget from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget';
+import type { Main as SurveyTargetMain } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs';
 import sql from '$lib/server/db';
 import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
 import { parseLocationOptions } from '$lib/server/locationOptions';
@@ -58,7 +58,7 @@ export const actions: Actions = {
     try {
       ({ uri: protocolUri, cid: protocolCid } = await createRecord(
         did,
-        'bio.lexicons.temp.surveyProtocol',
+        'bio.lexicons.temp.v0-1.surveyProtocol',
         protocolRecord,
       ));
     } catch (err) {
@@ -83,7 +83,7 @@ export const actions: Actions = {
       try {
         const { uri: targetUri } = await createRecord(
           did,
-          'bio.lexicons.temp.surveyTarget',
+          'bio.lexicons.temp.v0-1.surveyTarget',
           targetRecord,
         );
         const targetRkey = targetUri.split('/').at(-1) ?? '';

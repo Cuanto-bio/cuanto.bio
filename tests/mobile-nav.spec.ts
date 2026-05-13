@@ -33,7 +33,7 @@ test('shows "Followed Protocols" after navigating from /app/protocols/following 
     },
   ]);
   const { protocolRkey } = await seedProtocol(sql, DID);
-  const protocolUri = `at://${DID}/bio.lexicons.temp.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
   await seedFollow(sql, DID, protocolUri);
 
   try {

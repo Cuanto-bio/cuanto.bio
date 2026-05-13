@@ -1,10 +1,12 @@
 <script lang="ts">
 import { l } from '@atproto/lex';
-import Autocomplete from '$lib/components/Autocomplete.svelte';
 import Button from '$lib/components/Button.svelte';
 import Form from '$lib/components/Form.svelte';
 import FormSection from '$lib/components/FormSection.svelte';
 import GeoMap from '$lib/components/GeoMap.svelte';
+import TaxonAutocomplete, {
+  type TaxonResult,
+} from '$lib/components/TaxonAutocomplete.svelte';
 import * as Card from '$lib/components/ui/card';
 import { Input } from '$lib/components/ui/input';
 import { Label } from '$lib/components/ui/label';
@@ -15,7 +17,7 @@ import {
   taxonScope as taxonScopeType,
   type VerbatimScope,
   verbatimScope as verbatimScopeType,
-} from '$lib/lexicons/bio/lexicons/temp/surveyTarget.defs';
+} from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs';
 import type { Main as AtAddress } from '$lib/lexicons/community/lexicon/location/address.defs';
 import type { Main as AtGeo } from '$lib/lexicons/community/lexicon/location/geo.defs';
 import type { Protocol } from '$lib/offline/db';
@@ -30,15 +32,6 @@ let { protocol }: Props = $props();
 const onlineState = useOnline();
 
 type Target = l.$Typed<TaxonScope> | l.$Typed<VerbatimScope>;
-
-type InatResult = {
-  inatId: number;
-  scientificName: string;
-  taxonRank: string;
-  commonName: string | null;
-  kingdom: string | null;
-  taxonID: string;
-};
 
 type PlaceEntry = {
   name: string;
@@ -84,40 +77,18 @@ let places = $state<PlaceEntry[]>(
   })),
 );
 
-let taxonQuery = $state('');
-let taxonResults = $state<InatResult[]>([]);
-let searching = $state(false);
 let placeQuery = $state('');
 let placeResults = $state<PlaceResult[]>([]);
 let searchingPlaces = $state(false);
 let placeSearched = $state(false);
 
-$effect(() => {
-  if (taxonQuery.trim().length < 2) {
-    taxonResults = [];
-    return;
-  }
-  const query = taxonQuery.trim();
-  const timer = setTimeout(async () => {
-    searching = true;
-    try {
-      const resp = await fetch(`/api/taxa?q=${encodeURIComponent(query)}`);
-      const data = await resp.json();
-      taxonResults = data.results ?? [];
-    } finally {
-      searching = false;
-    }
-  }, 300);
-  return () => clearTimeout(timer);
-});
-
 function targetsJson(): string {
   return JSON.stringify(targets.map((t) => ({ scope: [t] })));
 }
 
-function addTaxon(result: InatResult) {
+function addTaxon(result: TaxonResult) {
   const target: l.$Typed<TaxonScope> = {
-    $type: 'bio.lexicons.temp.surveyTarget#taxonScope',
+    $type: 'bio.lexicons.temp.v0-1.surveyTarget#taxonScope',
     scientificName: result.scientificName,
     taxonRank: result.taxonRank,
     ...(result.taxonID ? { taxonID: result.taxonID as l.UriString } : {}),
@@ -125,15 +96,13 @@ function addTaxon(result: InatResult) {
     ...(result.commonName ? { vernacularName: result.commonName } : {}),
   };
   targets = [...targets, target];
-  taxonQuery = '';
-  taxonResults = [];
 }
 
 function addVerbatim() {
   targets = [
     ...targets,
     {
-      $type: 'bio.lexicons.temp.surveyTarget#verbatimScope' as const,
+      $type: 'bio.lexicons.temp.v0-1.surveyTarget#verbatimScope' as const,
       verbatimTargetScope: '',
     },
   ];
@@ -381,24 +350,10 @@ function removeAddress(i: number, j: number) {
         {/if}
 
         <div class="bg-background flex flex-col gap-2 rounded-lg border p-3 mt-4">
-          <Autocomplete
+          <TaxonAutocomplete
             placeholder="Search iNaturalist taxa (e.g. Quercus)"
-            autocomplete="off"
-            bind:value={taxonQuery}
-            items={taxonResults}
-            onselect={addTaxon}
-          >
-            {#snippet item(result)}
-              <span class="font-medium">{result.scientificName}</span>
-              <span class="text-muted-foreground text-xs">{result.taxonRank}</span>
-              {#if result.commonName}
-                <span class="text-muted-foreground">— {result.commonName}</span>
-              {/if}
-            {/snippet}
-          </Autocomplete>
-          {#if searching && taxonResults.length === 0}
-            <div class="text-muted-foreground text-xs">Searching…</div>
-          {/if}
+            onSelectTaxon={addTaxon}
+          />
           <Button type="button" variant="outline" onclick={addVerbatim} class="w-fit text-xs">
             + Add custom target
           </Button>

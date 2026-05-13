@@ -1,6 +1,6 @@
 {
   "lexicon": 1,
-  "id": "bio.lexicons.temp.occurrence",
+  "id": "bio.lexicons.temp.v0-1.occurrence",
   "defs": {
     "main": {
       "type": "record",
@@ -27,9 +27,9 @@
             "description": "The horizontal distance (in meters) from the given coordinates describing the smallest circle containing the whole of the Location (Darwin Core dwc:coordinateUncertaintyInMeters).",
             "minimum": 0
           },
-          "associatedMedia": {
+          "media": {
             "type": "array",
-            "description": "Strong references to media records documenting the observation (Darwin Core dwc:associatedMedia).",
+            "description": "Strong references to media records documenting the observation. Conceptually maps to the DwC-DP Occurrence Media table (https://gbif.github.io/dwc-dp/qrg/#Occurrence%20Media), which replaced the legacy dwc:associatedMedia term.",
             "items": {
               "type": "ref",
               "ref": "com.atproto.repo.strongRef"
@@ -39,12 +39,12 @@
           "taxonID": {
             "type": "string",
             "format": "uri",
-            "description": "Accepted taxon for this occurrence, preferably a stable URI (e.g. a GBIF species URI). Ideally denormalized from the referenced Identification for queryability (sensu DarwinCore dwc:taxonID)."
+            "description": "Identified taxon the occurrence user has accepted, preferably a stable URI (e.g. a GBIF species URI). Derived from identification specified by acceptedIdentificationID. Must be accompanied by acceptedIdentificationID. Represents a more specific version of the DarwinCore equivalent (Darwin Core dwc:taxonID)."
           },
-          "identificationID": {
-            "type": "string",
-            "format": "at-uri",
-            "description": "The Identification record the owner has chosen as the source of taxonID. Should not be present without taxonID (sensu DarwinCore dwc:identificationID)."
+          "acceptedIdentificationID": {
+            "type": "ref",
+            "ref": "com.atproto.repo.strongRef",
+            "description": "Identification accepted by the occurrence user as the source of taxonID. Must be accompanied by taxonID. Indirectly maps to Darwin Core dwc:isAcceptedIdentification."
           },
           "surveyTargetID": {
             "type": "string",
@@ -62,7 +62,9 @@
           },
           "organismQuantityType": {
             "type": "string",
-            "description": "The type of quantification system used for the quantity of organisms (sensu DarwinCore dwc:organismQuantityType)."
+            "description": "The type of quantification system used for the quantity of organisms (sensu DarwinCore dwc:organismQuantityType).",
+            "knownValues": ["individual-count", "percent-cover"],
+            "default": "individual-count"
           }
         }
       }

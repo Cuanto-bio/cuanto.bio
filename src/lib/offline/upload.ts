@@ -1,3 +1,4 @@
+import { hasUnresolvedIncidentals } from '$lib/surveys';
 import type { PendingSurvey } from './db';
 import { deletePendingSurvey, getPendingSurveys } from './db';
 
@@ -17,6 +18,7 @@ export async function uploadAllPending(): Promise<void> {
   const pending = await getPendingSurveys();
   for (const survey of pending) {
     if (!survey.complete) continue;
+    if (hasUnresolvedIncidentals(survey.incidentals ?? [])) continue;
     try {
       await uploadPendingSurvey(survey);
       if (survey.id != null) await deletePendingSurvey(survey.id);

@@ -42,9 +42,9 @@ async function seedSurvey(
   protocolUri: string,
 ): Promise<string> {
   const rkey = `survey${Date.now()}`;
-  const atUri = `at://${did}/bio.lexicons.temp.survey/${rkey}`;
+  const atUri = `at://${did}/bio.lexicons.temp.v0-1.survey/${rkey}`;
   const record = {
-    $type: 'bio.lexicons.temp.survey',
+    $type: 'bio.lexicons.temp.v0-1.survey',
     protocol: { uri: protocolUri, cid: FAKE_CID },
     createdAt: new Date().toISOString(),
     location: { $type: 'org.atgeo.place', name: 'Offline Test Park' },
@@ -92,7 +92,7 @@ test('following page shows cached protocol offline', async ({
 }) => {
   await context.addCookies([AUTH_COOKIE]);
   const { protocolRkey } = await seedProtocol(sql, DID);
-  const protocolUri = `at://${DID}/bio.lexicons.temp.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
   await seedFollow(sql, DID, protocolUri);
 
   try {
@@ -118,7 +118,7 @@ test('surveys page shows cached surveys offline', async ({
 }) => {
   await context.addCookies([AUTH_COOKIE]);
   const { protocolRkey } = await seedProtocol(sql, DID);
-  const protocolUri = `at://${DID}/bio.lexicons.temp.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
   await seedSurvey(sql, DID, protocolUri);
 
   try {
@@ -189,7 +189,7 @@ test('pending surveys page shows a pending survey from IDB', async ({
 }) => {
   await context.addCookies([AUTH_COOKIE]);
   const { protocolRkey } = await seedProtocol(sql, DID);
-  const protocolUri = `at://${DID}/bio.lexicons.temp.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
 
   try {
     // Visit online to install the SW.

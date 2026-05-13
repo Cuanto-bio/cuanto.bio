@@ -18,10 +18,10 @@ export async function seedProtocol(
   `;
 
   const rkey = `testproto${Date.now()}`;
-  const atUri = `at://${did}/bio.lexicons.temp.surveyProtocol/${rkey}`;
+  const atUri = `at://${did}/bio.lexicons.temp.v0-1.surveyProtocol/${rkey}`;
 
   const protocolRecord = {
-    $type: 'bio.lexicons.temp.surveyProtocol',
+    $type: 'bio.lexicons.temp.v0-1.surveyProtocol',
     title: 'Test Protocol',
     description: 'A protocol for integration tests',
     createdAt: new Date().toISOString(),
@@ -38,7 +38,7 @@ export async function seedProtocol(
       rkey: `testtarget1${Date.now()}`,
       scope: [
         {
-          $type: 'bio.lexicons.temp.surveyTarget#taxonScope',
+          $type: 'bio.lexicons.temp.v0-1.surveyTarget#taxonScope',
           scientificName: 'Quercus agrifolia',
           taxonRank: 'species',
           taxonID: 'https://www.gbif.org/species/2878688',
@@ -50,7 +50,7 @@ export async function seedProtocol(
       rkey: `testtarget2${Date.now()}`,
       scope: [
         {
-          $type: 'bio.lexicons.temp.surveyTarget#verbatimScope',
+          $type: 'bio.lexicons.temp.v0-1.surveyTarget#verbatimScope',
           verbatimTargetScope: 'All birds',
         },
       ],
@@ -59,10 +59,10 @@ export async function seedProtocol(
 
   for (let i = 0; i < targets.length; i++) {
     const t = targets[i];
-    const targetUri = `at://${did}/bio.lexicons.temp.surveyTarget/${t.rkey}`;
+    const targetUri = `at://${did}/bio.lexicons.temp.v0-1.surveyTarget/${t.rkey}`;
     const indexedAt = new Date(Date.now() + i * 1000).toISOString();
     const targetRecord = {
-      $type: 'bio.lexicons.temp.surveyTarget',
+      $type: 'bio.lexicons.temp.v0-1.surveyTarget',
       protocol: atUri,
       scope: t.scope,
     };
@@ -86,10 +86,10 @@ export async function seedProtocolWithLocationOptions(
   `;
 
   const rkey = `testproto${Date.now()}`;
-  const atUri = `at://${did}/bio.lexicons.temp.surveyProtocol/${rkey}`;
+  const atUri = `at://${did}/bio.lexicons.temp.v0-1.surveyProtocol/${rkey}`;
 
   const protocolRecord = {
-    $type: 'bio.lexicons.temp.surveyProtocol',
+    $type: 'bio.lexicons.temp.v0-1.surveyProtocol',
     title: 'Location Options Protocol',
     description: 'A protocol with controlled location options',
     createdAt: new Date().toISOString(),
@@ -132,7 +132,7 @@ export async function seedProtocolWithManyLocationOptions(
   `;
 
   const rkey = `testproto${Date.now()}`;
-  const atUri = `at://${did}/bio.lexicons.temp.surveyProtocol/${rkey}`;
+  const atUri = `at://${did}/bio.lexicons.temp.v0-1.surveyProtocol/${rkey}`;
 
   const locationOptions = [
     {
@@ -154,7 +154,7 @@ export async function seedProtocolWithManyLocationOptions(
   ];
 
   const protocolRecord = {
-    $type: 'bio.lexicons.temp.surveyProtocol',
+    $type: 'bio.lexicons.temp.v0-1.surveyProtocol',
     title: 'Many Locations Protocol',
     description: 'A protocol with 6+ location options (triggers combobox)',
     createdAt: new Date().toISOString(),
@@ -177,9 +177,9 @@ export async function seedSurvey(
   locationName = 'Test Location',
 ): Promise<{ surveyRkey: string }> {
   const rkey = `testsurvey${Date.now()}`;
-  const atUri = `at://${did}/bio.lexicons.temp.survey/${rkey}`;
+  const atUri = `at://${did}/bio.lexicons.temp.v0-1.survey/${rkey}`;
   const record = {
-    $type: 'bio.lexicons.temp.survey',
+    $type: 'bio.lexicons.temp.v0-1.survey',
     protocol: { uri: protocolUri, cid: FAKE_CID },
     createdAt: new Date().toISOString(),
     location: { $type: 'org.atgeo.place', name: locationName },
@@ -192,6 +192,7 @@ export async function seedSurvey(
 }
 
 export async function teardownDid(sql: Sql, did: string): Promise<void> {
+  await sql`DELETE FROM identifications WHERE did = ${did}`;
   await sql`DELETE FROM occurrences WHERE did = ${did}`;
   await sql`DELETE FROM surveys WHERE did = ${did}`;
   await sql`DELETE FROM survey_targets WHERE did = ${did}`;

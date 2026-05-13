@@ -1,9 +1,19 @@
 import type { l } from '@atproto/lex';
-import { json } from '@sveltejs/kit';
-import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/occurrence';
-import * as Survey from '$lib/lexicons/bio/lexicons/temp/survey';
+import { error, json } from '@sveltejs/kit';
+import * as Identification from '$lib/lexicons/bio/lexicons/temp/v0-1/identification';
+import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
+import * as Survey from '$lib/lexicons/bio/lexicons/temp/v0-1/survey';
+import {
+  type TaxonScope,
+  taxonScope as taxonScopeType,
+} from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs';
+import { geo } from '$lib/lexicons/community/lexicon/location';
+import * as Place from '$lib/lexicons/org/atgeo/place';
 import type { Main as AtgeoPlace } from '$lib/lexicons/org/atgeo/place.defs';
 import sql from '$lib/server/db';
+import { insertIdentification } from '$lib/server/db/identifications';
+import type { ProtocolRow } from '$lib/server/db/survey-protocols';
+import { getProtocolByUri } from '$lib/server/db/survey-protocols';
 import {
   getOccurrencesForSurveys,
   getSurveysByDid,
@@ -13,7 +23,8 @@ import {
   toSurveyResponse,
 } from '$lib/server/db/surveys';
 import logger from '$lib/server/logger';
-import { createRecord } from '$lib/server/pds';
+import { createRecord, putRecord } from '$lib/server/pds';
+import type { IncidentalInput } from '$lib/surveys';
 import type { RequestHandler } from './$types';
 
 const log = logger.child({ component: 'api-surveys' });
@@ -43,18 +54,12 @@ type SurveyInput = {
   eventDate: string;
   eventDurationValue: number;
   occurrences: OccurrenceInput[];
+  incidentals?: IncidentalInput[];
 };
 
-export const POST: RequestHandler = async ({ request, locals }) => {
-  if (!locals.did) return json({ error: 'Unauthorized' }, { status: 401 });
-  const did = locals.did;
-
-  const body = (await request.json()) as SurveyInput;
-
-  const [protocol] = await sql<{ at_uri: string; cid: string | null }[]>`
-    SELECT at_uri, cid FROM survey_protocols WHERE at_uri = ${body.protocolUri} LIMIT 1
-  `;
-  if (!protocol) return json({ error: 'Protocol not found' }, { status: 422 });
+async function fetchProtocolRecords(body: SurveyInput) {
+  const protocol = await getProtocolByUri(body.protocolUri);
+  if (!protocol) throw error(422, 'Protocol not found');
 
   if (!protocol.cid) {
     log.warn(
@@ -63,22 +68,32 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     );
   }
 
-  const location: AtgeoPlace = {
-    $type: 'org.atgeo.place',
-    name: body.locationName,
-    ...(body.latitude && body.longitude
-      ? {
-          locations: [
-            {
-              $type: 'community.lexicon.location.geo' as const,
-              latitude: body.latitude,
-              longitude: body.longitude,
-            },
-          ],
-        }
-      : {}),
-  };
+  // Pre-fetch targets for all occurrences in one query; build taxon-scope map.
+  const targetUris = body.occurrences.map((o) => o.surveyTargetUri);
+  const targetRows = await sql<
+    { at_uri: string; record: { scope?: unknown[] } }[]
+  >`
+    SELECT at_uri, record FROM survey_targets WHERE at_uri = ANY(${sql.array(targetUris)})
+  `;
+  const taxonScopeMap = new Map<string, TaxonScope>();
+  for (const row of targetRows) {
+    const taxonScopeEntry = row.record.scope?.find((s) =>
+      taxonScopeType.isTypeOf(s as Record<string, unknown>),
+    );
+    if (taxonScopeEntry) {
+      taxonScopeMap.set(row.at_uri, taxonScopeEntry as TaxonScope);
+    }
+  }
 
+  return { protocol, taxonScopeMap };
+}
+
+async function createSurvey(
+  protocol: ProtocolRow,
+  body: SurveyInput,
+  location: AtgeoPlace,
+  did: string,
+) {
   const surveyRecord = Survey.$build({
     protocol: {
       uri: protocol.at_uri as l.AtUriString,
@@ -93,39 +108,197 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
   let surveyUri: string;
   try {
-    ({ uri: surveyUri } = await createRecord(
-      did,
-      'bio.lexicons.temp.survey',
-      surveyRecord,
-    ));
+    ({ uri: surveyUri } = await createRecord(did, Survey.$nsid, surveyRecord));
   } catch (err) {
-    return json({ error: `PDS error: ${String(err)}` }, { status: 502 });
+    throw error(502, `PDS error: ${String(err)}`);
   }
   const surveyRkey = surveyUri.split('/').at(-1) ?? '';
 
   await insertSurvey(did, surveyRkey, surveyRecord, surveyUri);
 
+  return surveyUri;
+}
+
+async function createOccurrence(
+  inputOcc: OccurrenceInput,
+  surveyUri: string,
+  did: string,
+) {
+  const occurrenceRecord = Occurrence.$build({
+    eventID: surveyUri as l.AtUriString,
+    surveyTargetID: inputOcc.surveyTargetUri as l.AtUriString,
+    ...(inputOcc.taxonID ? { taxonID: inputOcc.taxonID as l.UriString } : {}),
+    organismQuantity: inputOcc.organismQuantity,
+    organismQuantityType: 'individual-count',
+  });
+  const { uri: occUri, cid: occCid } = await createRecord(
+    did,
+    Occurrence.$nsid,
+    occurrenceRecord,
+  );
+  const occRkey = occUri.split('/').at(-1) ?? '';
+  await insertOccurrence(did, occRkey, occurrenceRecord, occUri);
+
+  return { occUri, occCid, occRkey, occurrenceRecord };
+}
+
+async function createIdentification(
+  occUri: string,
+  occCid: string,
+  taxonScope: TaxonScope,
+  did: string,
+) {
+  const identRecord = Identification.$build({
+    occurrence: {
+      uri: occUri as l.AtUriString,
+      cid: occCid as l.CidString,
+    },
+    scientificName: taxonScope.scientificName,
+    taxonRank: taxonScope.taxonRank,
+    // remaining attributes are optional, hence the spreads
+    ...(taxonScope.kingdom ? { kingdom: taxonScope.kingdom } : {}),
+    ...(taxonScope.taxonID
+      ? { taxonID: taxonScope.taxonID as l.UriString }
+      : {}),
+    ...(taxonScope.vernacularName
+      ? { vernacularName: taxonScope.vernacularName }
+      : {}),
+  });
+  const { uri: identUri, cid: identCid } = await createRecord(
+    did,
+    Identification.$nsid,
+    identRecord,
+  );
+  const identRkey = identUri.split('/').at(-1) ?? '';
+  await insertIdentification(did, identRkey, identRecord, identUri);
+
+  return { uri: identUri, cid: identCid };
+}
+
+async function createIncidentalOccurrence(
+  input: IncidentalInput,
+  surveyUri: string,
+  did: string,
+) {
+  const occurrenceRecord = Occurrence.$build({
+    eventID: surveyUri as l.AtUriString,
+    taxonID: input.taxonID as l.UriString,
+    organismQuantity: input.organismQuantity,
+    organismQuantityType: 'individual-count',
+  });
+  const { uri: occUri, cid: occCid } = await createRecord(
+    did,
+    Occurrence.$nsid,
+    occurrenceRecord,
+  );
+  const occRkey = occUri.split('/').at(-1) ?? '';
+  await insertOccurrence(did, occRkey, occurrenceRecord, occUri);
+  return { occUri, occCid, occRkey, occurrenceRecord };
+}
+
+export const POST: RequestHandler = async ({ request, locals }) => {
+  if (!locals.did) return json({ error: 'Unauthorized' }, { status: 401 });
+  const did = locals.did;
+
+  const body = (await request.json()) as SurveyInput;
+
+  const { protocol, taxonScopeMap } = await fetchProtocolRecords(body);
+
+  const location: AtgeoPlace = {
+    $type: Place.$type,
+    name: body.locationName,
+    ...(body.latitude && body.longitude
+      ? {
+          locations: [
+            {
+              $type: geo.$type,
+              latitude: body.latitude,
+              longitude: body.longitude,
+            },
+          ],
+        }
+      : {}),
+  };
+
+  const surveyUri = await createSurvey(protocol, body, location, did);
+
   for (const input of body.occurrences) {
-    if (!input.organismQuantity) continue;
+    // We don't make absence occurrences
+    if (!input.organismQuantity || Number(input.organismQuantity) <= 0)
+      continue;
 
-    const occurrenceRecord = Occurrence.$build({
-      eventID: surveyUri as l.AtUriString,
-      surveyTargetID: input.surveyTargetUri as l.AtUriString,
-      ...(input.taxonID ? { taxonID: input.taxonID as l.UriString } : {}),
-      organismQuantity: input.organismQuantity,
-      organismQuantityType: 'individuals',
-    });
+    const { occUri, occCid, occRkey, occurrenceRecord } =
+      await createOccurrence(input, surveyUri, did);
 
+    // If target has taxon scope, create an Identification and update the Occurrence
+    const taxonScope = taxonScopeMap.get(input.surveyTargetUri);
+    if (taxonScope) {
+      let ident: { uri: string; cid: string } | undefined;
+      try {
+        ident = await createIdentification(occUri, occCid, taxonScope, did);
+      } catch (err) {
+        log.error({ occUri }, 'Failed to create identification: %s', err);
+      }
+      // If we successfully create the ident, we update the Occurrence to
+      // indicate that this is the Occurrence user's accepted ident
+      if (ident) {
+        // update the occurrence
+        const updatedOccurrenceRecord = {
+          ...occurrenceRecord,
+          acceptedIdentificationID: {
+            uri: ident.uri as l.AtUriString,
+            cid: ident.cid as l.CidString,
+          },
+        };
+        await putRecord(
+          did,
+          Occurrence.$type,
+          occRkey,
+          updatedOccurrenceRecord,
+        );
+        await insertOccurrence(did, occRkey, updatedOccurrenceRecord, occUri);
+      }
+    }
+  }
+
+  // Validate all incidentals before creating any incidental records
+  for (const incidental of body.incidentals ?? []) {
+    if (!incidental.taxonID || !incidental.scientificName) {
+      throw error(422, 'Incidental missing taxonID or scientificName');
+    }
+  }
+
+  for (const incidental of body.incidentals ?? []) {
+    const { occUri, occCid, occRkey, occurrenceRecord } =
+      await createIncidentalOccurrence(incidental, surveyUri, did);
+
+    let ident: { uri: string; cid: string } | undefined;
     try {
-      const { uri: occUri } = await createRecord(
+      ident = await createIdentification(
+        occUri,
+        occCid,
+        // taxonID validated above; cast bridges string → branded l.UriString
+        incidental as TaxonScope,
         did,
-        'bio.lexicons.temp.occurrence',
-        occurrenceRecord,
       );
-      const occRkey = occUri.split('/').at(-1) ?? '';
-      await insertOccurrence(did, occRkey, occurrenceRecord, occUri);
     } catch (err) {
-      log.error({ surveyUri }, 'Failed to create occurrence: %s', err);
+      log.error(
+        { occUri },
+        'Failed to create incidental identification: %s',
+        err,
+      );
+    }
+
+    if (ident) {
+      const updatedOccurrenceRecord = {
+        ...occurrenceRecord,
+        acceptedIdentificationID: {
+          uri: ident.uri as l.AtUriString,
+          cid: ident.cid as l.CidString,
+        },
+      };
+      await putRecord(did, Occurrence.$type, occRkey, updatedOccurrenceRecord);
+      await insertOccurrence(did, occRkey, updatedOccurrenceRecord, occUri);
     }
   }
 

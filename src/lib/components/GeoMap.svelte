@@ -73,7 +73,6 @@ onDestroy(() => {
 });
 
 $effect(() => {
-  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
   mapReady; // track so effect re-runs after mount
   const coords = parsedCoords(); // tracks latitude, longitude
   if (!map || !MarkerCls) return;

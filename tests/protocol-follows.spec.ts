@@ -98,7 +98,7 @@ test('unfollow flow', async ({ page, sql, context }) => {
     },
   ]);
   const { protocolRkey } = await seedProtocol(sql, DID);
-  const protocolUri = `at://${DID}/bio.lexicons.temp.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
   await seedFollow(sql, DID, protocolUri);
 
   try {
@@ -131,7 +131,7 @@ test('unauthenticated view shows follower count but no follow button', async ({
   sql,
 }) => {
   const { protocolRkey } = await seedProtocol(sql, DID);
-  const protocolUri = `at://${DID}/bio.lexicons.temp.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
   await seedFollow(sql, DID, protocolUri);
 
   try {

@@ -370,7 +370,7 @@ test.describe('protocol editing', () => {
   test('editing replaces survey targets', async ({ page, sql, context }) => {
     await context.addCookies([authCookie(EDIT_DID)]);
     const { protocolRkey } = await seedProtocol(sql, EDIT_DID);
-    const protocolUri = `at://${EDIT_DID}/bio.lexicons.temp.surveyProtocol/${protocolRkey}`;
+    const protocolUri = `at://${EDIT_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
 
     await page.goto(`/protocols/${EDIT_HANDLE}/${protocolRkey}/edit`);
 
@@ -430,6 +430,93 @@ test('/protocols/[handle] shows protocol titles for that user', async ({
   } finally {
     await teardownDid(sql, DID);
   }
+});
+
+// ── Taxon autocomplete (regression guard for TaxonAutocomplete extraction) ────
+
+const TAXON_DID = 'did:test:protocol-taxon-spec';
+const TAXON_HANDLE = 'user-protocol-taxon-spec';
+
+const MOCK_TAXON_RESULT = {
+  inatId: 48978,
+  scientificName: 'Quercus agrifolia',
+  taxonRank: 'species',
+  commonName: 'Coast Live Oak',
+  kingdom: 'Plantae',
+  taxonID: 'https://www.inaturalist.org/taxa/48978',
+};
+
+test.describe('taxon autocomplete', () => {
+  test.beforeEach(async ({ page, sql, context }) => {
+    await sql`
+      INSERT INTO users (did, handle) VALUES (${TAXON_DID}, ${TAXON_HANDLE})
+      ON CONFLICT (did) DO UPDATE SET handle = EXCLUDED.handle
+    `;
+    await context.addCookies([
+      {
+        name: 'did',
+        value: TAXON_DID,
+        domain: '127.0.0.1',
+        path: '/',
+        httpOnly: true,
+        sameSite: 'Lax',
+      },
+    ]);
+
+    await page.route('**/api/taxa**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ results: [MOCK_TAXON_RESULT] }),
+      }),
+    );
+
+    await page.goto('/protocols/new');
+    await page.waitForLoadState('networkidle');
+  });
+
+  test.afterEach(async ({ sql }) => {
+    await teardownDid(sql, TAXON_DID);
+  });
+
+  test('typing triggers a taxa search and shows results', async ({ page }) => {
+    await page.fill(
+      '[placeholder="Search iNaturalist taxa (e.g. Quercus)"]',
+      'Quercus',
+    );
+    await page.waitForTimeout(350);
+
+    await expect(page.getByText('Quercus agrifolia')).toBeVisible();
+    await expect(page.getByText('Coast Live Oak')).toBeVisible();
+  });
+
+  test('selecting a result adds it as a survey target', async ({ page }) => {
+    await page.fill(
+      '[placeholder="Search iNaturalist taxa (e.g. Quercus)"]',
+      'Quercus',
+    );
+    await page.waitForTimeout(350);
+
+    await page.getByText('Quercus agrifolia').click();
+
+    await expect(page.locator('[id^="target-sciname-"]').first()).toHaveValue(
+      'Quercus agrifolia',
+    );
+  });
+
+  test('search input clears after selecting a result', async ({ page }) => {
+    await page.fill(
+      '[placeholder="Search iNaturalist taxa (e.g. Quercus)"]',
+      'Quercus',
+    );
+    await page.waitForTimeout(350);
+
+    await page.getByText('Quercus agrifolia').click();
+
+    await expect(
+      page.locator('[placeholder="Search iNaturalist taxa (e.g. Quercus)"]'),
+    ).toHaveValue('');
+  });
 });
 
 // ── Nominatim place search ────────────────────────────────────────────────────

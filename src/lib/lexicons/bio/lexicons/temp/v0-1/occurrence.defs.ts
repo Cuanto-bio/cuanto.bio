@@ -3,15 +3,15 @@
  */
 
 import { l } from '@atproto/lex'
-import * as RepoStrongRef from '../../../com/atproto/repo/strongRef.defs.js'
+import * as RepoStrongRef from '../../../../com/atproto/repo/strongRef.defs.js'
 
-const $nsid = 'bio.lexicons.temp.occurrence'
+const $nsid = 'bio.lexicons.temp.v0-1.occurrence'
 
 export { $nsid }
 
 /** A biodiversity observation record following Darwin Core standards. Represents a single occurrence of an organism. */
 type Main = {
-  $type: 'bio.lexicons.temp.occurrence'
+  $type: 'bio.lexicons.temp.v0-1.occurrence'
 
   /**
    * The date-time when the observation occurred, in ISO 8601 format (Darwin Core dwc:eventDate).
@@ -34,19 +34,19 @@ type Main = {
   coordinateUncertaintyInMeters?: number
 
   /**
-   * Strong references to media records documenting the observation (Darwin Core dwc:associatedMedia).
+   * Strong references to media records documenting the observation. Conceptually maps to the DwC-DP Occurrence Media table (https://gbif.github.io/dwc-dp/qrg/#Occurrence%20Media), which replaced the legacy dwc:associatedMedia term.
    */
-  associatedMedia?: RepoStrongRef.Main[]
+  media?: RepoStrongRef.Main[]
 
   /**
-   * Accepted taxon for this occurrence, preferably a stable URI (e.g. a GBIF species URI). Ideally denormalized from the referenced Identification for queryability (sensu DarwinCore dwc:taxonID).
+   * Identified taxon the occurrence user has accepted, preferably a stable URI (e.g. a GBIF species URI). Derived from identification specified by acceptedIdentificationID. Must be accompanied by acceptedIdentificationID. Represents a more specific version of the DarwinCore equivalent (Darwin Core dwc:taxonID).
    */
   taxonID?: l.UriString
 
   /**
-   * The Identification record the owner has chosen as the source of taxonID. Should not be present without taxonID (sensu DarwinCore dwc:identificationID).
+   * Identification accepted by the occurrence user as the source of taxonID. Must be accompanied by taxonID. Indirectly maps to Darwin Core dwc:isAcceptedIdentification.
    */
-  identificationID?: l.AtUriString
+  acceptedIdentificationID?: RepoStrongRef.Main
 
   /**
    * The SurveyTarget this Occurrence was intended to satisfy. Expresses observer intent.
@@ -66,7 +66,7 @@ type Main = {
   /**
    * The type of quantification system used for the quantity of organisms (sensu DarwinCore dwc:organismQuantityType).
    */
-  organismQuantityType?: string
+  organismQuantityType?: 'individual-count' | 'percent-cover' | l.UnknownString
 }
 
 export type { Main }
@@ -80,17 +80,24 @@ const main = l.record<'tid', Main>(
     decimalLatitude: l.optional(l.string()),
     decimalLongitude: l.optional(l.string()),
     coordinateUncertaintyInMeters: l.optional(l.integer({ minimum: 0 })),
-    associatedMedia: l.optional(
+    media: l.optional(
       l.array(l.ref<RepoStrongRef.Main>((() => RepoStrongRef.main) as any), {
         maxLength: 10,
       }),
     ),
     taxonID: l.optional(l.string({ format: 'uri' })),
-    identificationID: l.optional(l.string({ format: 'at-uri' })),
+    acceptedIdentificationID: l.optional(
+      l.ref<RepoStrongRef.Main>((() => RepoStrongRef.main) as any),
+    ),
     surveyTargetID: l.optional(l.string({ format: 'at-uri' })),
     eventID: l.optional(l.string({ format: 'at-uri' })),
     organismQuantity: l.optional(l.string()),
-    organismQuantityType: l.optional(l.string()),
+    organismQuantityType: l.optional(
+      l.withDefault(
+        l.string<{ knownValues: ['individual-count', 'percent-cover'] }>(),
+        'individual-count',
+      ),
+    ),
   }),
 )
 

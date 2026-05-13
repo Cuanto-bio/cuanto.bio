@@ -6,6 +6,9 @@ import { beforeNavigate, goto, replaceState } from '$app/navigation';
 import { page } from '$app/state';
 import Button from '$lib/components/Button.svelte';
 import Taxon from '$lib/components/Taxon.svelte';
+import TaxonAutocomplete, {
+  type TaxonResult,
+} from '$lib/components/TaxonAutocomplete.svelte';
 import * as AlertDialog from '$lib/components/ui/alert-dialog';
 import * as Command from '$lib/components/ui/command';
 import * as Dialog from '$lib/components/ui/dialog';
@@ -13,6 +16,7 @@ import { Input } from '$lib/components/ui/input';
 import { Label } from '$lib/components/ui/label';
 import * as Popover from '$lib/components/ui/popover';
 import * as Sheet from '$lib/components/ui/sheet';
+import { useOnline } from '$lib/composables/online.svelte';
 import type { Main as AtgeoPlaceMain } from '$lib/lexicons/org/atgeo/place.defs';
 import {
   type CachedProtocol,
@@ -31,15 +35,19 @@ import {
   buildSurveyTiming,
   calcElapsed,
   formatElapsed,
+  hasUnresolvedIncidentals,
+  type IncidentalOccurrence,
   validatePastTiming,
 } from '$lib/surveys';
 
 let protocol = $state<CachedProtocol | null>(null);
 let notFound = $state(false);
 
+let modeOverride = $state<'now' | 'past' | null>(null);
 const mode = $derived(
-  page.url.searchParams.get('past') === '1' ? 'past' : 'now',
+  modeOverride ?? (page.url.searchParams.get('past') === '1' ? 'past' : 'now'),
 );
+let resumingComplete = $state(false);
 let startedAt = $state(0);
 let elapsedSeconds = $state(0);
 let pastDate = $state('');
@@ -63,6 +71,21 @@ let isWide = $state(false);
 let filterQuery = $state('');
 let cancelDialogOpen = $state(false);
 let finishDialogOpen = $state(false);
+
+const online = useOnline();
+
+let incidentals = $state<IncidentalOccurrence[]>([]);
+let incidentalSheetOpen = $state(false);
+let editingIncidentalId = $state<string | null>(null);
+let selectedTaxon = $state<TaxonResult | null>(null);
+let incidentalOrganismQty = $state('');
+let incidentalPlaceholder = $state('');
+let incidentalDialogContentRef = $state<HTMLElement | null>(null);
+let incidentalSheetContentRef = $state<HTMLElement | null>(null);
+const incidentalPortalTarget = $derived(
+  (isWide ? incidentalDialogContentRef : incidentalSheetContentRef) ??
+    undefined,
+);
 
 // IDB id of the auto-saved draft for this session; null until first auto-save
 let pendingSurveyId = $state<number | null>(null);
@@ -129,6 +152,15 @@ onMount(() => {
               organismQuantities[occ.surveyTargetUri] = occ.organismQuantity;
             }
           }
+          incidentals = saved.incidentals ?? [];
+          if (saved.complete) {
+            resumingComplete = true;
+            modeOverride = 'past';
+            if (saved.eventDate) pastDate = toDatetimeLocal(saved.eventDate);
+            if (saved.eventDurationValue != null) {
+              pastDurationMinutes = String(saved.eventDurationValue);
+            }
+          }
         }
       }
     } else {
@@ -185,16 +217,23 @@ function buildSurveyPayload(p: CachedProtocol, complete: boolean) {
     eventDurationValue,
     eventDurationUnit: complete ? 'minutes' : null,
     occurrences,
+    incidentals: $state.snapshot(incidentals),
     createdAt: Date.now(),
     complete,
   };
+}
+
+function toDatetimeLocal(isoString: string): string {
+  const dt = new Date(isoString);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
 }
 
 async function autoSave() {
   if (!protocol || saving) return;
   saving = true;
   try {
-    const survey = buildSurveyPayload(protocol, false);
+    const survey = buildSurveyPayload(protocol, resumingComplete);
     if (pendingSurveyId != null) {
       await updatePendingSurvey({ ...survey, id: pendingSurveyId });
     } else {
@@ -260,6 +299,80 @@ function resetTarget() {
   delete organismQuantities[selectedTarget.atUri];
   editingQuantity = '';
   sheetOpen = false;
+}
+
+function openAddIncidentalSheet() {
+  editingIncidentalId = null;
+  selectedTaxon = null;
+  incidentalOrganismQty = '';
+  incidentalPlaceholder = '';
+  incidentalSheetOpen = true;
+}
+
+function openEditIncidentalSheet(incidental: IncidentalOccurrence) {
+  editingIncidentalId = incidental.localId;
+  incidentalOrganismQty = incidental.organismQuantity ?? '';
+  incidentalPlaceholder = incidental.placeholder ?? '';
+  selectedTaxon =
+    incidental.taxonID && incidental.scientificName
+      ? {
+          inatId: 0,
+          scientificName: incidental.scientificName,
+          taxonRank: incidental.taxonRank ?? '',
+          commonName: incidental.vernacularName ?? null,
+          kingdom: incidental.kingdom ?? null,
+          taxonID: incidental.taxonID,
+        }
+      : null;
+  incidentalSheetOpen = true;
+}
+
+function saveIncidentalSheet() {
+  const localId = editingIncidentalId ?? crypto.randomUUID();
+  const base: IncidentalOccurrence = { localId };
+  let saved: IncidentalOccurrence;
+  if (selectedTaxon) {
+    saved = {
+      ...base,
+      taxonID: selectedTaxon.taxonID,
+      scientificName: selectedTaxon.scientificName,
+      taxonRank: selectedTaxon.taxonRank,
+      vernacularName: selectedTaxon.commonName ?? undefined,
+      kingdom: selectedTaxon.kingdom ?? undefined,
+      organismQuantity: incidentalOrganismQty.trim() || undefined,
+    };
+  } else {
+    saved = {
+      ...base,
+      placeholder: incidentalPlaceholder.trim() || undefined,
+      organismQuantity: incidentalOrganismQty.trim() || undefined,
+    };
+  }
+
+  if (editingIncidentalId != null) {
+    const idx = incidentals.findIndex((i) => i.localId === editingIncidentalId);
+    if (idx >= 0) incidentals[idx] = saved;
+  } else {
+    incidentals.push(saved);
+  }
+
+  incidentalSheetOpen = false;
+}
+
+function deleteIncidental() {
+  if (editingIncidentalId == null) return;
+  incidentals = incidentals.filter((i) => i.localId !== editingIncidentalId);
+  incidentalSheetOpen = false;
+}
+
+function incrementIncidental(localId: string) {
+  const idx = incidentals.findIndex((i) => i.localId === localId);
+  if (idx < 0) return;
+  const current = parseInt(incidentals[idx].organismQuantity ?? '0', 10);
+  incidentals[idx] = {
+    ...incidentals[idx],
+    organismQuantity: String(Number.isNaN(current) ? 1 : current + 1),
+  };
 }
 
 function requestGps() {
@@ -331,7 +444,7 @@ async function finish() {
     pendingSurveyId = await savePendingSurvey(survey);
   }
 
-  if (navigator.onLine) {
+  if (navigator.onLine && !hasUnresolvedIncidentals(survey.incidentals ?? [])) {
     try {
       const { surveyUri, handle } = await uploadPendingSurvey(survey);
       if (pendingSurveyId != null) await deletePendingSurvey(pendingSurveyId);
@@ -515,7 +628,7 @@ function displayCount(qty: undefined | string | number) {
       {/if}
     </div>
 
-    <div class="flex-1">
+    <div class="">
       {#if protocol.targets.length === 0}
         <p class="text-muted-foreground mb-6 text-sm">No targets defined for this protocol.</p>
       {:else}
@@ -566,6 +679,54 @@ function displayCount(qty: undefined | string | number) {
       {/if}
     </div>
 
+    <div class="flex-1 mt-6">
+      <h2 class="mb-2 text-sm font-semibold">Incidentals</h2>
+      {#if incidentals.length > 0}
+        <ul class="-mx-4 mb-4 divide-y border-y sm:mx-0 sm:rounded-lg sm:border">
+          {#each incidentals as incidental (incidental.localId)}
+            {@const resolved = !!incidental.taxonID}
+            <li class="flex items-center p-2">
+              <button
+                type="button"
+                class="flex flex-1 items-center gap-2 px-4 py-3 text-left"
+                onclick={() => openEditIncidentalSheet(incidental)}
+              >
+                <span class="flex-1 text-sm">
+                  {#if resolved}
+                    <Taxon
+                      taxon={{
+                        ...incidental,
+                        scientificName: incidental.scientificName ?? 'Unknown',
+                        taxonRank: incidental.taxonRank ?? 'unknown rank'
+                      }}
+                    />
+                  {:else}
+                    <span class="text-muted-foreground italic">
+                      Placeholder: {incidental.placeholder ?? 'Unknown'}
+                    </span>
+                  {/if}
+                </span>
+              </button>
+              <button
+                type="button"
+                class="mr-3 flex min-h-11 min-w-11 items-center justify-center rounded-full p-2 text-sm font-bold tabular-nums transition-colors
+                  {incidental.organismQuantity && Number(incidental.organismQuantity) > 0
+                    ? 'bg-primary text-primary-foreground'
+                    : 'border-2 border-border text-muted-foreground hover:border-primary hover:text-foreground'}"
+                onclick={() => incrementIncidental(incidental.localId)}
+                aria-label="Increase incidental count"
+              >
+                {displayCount(incidental.organismQuantity)}
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      <Button variant="outline" class="w-full mb-4" onclick={openAddIncidentalSheet}>
+        Add incidental
+      </Button>
+    </div>
+
     <div class="sticky bottom-0 -mx-4 border-t bg-background px-4 py-4 sm:mx-0">
       <div class="flex gap-2">
         <Button variant="outline" class="flex-1" onclick={cancel}>Cancel Survey</Button>
@@ -609,6 +770,70 @@ function displayCount(qty: undefined | string | number) {
     </div>
   {/snippet}
 
+  {#snippet incidentalForm()}
+    <div class="flex flex-col gap-4">
+      {#if online.value}
+        {#if selectedTaxon}
+          <div class="flex gap-2 justify-between items-center">
+            <span>
+              <Taxon
+                taxon={{
+                  scientificName: selectedTaxon.scientificName,
+                  vernacularName: selectedTaxon.commonName!,
+                  taxonRank: selectedTaxon.taxonRank
+                }} />
+            </span>
+            <Button
+              variant="outline"
+              onclick={() => {selectedTaxon = null}}
+            >
+              Edit
+            </Button>
+          </div>
+        {:else}
+          <TaxonAutocomplete
+            placeholder="Search taxa…"
+            onSelectTaxon={(r) => (selectedTaxon = r)}
+            portalTarget={incidentalPortalTarget}
+            initialValue={incidentalPlaceholder || undefined}
+          />
+        {/if}
+      {:else}
+        <div class="flex flex-col gap-2">
+          <Label for="incidental-verbatim">What did you see?</Label>
+          <Input
+            id="incidental-verbatim"
+            bind:value={incidentalPlaceholder}
+            placeholder="e.g. small brown bird"
+          />
+        </div>
+      {/if}
+      <div class="flex flex-col gap-2">
+        <Label for="incidental-qty">Organism quantity</Label>
+        <Input
+          id="incidental-qty"
+          type="number"
+          bind:value={
+            () => incidentalOrganismQty,
+            (v) => (incidentalOrganismQty = String(v))
+          }
+        />
+      </div>
+      <div class="flex gap-2">
+        {#if editingIncidentalId != null}
+          <Button variant="destructive" class="flex-1" onclick={deleteIncidental}>Delete</Button>
+        {/if}
+        <Button
+          class="flex-1"
+          onclick={saveIncidentalSheet}
+          disabled={!selectedTaxon && !incidentalPlaceholder.trim()}
+        >
+          {editingIncidentalId != null ? 'Save' : 'Add'}
+        </Button>
+      </div>
+    </div>
+  {/snippet}
+
   <Dialog.Root bind:open={cancelDialogOpen}>
     <Dialog.Content>
       <Dialog.Header>
@@ -632,13 +857,19 @@ function displayCount(qty: undefined | string | number) {
         <AlertDialog.Title>Finish survey?</AlertDialog.Title>
         <AlertDialog.Description>
           {protocol.record.title} · {locationName || 'no location set'} ·
-          {formatElapsed(elapsedSeconds)} ·
+          {mode === 'past' ? `${pastDurationMinutes} min` : formatElapsed(elapsedSeconds)} ·
           {nonZeroOccurrences}
           {nonZeroOccurrences === 1 ? 'observation' : 'observations'}
         </AlertDialog.Description>
+        {#if hasUnresolvedIncidentals(incidentals)}
+          {@const unresolvedCount = incidentals.filter((i) => !i.taxonID).length}
+          <p class="text-sm text-yellow-700 dark:text-yellow-400 mt-1">
+            {unresolvedCount} incidental{unresolvedCount === 1 ? '' : 's'} without taxa — you can resolve them before uploading.
+          </p>
+        {/if}
       </AlertDialog.Header>
       <AlertDialog.Footer>
-        <AlertDialog.Cancel>Keep going</AlertDialog.Cancel>
+        <AlertDialog.Cancel>{resumingComplete ? 'Keep editing' : 'Keep going'}</AlertDialog.Cancel>
         <AlertDialog.Action onclick={finish}>Finish</AlertDialog.Action>
       </AlertDialog.Footer>
     </AlertDialog.Content>
@@ -678,6 +909,34 @@ function displayCount(qty: undefined | string | number) {
         </Sheet.Header>
         <div class="px-6 pb-6">
           {@render occurrenceForm()}
+        </div>
+      </Sheet.Content>
+    </Sheet.Root>
+  {/if}
+
+  {#if isWide}
+    <Dialog.Root bind:open={incidentalSheetOpen}>
+      <Dialog.Content bind:ref={incidentalDialogContentRef}>
+        <Dialog.Header>
+          <Dialog.Title>
+            {editingIncidentalId != null ? 'Edit incidental' : 'Add incidental'}
+          </Dialog.Title>
+          <Dialog.Description>Record an incidental observation</Dialog.Description>
+        </Dialog.Header>
+        {@render incidentalForm()}
+      </Dialog.Content>
+    </Dialog.Root>
+  {:else}
+    <Sheet.Root bind:open={incidentalSheetOpen}>
+      <Sheet.Content side="bottom" bind:ref={incidentalSheetContentRef}>
+        <Sheet.Header>
+          <Sheet.Title>
+            {editingIncidentalId != null ? 'Edit incidental' : 'Add incidental'}
+          </Sheet.Title>
+          <Sheet.Description>Record an incidental observation</Sheet.Description>
+        </Sheet.Header>
+        <div class="px-6 pb-6">
+          {@render incidentalForm()}
         </div>
       </Sheet.Content>
     </Sheet.Root>

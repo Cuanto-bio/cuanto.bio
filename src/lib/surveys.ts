@@ -41,3 +41,30 @@ export function formatElapsed(s: number): string {
   const sec = (s % 60).toString().padStart(2, '0');
   return `${m}:${sec}`;
 }
+
+/** The resolved taxon data sent to the server for each incidental occurrence. */
+export interface IncidentalInput {
+  taxonID: string;
+  scientificName: string;
+  taxonRank: string;
+  vernacularName?: string;
+  kingdom?: string;
+  organismQuantity?: string;
+}
+
+/**
+ * Local (IDB) representation of an incidental occurrence. All taxon fields are
+ * optional so unresolved (offline placeholder) incidentals can be stored.
+ * Partial<IncidentalInput> ensures any field added to the server type is
+ * automatically available (optional) here, preventing the two from drifting.
+ */
+export type IncidentalOccurrence = Partial<IncidentalInput> & {
+  localId: string;
+  placeholder?: string;
+};
+
+export function hasUnresolvedIncidentals(
+  incidentals: IncidentalOccurrence[],
+): boolean {
+  return incidentals.some((i) => !i.taxonID);
+}

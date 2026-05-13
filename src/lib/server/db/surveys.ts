@@ -1,6 +1,7 @@
-import type { Main as AtOccurrence } from '$lib/lexicons/bio/lexicons/temp/occurrence.defs.js';
-import type { Main as AtSurvey } from '$lib/lexicons/bio/lexicons/temp/survey.defs.js';
+import type { Main as AtOccurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs.js';
+import type { Main as AtSurvey } from '$lib/lexicons/bio/lexicons/temp/v0-1/survey.defs.js';
 import type { Occurrence, Survey } from '$lib/offline/db';
+import { getIdentificationsForOccurrences } from './identifications.js';
 import sql from './index.js';
 
 interface SurveyRow {
@@ -72,12 +73,18 @@ export async function getOccurrencesForSurveys(
 }
 
 export function groupOccurrencesBySurvey(
-  occurrences: OccurrenceRow[],
+  occurrences: (OccurrenceRow & {
+    identification?: Occurrence['identification'];
+  })[],
 ): Map<string, Occurrence[]> {
   const map = new Map<string, Occurrence[]>();
   for (const o of occurrences) {
     const list = map.get(o.survey_uri) ?? [];
-    list.push({ atUri: o.at_uri, record: o.record });
+    list.push({
+      atUri: o.at_uri,
+      record: o.record,
+      identification: o.identification,
+    });
     map.set(o.survey_uri, list);
   }
   return map;
@@ -111,7 +118,19 @@ export async function getSurveyDetailByHandleAndRkey(
   const survey = await getSurveyByDidAndRkey(user.did, rkey);
   if (!survey) return null;
   const occurrences = await getOccurrencesForSurveys([survey.at_uri]);
-  return toSurveyResponse([survey], groupOccurrencesBySurvey(occurrences))[0];
+  const incidentalUris = occurrences
+    .filter((o) => !o.record.surveyTargetID)
+    .map((o) => o.at_uri);
+  const identsByOccurrence =
+    await getIdentificationsForOccurrences(incidentalUris);
+  const occurrencesWithIdents = occurrences.map((o) => ({
+    ...o,
+    identification: identsByOccurrence.get(o.at_uri),
+  }));
+  return toSurveyResponse(
+    [survey],
+    groupOccurrencesBySurvey(occurrencesWithIdents),
+  )[0];
 }
 
 export async function getSurveysPage(limit: number = 100, offset: number = 0) {

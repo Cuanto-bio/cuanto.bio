@@ -13,6 +13,7 @@ import { useOnline } from '$lib/composables/online.svelte';
 import type { PendingSurvey } from '$lib/offline/db';
 import { deletePendingSurvey, getPendingSurveys } from '$lib/offline/db';
 import { uploadAllPending } from '$lib/offline/upload';
+import { hasUnresolvedIncidentals } from '$lib/surveys';
 
 let { data } = $props();
 
@@ -24,7 +25,16 @@ const online = useOnline();
 const inProgressSurveys = $derived(
   allPendingSurveys.filter((s) => !s.complete),
 );
-const readyToUpload = $derived(allPendingSurveys.filter((s) => s.complete));
+const needsAttentionSurveys = $derived(
+  allPendingSurveys.filter(
+    (s) => s.complete && hasUnresolvedIncidentals(s.incidentals ?? []),
+  ),
+);
+const readyToUpload = $derived(
+  allPendingSurveys.filter(
+    (s) => s.complete && !hasUnresolvedIncidentals(s.incidentals ?? []),
+  ),
+);
 
 onMount(() => {
   getPendingSurveys().then(async (pending) => {
@@ -82,6 +92,53 @@ async function confirmDelete() {
                       variant="outline"
                     >
                       Resume
+                    </Button>
+                  </a>
+                  <Button
+                    variant="ghost"
+                    aria-label="Delete survey"
+                    onclick={() => (deleteTargetId = survey.id ?? null)}
+                  >
+                    <Trash2Icon size={16} />
+                    Delete
+                  </Button>
+                </div>
+              </li>
+              {/if}
+            {/each}
+          </ul>
+        </Alert.Description>
+      </Alert.Root>
+    </section>
+  {/if}
+
+  {#if needsAttentionSurveys.length > 0}
+    <section class="mb-6">
+      <Alert.Root class="border-yellow-500 bg-yellow-50 dark:bg-yellow-950 mb-4">
+        <Alert.Title class="flex flex-row gap-2 justify-between items-center">
+          <div class="flex items-center gap-2">
+            Needs attention
+            <Badge variant="outline">{needsAttentionSurveys.length}</Badge>
+          </div>
+        </Alert.Title>
+        <Alert.Description>
+          <p class="text-sm mt-1 mb-3">
+            {needsAttentionSurveys.length === 1 ? 'This survey has' : 'These surveys have'} incidentals without taxa and cannot be uploaded until resolved.
+          </p>
+          <ul class="flex flex-col gap-3 mb-2">
+            {#each needsAttentionSurveys as survey (survey.id)}
+              {#if survey.id != null}
+              <li class="flex items-center gap-2">
+                <a
+                  href="/app/surveys/new/{survey.protocolRkey}?resumeId={survey.id}"
+                  class="min-w-0 flex-1"
+                >
+                  <SurveyCard {survey} />
+                </a>
+                <div class="flex flex-col gap-2 justify-between">
+                  <a href="/app/surveys/new/{survey.protocolRkey}?resumeId={survey.id}">
+                    <Button variant="outline">
+                      Resolve
                     </Button>
                   </a>
                   <Button
@@ -163,7 +220,7 @@ async function confirmDelete() {
     </section>
   {/if}
 
-  {#if data.surveys.length === 0 && inProgressSurveys.length === 0 && readyToUpload.length === 0}
+  {#if data.surveys.length === 0 && inProgressSurveys.length === 0 && needsAttentionSurveys.length === 0 && readyToUpload.length === 0}
     <p class="text-muted-foreground text-sm">No surveys yet.</p>
   {:else if data.surveys.length > 0}
     <ul class="flex flex-col gap-3">

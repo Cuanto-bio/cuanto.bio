@@ -1,5 +1,5 @@
-import type { Main as AtSurveyProtocol } from '$lib/lexicons/bio/lexicons/temp/surveyProtocol.defs.js';
-import type { Main as AtSurveyTarget } from '$lib/lexicons/bio/lexicons/temp/surveyTarget.defs.js';
+import type { Main as AtSurveyProtocol } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyProtocol.defs.js';
+import type { Main as AtSurveyTarget } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs.js';
 import type { Protocol, Target } from '$lib/offline/db.js';
 import sql from './index.js';
 
@@ -57,7 +57,7 @@ export async function deleteTargetsByProtocolUri(
   `;
 }
 
-interface ProtocolRow {
+export interface ProtocolRow {
   at_uri: string;
   rkey: string;
   cid: string | null;

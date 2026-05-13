@@ -8,7 +8,7 @@ import {
 import { uploadAllPending } from './upload';
 
 const baseSurvey: Omit<import('./db').PendingSurvey, 'id'> = {
-  protocolUri: 'at://did:test:1/bio.lexicons.temp.surveyProtocol/p1',
+  protocolUri: 'at://did:test:1/bio.lexicons.temp.v0-1.surveyProtocol/p1',
   protocolRkey: 'p1',
   protocolTitle: 'Test Protocol',
   locationName: 'Test Field',
@@ -28,7 +28,7 @@ describe('uploadAllPending', () => {
       ok: true,
       json: () =>
         Promise.resolve({
-          surveyUri: 'at://did:test:1/bio.lexicons.temp.survey/s1',
+          surveyUri: 'at://did:test:1/bio.lexicons.temp.v0-1.survey/s1',
           handle: 'alice',
         }),
     });
@@ -57,6 +57,43 @@ describe('uploadAllPending', () => {
   test('skips incomplete and uploads complete when both present', async () => {
     await savePendingSurvey({ ...baseSurvey, complete: false });
     await savePendingSurvey({ ...baseSurvey, complete: true });
+    await uploadAllPending();
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  test('skips surveys with unresolved incidentals', async () => {
+    await savePendingSurvey({
+      ...baseSurvey,
+      complete: true,
+      incidentals: [{ localId: 'i1', placeholder: 'mystery bird' }],
+    });
+    await uploadAllPending();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test('uploads complete surveys with no incidentals', async () => {
+    await savePendingSurvey({
+      ...baseSurvey,
+      complete: true,
+      incidentals: [],
+    });
+    await uploadAllPending();
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  test('uploads complete surveys with only resolved incidentals', async () => {
+    await savePendingSurvey({
+      ...baseSurvey,
+      complete: true,
+      incidentals: [
+        {
+          localId: 'i1',
+          taxonID: 'https://www.inaturalist.org/taxa/12345',
+          scientificName: 'Quercus agrifolia',
+          taxonRank: 'species',
+        },
+      ],
+    });
     await uploadAllPending();
     expect(fetch).toHaveBeenCalledOnce();
   });

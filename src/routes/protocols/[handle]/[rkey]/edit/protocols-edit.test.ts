@@ -31,11 +31,11 @@ const HANDLE = 'user-edit-unit-spec';
 const RKEY = 'testrkey';
 
 const FAKE_PROTOCOL = {
-  atUri: `at://${DID}/bio.lexicons.temp.surveyProtocol/${RKEY}`,
+  atUri: `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${RKEY}`,
   rkey: RKEY,
   handle: HANDLE,
   record: {
-    $type: 'bio.lexicons.temp.surveyProtocol',
+    $type: 'bio.lexicons.temp.v0-1.surveyProtocol',
     title: 'Original Title',
     description: 'Original Description',
     createdAt: '2024-01-01T00:00:00.000Z',
@@ -160,7 +160,7 @@ describe('POST /protocols/[handle]/[rkey]/edit — validation', () => {
     });
     expect(putRecord).toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.surveyProtocol',
+      'bio.lexicons.temp.v0-1.surveyProtocol',
       RKEY,
       expect.objectContaining({
         title: 'New Title',

@@ -2,10 +2,12 @@ import { assureAdminAuth, parseTapEvent } from '@atproto/tap';
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import type { Main as Follow } from '$lib/lexicons/bio/cuanto/surveyProtocol/follow.defs';
-import type { Main as Occurrence } from '$lib/lexicons/bio/lexicons/temp/occurrence.defs';
-import type { Main as Survey } from '$lib/lexicons/bio/lexicons/temp/survey.defs';
-import type { Main as SurveyProtocol } from '$lib/lexicons/bio/lexicons/temp/surveyProtocol.defs';
-import type { Main as SurveyTarget } from '$lib/lexicons/bio/lexicons/temp/surveyTarget.defs';
+import type { Main as Identification } from '$lib/lexicons/bio/lexicons/temp/v0-1/identification.defs';
+import type { Main as Occurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs';
+import type { Main as Survey } from '$lib/lexicons/bio/lexicons/temp/v0-1/survey.defs';
+import type { Main as SurveyProtocol } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyProtocol.defs';
+import type { Main as SurveyTarget } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs';
+import { insertIdentification } from '$lib/server/db/identifications';
 import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
 import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
 import { insertOccurrence, insertSurvey } from '$lib/server/db/surveys';
@@ -20,10 +22,11 @@ import {
 } from '$lib/server/pds';
 import type { RequestHandler } from './$types';
 
-const PROTOCOL_NSID = 'bio.lexicons.temp.surveyProtocol';
-const TARGET_NSID = 'bio.lexicons.temp.surveyTarget';
-const SURVEY_NSID = 'bio.lexicons.temp.survey';
-const OCCURRENCE_NSID = 'bio.lexicons.temp.occurrence';
+const PROTOCOL_NSID = 'bio.lexicons.temp.v0-1.surveyProtocol';
+const TARGET_NSID = 'bio.lexicons.temp.v0-1.surveyTarget';
+const SURVEY_NSID = 'bio.lexicons.temp.v0-1.survey';
+const OCCURRENCE_NSID = 'bio.lexicons.temp.v0-1.occurrence';
+const IDENTIFICATION_NSID = 'bio.lexicons.temp.v0-1.identification';
 const FOLLOW_NSID = 'bio.cuanto.surveyProtocol.follow';
 
 const log = logger.child({ component: 'tap-webhook' });
@@ -216,6 +219,40 @@ export const POST: RequestHandler = async ({ request }) => {
       } else throw e;
     }
     log.info({ atUri }, 'ingested occurrence');
+  } else if (evt.collection === IDENTIFICATION_NSID) {
+    const identification = evt.record as unknown as Identification;
+    try {
+      await insertIdentification(evt.did, evt.rkey, identification, atUri);
+    } catch (e) {
+      if (isFkViolation(e)) {
+        const occurrenceUri = identification.occurrence?.uri;
+        if (!occurrenceUri) {
+          log.warn(
+            { atUri },
+            'identification FK violation but no occurrence.uri; skipping',
+          );
+        } else {
+          const occRec = await fetchAtRecord(occurrenceUri);
+          const occ = occRec.value as Occurrence;
+          const { did: occDid, rkey: occRkey } = parseAtUri(occurrenceUri);
+          try {
+            await insertOccurrence(occDid, occRkey, occ, occurrenceUri);
+          } catch (occErr) {
+            if (isFkViolation(occErr) && occ.eventID) {
+              // TODO: backfillSurvey fetches all occurrences for the DID via
+              // listAtRecords, which becomes expensive at scale. Consider
+              // running this in a background job, or relying on tap delivering
+              // the survey and occurrence events independently before the
+              // identification event arrives.
+              await backfillSurvey(occ.eventID);
+              await insertOccurrence(occDid, occRkey, occ, occurrenceUri);
+            } else throw occErr;
+          }
+          await insertIdentification(evt.did, evt.rkey, identification, atUri);
+        }
+      } else throw e;
+    }
+    log.info({ atUri }, 'ingested identification');
   }
 
   return json({ ok: true });

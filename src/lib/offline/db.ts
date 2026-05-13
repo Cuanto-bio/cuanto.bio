@@ -1,15 +1,17 @@
 import type { DBSchema, IDBPDatabase } from 'idb';
 import { openDB } from 'idb';
-import type { Main as AtOccurrence } from '$lib/lexicons/bio/lexicons/temp/occurrence.defs.js';
-import type { Main as AtSurvey } from '$lib/lexicons/bio/lexicons/temp/survey.defs.js';
-import type { Main as AtSurveyProtocol } from '$lib/lexicons/bio/lexicons/temp/surveyProtocol.defs.js';
-import type { Main as AtSurveyTarget } from '$lib/lexicons/bio/lexicons/temp/surveyTarget.defs.js';
+import type { Main as AtOccurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs.js';
+import type { Main as AtSurvey } from '$lib/lexicons/bio/lexicons/temp/v0-1/survey.defs.js';
+import type { Main as AtSurveyProtocol } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyProtocol.defs.js';
+import type { Main as AtSurveyTarget } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs.js';
+import type { IncidentalOccurrence } from '$lib/surveys';
 import { CUANTO_IDB_VERSION } from './constants';
 
 export type {
   TaxonScope,
   VerbatimScope,
-} from '$lib/lexicons/bio/lexicons/temp/surveyTarget.defs.js';
+} from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs.js';
+export type { IncidentalOccurrence };
 
 export interface Target {
   atUri: string;
@@ -32,6 +34,7 @@ export interface CachedProtocol extends Protocol {
 export interface Occurrence {
   atUri: string;
   record: AtOccurrence;
+  identification?: { scientificName: string; vernacularName?: string };
 }
 
 export interface Survey {
@@ -66,6 +69,7 @@ export interface PendingSurvey {
     taxonID?: string;
     organismQuantity?: string;
   }[];
+  incidentals?: IncidentalOccurrence[];
   createdAt: number;
   complete: boolean;
 }
@@ -200,10 +204,19 @@ function migratePendingSurvey(survey: PendingSurvey): PendingSurvey {
   // Lazy migration: records saved before the complete field was added default to true
   const needsCompleteMigration =
     (survey as { complete?: boolean }).complete === undefined;
-  if (!needsOccMigration && !needsCompleteMigration) return survey;
+  const needsIncidentalsMigration =
+    (survey as { incidentals?: IncidentalOccurrence[] }).incidentals ===
+    undefined;
+  if (
+    !needsOccMigration &&
+    !needsCompleteMigration &&
+    !needsIncidentalsMigration
+  )
+    return survey;
   return {
     ...survey,
     complete: needsCompleteMigration ? true : survey.complete,
+    incidentals: needsIncidentalsMigration ? [] : survey.incidentals,
     occurrences: needsOccMigration
       ? occs.map(({ count, ...rest }) => ({
           ...rest,

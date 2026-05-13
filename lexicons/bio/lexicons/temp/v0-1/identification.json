@@ -1,0 +1,65 @@
+{
+  "lexicon": 1,
+  "id": "bio.lexicons.temp.v0-1.identification",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "An identification suggestion for an existing observation. Used to propose or agree with a taxonomic identification.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["occurrence", "scientificName"],
+        "properties": {
+          "occurrence": {
+            "type": "ref",
+            "ref": "com.atproto.repo.strongRef",
+            "description": "A strong reference (CID + URI) to the occurrence being identified."
+          },
+          "scientificName": {
+            "type": "string",
+            "description": "The full scientific name, with authorship and date information if known (Darwin Core dwc:scientificName).",
+            "maxLength": 256
+          },
+          "taxonRank": {
+            "type": "string",
+            "description": "The taxonomic rank of the identification (Darwin Core dwc:taxonRank).",
+            "knownValues": [
+              "kingdom",
+              "phylum",
+              "class",
+              "order",
+              "family",
+              "genus",
+              "species",
+              "subspecies",
+              "variety",
+              "form"
+            ],
+            "default": "species",
+            "maxLength": 32
+          },
+          "kingdom": {
+            "type": "string",
+            "description": "Taxonomic kingdom for disambiguating homonyms (Darwin Core dwc:kingdom).",
+            "maxLength": 64
+          },
+          "taxonID": {
+            "type": "string",
+            "format": "uri",
+            "description": "Stable URI for the identified taxon (e.g. a GBIF species URI). Maps to Darwin Core dwc:taxonID."
+          },
+          "identificationRemarks": {
+            "type": "string",
+            "description": "Explanation or reasoning for this identification (Darwin Core dwc:identificationRemarks).",
+            "maxLength": 3000
+          },
+          "vernacularName": {
+            "type": "string",
+            "description": "Common name at time of identification.",
+            "maxLength": 256
+          }
+        }
+      }
+    }
+  }
+}

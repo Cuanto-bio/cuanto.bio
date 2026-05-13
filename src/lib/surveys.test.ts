@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type { IncidentalOccurrence } from './surveys';
 import {
   buildSurveyTiming,
   calcElapsed,
   formatElapsed,
+  hasUnresolvedIncidentals,
   validatePastTiming,
 } from './surveys';
 
@@ -116,5 +118,43 @@ describe('buildSurveyTiming', () => {
       '45',
     );
     expect(eventDurationValue).toBe(45);
+  });
+});
+
+describe('hasUnresolvedIncidentals', () => {
+  test('returns false for an empty array', () => {
+    expect(hasUnresolvedIncidentals([])).toBe(false);
+  });
+
+  test('returns false when all incidentals have taxonID', () => {
+    const incidentals: IncidentalOccurrence[] = [
+      {
+        localId: '1',
+        taxonID: 'https://www.inaturalist.org/taxa/12345',
+        scientificName: 'Quercus agrifolia',
+        taxonRank: 'species',
+      },
+    ];
+    expect(hasUnresolvedIncidentals(incidentals)).toBe(false);
+  });
+
+  test('returns true when an incidental lacks taxonID', () => {
+    const incidentals: IncidentalOccurrence[] = [
+      { localId: '1', placeholder: 'small brown bird' },
+    ];
+    expect(hasUnresolvedIncidentals(incidentals)).toBe(true);
+  });
+
+  test('returns true when some are resolved and some are not', () => {
+    const incidentals: IncidentalOccurrence[] = [
+      {
+        localId: '1',
+        taxonID: 'https://www.inaturalist.org/taxa/12345',
+        scientificName: 'Quercus agrifolia',
+        taxonRank: 'species',
+      },
+      { localId: '2', placeholder: 'mystery fern' },
+    ];
+    expect(hasUnresolvedIncidentals(incidentals)).toBe(true);
   });
 });

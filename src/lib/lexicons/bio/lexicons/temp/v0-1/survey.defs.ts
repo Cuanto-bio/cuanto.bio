@@ -3,16 +3,16 @@
  */
 
 import { l } from '@atproto/lex'
-import * as RepoStrongRef from '../../../com/atproto/repo/strongRef.defs.js'
-import * as AtgeoPlace from '../../../org/atgeo/place.defs.js'
+import * as RepoStrongRef from '../../../../com/atproto/repo/strongRef.defs.js'
+import * as AtgeoPlace from '../../../../org/atgeo/place.defs.js'
 
-const $nsid = 'bio.lexicons.temp.survey'
+const $nsid = 'bio.lexicons.temp.v0-1.survey'
 
 export { $nsid }
 
 /** An event where participants collect data required by a Protocol. Absence of an Occurrence for a SurveyTarget implies the target was not found. */
 type Main = {
-  $type: 'bio.lexicons.temp.survey'
+  $type: 'bio.lexicons.temp.v0-1.survey'
 
   /**
    * Protocol followed when conducting this survey.
