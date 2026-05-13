@@ -16,6 +16,7 @@
     "test": "pnpm test:unit && pnpm test:integration && pnpm test:pwa",
     "test:integration": "playwright test",
     "test:pwa": "playwright test --config=playwright.pwa.config.ts",
+    "gen-icons": "tsx scripts/gen-icons.ts",
     "gen-key": "tsx scripts/gen-key.ts",
     "migrate:up": "tsx --env-file=.env scripts/migrate.ts up",
     "migrate:down": "tsx --env-file=.env scripts/migrate.ts down",
