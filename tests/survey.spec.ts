@@ -270,6 +270,72 @@ test.describe('target search filter', () => {
   });
 });
 
+// ── Target sort and filter dropdown ───────────────────────────────────────────
+
+test.describe('target sort and filter dropdown', () => {
+  // The fixture seeds two targets in this order:
+  //   [0] taxon: Quercus agrifolia / Coast live oak
+  //   [1] verbatim: All birds
+  // Both scientific and common sorts should put "All birds" first (A < C and A < Q).
+
+  async function openDropdown(page: import('@playwright/test').Page) {
+    await page.getByRole('button', { name: 'Sort and filter' }).click();
+  }
+
+  const targetList = (page: import('@playwright/test').Page) =>
+    page
+      .locator('ul')
+      .filter({ has: page.locator('[aria-label="Increase count"]') });
+
+  test('sorting by scientific name reorders targets', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await openDropdown(page);
+    await page.getByRole('menuitemradio', { name: 'Scientific name' }).click();
+    await expect(targetList(page).locator('li').first()).toContainText(
+      'All birds',
+    );
+  });
+
+  test('sorting by common name reorders targets', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await openDropdown(page);
+    await page.getByRole('menuitemradio', { name: 'Common name' }).click();
+    await expect(targetList(page).locator('li').first()).toContainText(
+      'All birds',
+    );
+  });
+
+  test('"Only observed" hides targets with zero count', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.locator('[aria-label="Increase count"]').nth(0).click();
+    await openDropdown(page);
+    await page.getByRole('menuitemcheckbox', { name: 'Only observed' }).click();
+    await expect(page.getByText('Coast live oak')).toBeVisible();
+    await expect(page.getByText('All birds')).not.toBeVisible();
+  });
+
+  test('"Show all targets" clears search query and observed filter', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.getByPlaceholder('Search targets…').fill('coast');
+    await expect(page.getByText('All birds')).not.toBeVisible();
+    await page.getByRole('button', { name: 'Show all targets' }).click();
+    await expect(page.getByText('All birds')).toBeVisible();
+    await expect(page.getByPlaceholder('Search targets…')).toHaveValue('');
+  });
+});
+
 // ── Cancel survey guard ───────────────────────────────────────────────────────
 
 test.describe('cancel survey guard', () => {
