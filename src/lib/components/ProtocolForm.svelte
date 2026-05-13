@@ -52,6 +52,10 @@ let requiredFieldDate = $state(
 let requiredFieldDuration = $state(
   protocol?.record?.requiredFields?.includes('eventDuration') ?? false,
 );
+// svelte-ignore state_referenced_locally -- intentional: initialize from server data
+let requiredFieldSurveyorCount = $state(
+  protocol?.record?.requiredFields?.includes('surveyorCount') ?? false,
+);
 
 // svelte-ignore state_referenced_locally -- intentional: initialize from server data
 let targets = $state<Target[]>(
@@ -324,6 +328,15 @@ function removeAddress(i: number, j: number) {
               bind:checked={requiredFieldDuration}
             />
             Event duration
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              name="requiredFields"
+              value="surveyorCount"
+              bind:checked={requiredFieldSurveyorCount}
+            />
+            Surveyor count
           </label>
         </div>
       </div>

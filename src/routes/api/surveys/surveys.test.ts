@@ -33,7 +33,7 @@ import { isHttpError } from '@sveltejs/kit';
 import sql from '$lib/server/db';
 import { insertIdentification } from '$lib/server/db/identifications';
 import { getProtocolByUri } from '$lib/server/db/survey-protocols';
-import { insertOccurrence } from '$lib/server/db/surveys';
+import { insertOccurrence, insertSurvey } from '$lib/server/db/surveys';
 import { createRecord, putRecord } from '$lib/server/pds';
 import { POST } from './+server';
 
@@ -98,6 +98,51 @@ beforeEach(() => {
   vi.mocked(sql as any)
     .mockResolvedValueOnce([]) // survey_targets
     .mockResolvedValue([{ handle: 'alice' }]); // users (and any subsequent calls)
+});
+
+describe('POST /api/surveys — surveyorCount validation', () => {
+  test('returns 422 when surveyorCount is negative', async () => {
+    const resp = await callPost({
+      request: makeRequest({ ...baseSurveyBody, surveyorCount: -1 }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(422);
+  });
+
+  test('returns 422 when surveyorCount is zero', async () => {
+    const resp = await callPost({
+      request: makeRequest({ ...baseSurveyBody, surveyorCount: 0 }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(422);
+  });
+
+  test('returns 422 when surveyorCount is a decimal', async () => {
+    const resp = await callPost({
+      request: makeRequest({ ...baseSurveyBody, surveyorCount: 1.5 }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(422);
+  });
+
+  test('saves surveyorCount to survey record when valid', async () => {
+    const surveyUri = `at://${DID}/bio.lexicons.temp.v0-1.survey/svy1`;
+    vi.mocked(createRecord).mockResolvedValueOnce({
+      uri: surveyUri,
+      cid: FAKE_CID,
+    });
+    vi.mocked(insertSurvey).mockResolvedValue(undefined);
+    const resp = await callPost({
+      request: makeRequest({ ...baseSurveyBody, surveyorCount: 2 }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    const surveyRecord = vi.mocked(insertSurvey).mock.calls[0][2] as Record<
+      string,
+      unknown
+    >;
+    expect(surveyRecord.surveyorCount).toBe(2);
+  });
 });
 
 describe('POST /api/surveys — incidentals', () => {

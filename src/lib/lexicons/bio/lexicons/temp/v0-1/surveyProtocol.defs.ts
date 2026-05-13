@@ -29,7 +29,7 @@ type Main = {
   createdAt: l.DatetimeString
 
   /**
-   * List of fields required to complete the survey. Known values: 'eventDate', 'eventDuration'.
+   * List of fields required to complete the survey.
    */
   requiredFields?: string[]
 

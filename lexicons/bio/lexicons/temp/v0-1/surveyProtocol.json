@@ -25,9 +25,10 @@
           },
           "requiredFields": {
             "type": "array",
-            "description": "List of fields required to complete the survey. Known values: 'eventDate', 'eventDuration'.",
+            "description": "List of fields required to complete the survey.",
             "items": {
-              "type": "string"
+              "type": "string",
+              "knownValues": ["eventDate", "eventDuration", "surveyorCount"]
             }
           },
           "locationOptions": {

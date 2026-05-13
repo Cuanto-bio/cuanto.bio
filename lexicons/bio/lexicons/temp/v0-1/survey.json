@@ -28,6 +28,10 @@
               "format": "did"
             }
           },
+          "surveyorCount": {
+            "type": "integer",
+            "description": "Total number of people conducting the Survey."
+          },
           "eventDate": {
             "type": "string",
             "description": "Date or datetime the survey began, ISO 8601 supporting partial forms (e.g. 2026, 2026-02, 2026-02-03, 2026-02-03T00:01:02Z)."

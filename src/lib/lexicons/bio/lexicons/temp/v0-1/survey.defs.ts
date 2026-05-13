@@ -30,6 +30,11 @@ type Main = {
   samplingPerformedBy?: l.DidString[]
 
   /**
+   * Total number of people conducting the Survey.
+   */
+  surveyorCount?: number
+
+  /**
    * Date or datetime the survey began, ISO 8601 supporting partial forms (e.g. 2026, 2026-02, 2026-02-03, 2026-02-03T00:01:02Z).
    */
   eventDate?: string
@@ -60,6 +65,7 @@ const main = l.record<'tid', Main>(
     protocol: l.ref<RepoStrongRef.Main>((() => RepoStrongRef.main) as any),
     createdAt: l.string({ format: 'datetime' }),
     samplingPerformedBy: l.optional(l.array(l.string({ format: 'did' }))),
+    surveyorCount: l.optional(l.integer()),
     eventDate: l.optional(l.string()),
     eventDurationUnit: l.optional(l.string()),
     eventDurationValue: l.optional(l.integer()),

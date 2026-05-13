@@ -93,6 +93,44 @@ test('can create survey from protocol created by different user', async ({
   await teardownDid(sql, otherDid);
 });
 
+// ── surveyorCount validation ──────────────────────────────────────────────────
+
+test.describe('surveyorCount validation', () => {
+  test('shows error immediately when input is invalid', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    for (const value of ['-1', '1.5', '0', 'abc']) {
+      await page.fill('#surveyorCount', value);
+      await expect(
+        page.getByText('Number of surveyors must be a positive integer'),
+      ).toBeVisible();
+      await page.fill('#surveyorCount', '');
+      await expect(
+        page.getByText('Number of surveyors must be a positive integer'),
+      ).not.toBeVisible();
+    }
+  });
+
+  test('saves surveyorCount to the survey record when valid', async ({
+    page,
+    protocolRkey,
+    sql,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.fill('[placeholder="e.g. Mission Dolores Park"]', 'Test Site');
+    await page.fill('#surveyorCount', '3');
+    await confirmFinishSurvey(page);
+    await expect(page).toHaveURL(/\/app\/surveys\/user-survey-spec\/\w+/);
+    const [row] = await sql<{ record: Record<string, unknown> }[]>`
+      SELECT record FROM surveys WHERE did = 'did:test:survey-spec'
+      ORDER BY indexed_at DESC LIMIT 1
+    `;
+    expect(row.record.surveyorCount).toBe(3);
+  });
+});
+
 // ── Public survey routes ───────────────────────────────────────────────────────
 
 const PUBLIC_DID = 'did:test:survey-public';

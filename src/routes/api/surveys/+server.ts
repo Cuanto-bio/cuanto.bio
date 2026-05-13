@@ -53,6 +53,7 @@ type SurveyInput = {
   longitude: string | null;
   eventDate: string;
   eventDurationValue: number;
+  surveyorCount?: number | null;
   occurrences: OccurrenceInput[];
   incidentals?: IncidentalInput[];
 };
@@ -103,6 +104,9 @@ async function createSurvey(
     eventDate: body.eventDate,
     eventDurationValue: body.eventDurationValue,
     eventDurationUnit: 'minutes',
+    ...(body.surveyorCount != null
+      ? { surveyorCount: body.surveyorCount }
+      : {}),
     location,
   });
 
@@ -201,6 +205,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   const did = locals.did;
 
   const body = (await request.json()) as SurveyInput;
+
+  if (body.surveyorCount != null) {
+    if (!Number.isInteger(body.surveyorCount) || body.surveyorCount < 1) {
+      throw error(422, 'surveyorCount must be a positive integer');
+    }
+  }
 
   const { protocol, taxonScopeMap } = await fetchProtocolRecords(body);
 

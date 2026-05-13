@@ -46,6 +46,12 @@ function formatDate(iso: string | null): string {
           </span>
         </div>
       {/if}
+      {#if survey.record.surveyorCount != null}
+        <div>
+          <span class="text-muted-foreground font-medium">Surveyors:</span>
+          <span class="ml-2">{survey.record.surveyorCount}</span>
+        </div>
+      {/if}
       <div>
         <span class="text-muted-foreground font-medium">Protocol:</span>
         <a

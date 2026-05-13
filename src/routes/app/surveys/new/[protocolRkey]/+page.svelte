@@ -14,6 +14,7 @@ import * as AlertDialog from '$lib/components/ui/alert-dialog';
 import * as Command from '$lib/components/ui/command';
 import * as Dialog from '$lib/components/ui/dialog';
 import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+import * as Field from '$lib/components/ui/field';
 import { Input } from '$lib/components/ui/input';
 import { Label } from '$lib/components/ui/label';
 import * as Popover from '$lib/components/ui/popover';
@@ -40,6 +41,7 @@ import {
   hasUnresolvedIncidentals,
   type IncidentalOccurrence,
   validatePastTiming,
+  validateSurveyorCount,
 } from '$lib/surveys';
 
 let protocol = $state<CachedProtocol | null>(null);
@@ -74,6 +76,8 @@ let filterQuery = $state('');
 type TargetSort = 'default' | 'scientific' | 'common';
 let targetSort = $state<TargetSort>('default');
 let onlyObserved = $state(false);
+let surveyorCountStr = $state('');
+let surveyorCountError = $state<string | null>(null);
 let cancelDialogOpen = $state(false);
 let finishDialogOpen = $state(false);
 
@@ -190,6 +194,8 @@ onMount(() => {
             }
           }
           incidentals = saved.incidentals ?? [];
+          surveyorCountStr =
+            saved.surveyorCount != null ? String(saved.surveyorCount) : '';
           if (saved.complete) {
             resumingComplete = true;
             modeOverride = 'past';
@@ -253,6 +259,7 @@ function buildSurveyPayload(p: CachedProtocol, complete: boolean) {
     eventDate,
     eventDurationValue,
     eventDurationUnit: complete ? 'minutes' : null,
+    surveyorCount: surveyorCountStr ? parseInt(surveyorCountStr, 10) : null,
     occurrences,
     incidentals: $state.snapshot(incidentals),
     createdAt: Date.now(),
@@ -467,14 +474,25 @@ async function finish() {
     if (dateError || durationError) {
       pastDateError = dateError;
       pastDurationError = durationError;
+      finishDialogOpen = false;
       return;
     }
+  }
+  const surveyorCountErr = validateSurveyorCount(
+    protocol.record.requiredFields,
+    surveyorCountStr,
+  );
+  if (surveyorCountErr) {
+    surveyorCountError = surveyorCountErr;
+    finishDialogOpen = false;
+    return;
   }
   submitting = true;
   locationError = null;
   finishDialogOpen = false;
   pastDateError = null;
   pastDurationError = null;
+  surveyorCountError = null;
 
   const survey = buildSurveyPayload(protocol, true);
 
@@ -568,24 +586,72 @@ function displayCount(qty: undefined | string | number) {
             <p id="past-date-error" class="text-destructive text-sm">{pastDateError}</p>
           {/if}
         </div>
-        <div class="flex flex-col gap-2">
-          <Label for="pastDuration">Duration (minutes)</Label>
-          <Input
-            id="pastDuration"
-            type="number"
-            min="1"
-            bind:value={pastDurationMinutes}
-            placeholder="e.g. 45"
-            oninput={() => (pastDurationError = null)}
-            aria-invalid={pastDurationError ? 'true' : undefined}
-            aria-describedby={pastDurationError ? 'past-duration-error' : undefined}
-          />
-          {#if pastDurationError}
-            <p id="past-duration-error" class="text-destructive text-sm">{pastDurationError}</p>
-          {/if}
-        </div>
       </div>
     {/if}
+
+    <div class="flex gap-4">
+      {#if mode === 'past'}
+        <Field.Field data-invalid={pastDurationError ? true : undefined}>
+          <Field.Label for="pastDuration">Duration (minutes)</Field.Label>
+          <Input
+            id="pastDuration"
+            type="text"
+            inputmode="numeric"
+            placeholder="e.g. 45"
+            bind:value={pastDurationMinutes}
+            oninput={() => {
+              if (pastDurationMinutes) {
+                const dur = parseInt(pastDurationMinutes, 10);
+                pastDurationError =
+                  Number.isNaN(dur) || dur < 1
+                    ? 'Duration must be at least 1 minute'
+                    : null;
+              } else {
+                pastDurationError = null;
+              }
+            }}
+            aria-invalid={pastDurationError ? 'true' : undefined}
+            aria-describedby="past-duration-description"
+          />
+          <Field.Description
+            id="past-duration-description"
+            aria-live="polite"
+            class={pastDurationError ? 'text-destructive! min-h-5' : 'min-h-5'}
+          >
+            {pastDurationError ?? 'Duration of the survey in minutes'}
+          </Field.Description>
+        </Field.Field>
+      {/if}
+      <Field.Field class="mb-6" data-invalid={surveyorCountError ? true : undefined}>
+        <Field.Label for="surveyorCount" class="line-clamp-1">
+          <span class="sr-only md:not-sr-only">Number of surveyors</span>
+          <span class="md:hidden" aria-hidden="true"># surveyors</span>
+          {#if !protocol.record.requiredFields?.includes('surveyorCount')}
+            <span class="text-muted-foreground font-normal">(optional)</span>
+          {/if}
+        </Field.Label>
+        <Input
+          id="surveyorCount"
+          type="text"
+          inputmode="numeric"
+          placeholder="e.g. 3"
+          required={protocol.record.requiredFields?.includes('surveyorCount')}
+          bind:value={surveyorCountStr}
+          oninput={() => {
+            surveyorCountError = validateSurveyorCount(undefined, surveyorCountStr);
+          }}
+          aria-invalid={surveyorCountError ? 'true' : undefined}
+          aria-describedby="surveyor-count-description"
+        />
+        <Field.Description
+          id="surveyor-count-description"
+          aria-live="polite"
+          class={surveyorCountError ? 'text-destructive! min-h-5' : 'min-h-5'}
+        >
+          {surveyorCountError ?? 'Total number of people conducting the survey'}
+        </Field.Description>
+      </Field.Field>
+    </div>
 
     <div class="mb-6 flex flex-col gap-2" bind:this={locationFieldEl}>
       {#if (protocol.record.locationOptions?.length ?? 0) > LOCATION_COMBOBOX_THRESHOLD}
@@ -669,7 +735,7 @@ function displayCount(qty: undefined | string | number) {
       {/if}
     </div>
 
-    <div class="">
+    <div>
       {#if protocol.targets.length === 0}
         <p class="text-muted-foreground mb-6 text-sm">No targets defined for this protocol.</p>
       {:else}

@@ -6,6 +6,7 @@ import {
   formatElapsed,
   hasUnresolvedIncidentals,
   validatePastTiming,
+  validateSurveyorCount,
 } from './surveys';
 
 describe('calcElapsed', () => {
@@ -118,6 +119,49 @@ describe('buildSurveyTiming', () => {
       '45',
     );
     expect(eventDurationValue).toBe(45);
+  });
+});
+
+describe('validateSurveyorCount', () => {
+  test('returns null when empty and not required', () => {
+    expect(validateSurveyorCount([], '')).toBeNull();
+    expect(validateSurveyorCount(undefined, '')).toBeNull();
+  });
+
+  test('returns required error when empty and field is required', () => {
+    expect(validateSurveyorCount(['surveyorCount'], '')).toBe(
+      'Number of surveyors is required',
+    );
+  });
+
+  test('returns null for valid positive integers', () => {
+    expect(validateSurveyorCount([], '1')).toBeNull();
+    expect(validateSurveyorCount([], '5')).toBeNull();
+    expect(validateSurveyorCount(['surveyorCount'], '3')).toBeNull();
+  });
+
+  test('returns error for zero', () => {
+    expect(validateSurveyorCount([], '0')).toBe(
+      'Number of surveyors must be a positive integer',
+    );
+  });
+
+  test('returns error for negative values', () => {
+    expect(validateSurveyorCount([], '-1')).toBe(
+      'Number of surveyors must be a positive integer',
+    );
+  });
+
+  test('returns error for decimals', () => {
+    expect(validateSurveyorCount([], '1.5')).toBe(
+      'Number of surveyors must be a positive integer',
+    );
+  });
+
+  test('returns error for non-numeric text', () => {
+    expect(validateSurveyorCount([], 'fdhfdh')).toBe(
+      'Number of surveyors must be a positive integer',
+    );
   });
 });
 

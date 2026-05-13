@@ -62,6 +62,7 @@ export interface PendingSurvey {
   eventDate: string | null;
   eventDurationValue: number | null;
   eventDurationUnit: string | null;
+  surveyorCount?: number | null;
   latitude: string | null;
   longitude: string | null;
   occurrences: {

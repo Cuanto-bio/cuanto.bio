@@ -63,6 +63,22 @@ export type IncidentalOccurrence = Partial<IncidentalInput> & {
   placeholder?: string;
 };
 
+export function validateSurveyorCount(
+  requiredFields: string[] | undefined,
+  surveyorCountStr: string,
+): string | null {
+  if (surveyorCountStr) {
+    const n = Number(surveyorCountStr);
+    if (!Number.isInteger(n) || n < 1) {
+      return 'Number of surveyors must be a positive integer';
+    }
+  }
+  if (requiredFields?.includes('surveyorCount') && !surveyorCountStr) {
+    return 'Number of surveyors is required';
+  }
+  return null;
+}
+
 export function hasUnresolvedIncidentals(
   incidentals: IncidentalOccurrence[],
 ): boolean {
