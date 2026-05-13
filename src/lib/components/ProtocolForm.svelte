@@ -82,6 +82,12 @@ let placeResults = $state<PlaceResult[]>([]);
 let searchingPlaces = $state(false);
 let placeSearched = $state(false);
 
+let bulkPasteOpen = $state(false);
+let bulkPasteText = $state('');
+let bulkMatching = $state(false);
+let bulkProgress = $state<{ current: number; total: number } | null>(null);
+let bulkUnmatched = $state<string[]>([]);
+
 function targetsJson(): string {
   return JSON.stringify(targets.map((t) => ({ scope: [t] })));
 }
@@ -197,6 +203,43 @@ function addPlaceFromResult(result: PlaceResult) {
   ];
   placeQuery = '';
   placeResults = [];
+}
+
+async function matchBulkNames() {
+  const lines = bulkPasteText
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  if (lines.length === 0) return;
+  bulkMatching = true;
+  bulkProgress = { current: 0, total: lines.length };
+  bulkUnmatched = [];
+  const unmatched: string[] = [];
+  for (const name of lines) {
+    try {
+      const resp = await fetch(`/api/taxa?q=${encodeURIComponent(name)}`);
+      const data = await resp.json();
+      const results: TaxonResult[] = data.results ?? [];
+      const match = results.find(
+        (r) => r.scientificName.toLowerCase() === name.toLowerCase(),
+      );
+      if (match) {
+        addTaxon(match);
+      } else {
+        unmatched.push(name);
+      }
+    } catch {
+      unmatched.push(name);
+    }
+    bulkProgress = {
+      current: (bulkProgress?.current ?? 0) + 1,
+      total: lines.length,
+    };
+  }
+  bulkUnmatched = unmatched;
+  bulkMatching = false;
+  bulkProgress = null;
+  bulkPasteText = '';
 }
 
 function addAddress(i: number) {
@@ -357,6 +400,50 @@ function removeAddress(i: number, j: number) {
           <Button type="button" variant="outline" onclick={addVerbatim} class="w-fit text-xs">
             + Add custom target
           </Button>
+          <div class="border-t pt-2">
+            <button
+              type="button"
+              onclick={() => { bulkPasteOpen = !bulkPasteOpen; bulkUnmatched = []; }}
+              class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+            >
+              {bulkPasteOpen ? '▾' : '▸'} Paste a list of scientific names
+            </button>
+            {#if bulkPasteOpen}
+              <div class="flex flex-col gap-2 mt-2">
+                <Textarea
+                  placeholder="One scientific name per line, e.g.&#10;Quercus robur&#10;Bombus terrestris"
+                  rows={5}
+                  bind:value={bulkPasteText}
+                  disabled={bulkMatching}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  class="w-fit text-xs"
+                  disabled={bulkMatching || !bulkPasteText.trim()}
+                  onclick={matchBulkNames}
+                >
+                  {#if bulkMatching && bulkProgress}
+                    Matching {bulkProgress.current} of {bulkProgress.total}…
+                  {:else}
+                    Match taxa
+                  {/if}
+                </Button>
+                {#if bulkUnmatched.length > 0}
+                  <div class="rounded border p-2 text-xs">
+                    <p class="font-medium mb-1">
+                      Not matched to any iNaturalist taxon ({bulkUnmatched.length}):
+                    </p>
+                    <ul class="list-disc pl-4 text-muted-foreground space-y-0.5">
+                      {#each bulkUnmatched as name (name)}
+                        <li>{name}</li>
+                      {/each}
+                    </ul>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
         </div>
       </FormSection>
 
