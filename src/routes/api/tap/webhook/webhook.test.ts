@@ -429,6 +429,14 @@ describe('POST /api/tap/webhook', () => {
     expect(createFollow).not.toHaveBeenCalled();
   });
 
+  test('returns 200 when createFollow throws unique violation (duplicate follow)', async () => {
+    vi.mocked(createFollow).mockRejectedValueOnce(uniqueError);
+    const resp = await POST({
+      request: makeRequest(followCreateEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+  });
+
   test('calls insertUser for identity events', async () => {
     const resp = await POST({
       request: makeRequest(identityEvent, VALID_AUTH),
@@ -483,6 +491,9 @@ describe('POST /api/tap/webhook', () => {
   });
 
   const fkError = Object.assign(new Error('FK violation'), { code: '23503' });
+  const uniqueError = Object.assign(new Error('unique violation'), {
+    code: '23505',
+  });
 
   const fetchedProtocolRecord = {
     uri: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.surveyProtocol/3abc',

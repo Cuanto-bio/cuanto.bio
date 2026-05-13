@@ -33,7 +33,9 @@ export async function createFollow(follow: {
       ${follow.protocolUri},
       ${follow.createdAt}
     )
-    ON CONFLICT (at_uri) DO NOTHING
+    ON CONFLICT ON CONSTRAINT uq_follow_did_protocol
+      DO UPDATE SET at_uri = EXCLUDED.at_uri, rkey = EXCLUDED.rkey,
+                    created_at = EXCLUDED.created_at
   `;
 }
 

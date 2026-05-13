@@ -35,6 +35,10 @@ function isFkViolation(e: unknown): boolean {
   return (e as { code?: string }).code === '23503';
 }
 
+function isUniqueViolation(e: unknown): boolean {
+  return (e as { code?: string }).code === '23505';
+}
+
 async function ensureUser(did: string): Promise<void> {
   const [handle, avatarUrl] = await Promise.all([
     resolveHandle(did),
@@ -157,6 +161,8 @@ export const POST: RequestHandler = async ({ request }) => {
         if (isFkViolation(e)) {
           await backfillProtocol(followRecord.protocolUri);
           await createFollow(followRecord);
+        } else if (isUniqueViolation(e)) {
+          log.info({ atUri }, 'follow already exists, skipping');
         } else {
           throw e;
         }
