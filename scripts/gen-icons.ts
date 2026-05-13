@@ -33,6 +33,8 @@ function rasterize(size: number, dest: string) {
   execFileSync(magick, [
     '-background',
     'none',
+    '-density',
+    '3000',
     svg,
     '-resize',
     `${size}x${size}`,
