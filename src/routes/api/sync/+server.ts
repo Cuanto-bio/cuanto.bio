@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { getIdentificationsForOccurrences } from '$lib/server/db/identifications';
 import { getFollowedProtocolsByDid } from '$lib/server/db/survey-protocols';
 import {
   getOccurrencesForSurveys,
@@ -19,9 +20,21 @@ export const GET: RequestHandler = async ({ locals }) => {
   const occurrences = await getOccurrencesForSurveys(
     surveys.map((s) => s.at_uri),
   );
+  const incidentalUris = occurrences
+    .filter((o) => !o.record.surveyTargetID)
+    .map((o) => o.at_uri);
+  const identsByOccurrence =
+    await getIdentificationsForOccurrences(incidentalUris);
+  const occurrencesWithIdents = occurrences.map((o) => ({
+    ...o,
+    identification: identsByOccurrence.get(o.at_uri),
+  }));
 
   return json({
     followedProtocols,
-    surveys: toSurveyResponse(surveys, groupOccurrencesBySurvey(occurrences)),
+    surveys: toSurveyResponse(
+      surveys,
+      groupOccurrencesBySurvey(occurrencesWithIdents),
+    ),
   });
 };

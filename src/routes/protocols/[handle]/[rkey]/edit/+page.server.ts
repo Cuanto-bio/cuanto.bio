@@ -6,7 +6,7 @@ import type { Main as SurveyTargetMain } from '$lib/lexicons/bio/lexicons/temp/v
 import logger from '$lib/logger';
 import sql from '$lib/server/db';
 import {
-  deleteTargetsByProtocolUri,
+  deleteTargetsByUris,
   getProtocolDetailByHandleAndRkey,
   insertProtocol,
   insertTarget,
@@ -52,7 +52,7 @@ export const actions: Actions = {
     if (!title) return fail(422, { error: 'Title is required' });
     if (!description) return fail(422, { error: 'Description is required' });
 
-    let targets: { scope: unknown[] }[] = [];
+    let targets: { scope: unknown[]; atUri?: string }[] = [];
     try {
       targets = JSON.parse(targetsJson ?? '[]');
     } catch {
@@ -103,16 +103,56 @@ export const actions: Actions = {
       protocolCid,
     );
 
-    const deletedTargets = await deleteTargetsByProtocolUri(existing.atUri);
-    for (const { at_uri } of deletedTargets) {
+    const existingByUri = new Map(existing.targets.map((t) => [t.atUri, t]));
+    const submittedUris = new Set(
+      targets.flatMap((t) => (t.atUri ? [t.atUri] : [])),
+    );
+
+    const toDelete = existing.targets.filter(
+      (t) => !submittedUris.has(t.atUri),
+    );
+    const toAdd = targets.filter((t) => !t.atUri);
+    const toUpdate = targets.filter((t) => {
+      if (!t.atUri) return false;
+      const existingTarget = existingByUri.get(t.atUri);
+      if (!existingTarget) return false;
+      return (
+        JSON.stringify(t.scope) !== JSON.stringify(existingTarget.record.scope)
+      );
+    });
+
+    await deleteTargetsByUris(toDelete.map((t) => t.atUri));
+    for (const target of toDelete) {
       try {
-        await deleteRecord(at_uri);
+        await deleteRecord(target.atUri);
       } catch (err) {
         log.error({ err }, 'Failed to delete survey target from PDS');
       }
     }
 
-    for (const target of targets) {
+    for (const target of toUpdate) {
+      if (!target.atUri) continue;
+      const existingTarget = existingByUri.get(target.atUri);
+      if (!existingTarget) continue;
+      const targetRecord = SurveyTarget.$build({
+        protocol: existing.atUri as l.AtUriString,
+        scope: target.scope as unknown as SurveyTargetMain['scope'],
+      });
+      const targetRkey = existingTarget.atUri.split('/').at(-1) ?? '';
+      try {
+        await putRecord(
+          did,
+          'bio.lexicons.temp.v0-1.surveyTarget',
+          targetRkey,
+          targetRecord,
+        );
+        await insertTarget(did, targetRkey, targetRecord, existingTarget.atUri);
+      } catch (err) {
+        log.error({ err }, 'Failed to update survey target');
+      }
+    }
+
+    for (const target of toAdd) {
       const targetRecord = SurveyTarget.$build({
         protocol: existing.atUri as l.AtUriString,
         scope: target.scope as unknown as SurveyTargetMain['scope'],

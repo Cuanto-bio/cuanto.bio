@@ -10,7 +10,7 @@ vi.mock('$lib/server/db/survey-protocols', () => ({
   getProtocolDetailByHandleAndRkey: vi.fn(),
   insertProtocol: vi.fn(),
   insertTarget: vi.fn(),
-  deleteTargetsByProtocolUri: vi.fn().mockResolvedValue([]),
+  deleteTargetsByUris: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('$lib/server/db', () => ({
@@ -22,7 +22,7 @@ vi.mock('$lib/logger', () => ({
 }));
 
 import { getProtocolDetailByHandleAndRkey } from '$lib/server/db/survey-protocols';
-import { putRecord } from '$lib/server/pds';
+import { createRecord, deleteRecord, putRecord } from '$lib/server/pds';
 import { actions } from './+page.server';
 
 const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
@@ -168,5 +168,203 @@ describe('POST /protocols/[handle]/[rkey]/edit — validation', () => {
         createdAt: FAKE_PROTOCOL.record.createdAt,
       }),
     );
+  });
+});
+
+describe('POST /protocols/[handle]/[rkey]/edit — target management', () => {
+  const PROTOCOL_URI = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${RKEY}`;
+  const TARGET_A = {
+    atUri: `at://${DID}/bio.lexicons.temp.v0-1.surveyTarget/targetA`,
+    record: {
+      $type: 'bio.lexicons.temp.v0-1.surveyTarget',
+      protocol: PROTOCOL_URI,
+      scope: [
+        {
+          $type: 'bio.lexicons.temp.v0-1.surveyTarget#taxonScope',
+          taxonID: 'https://www.inaturalist.org/taxa/1',
+          scientificName: 'Species A',
+          taxonRank: 'species',
+        },
+      ],
+    },
+  };
+  const TARGET_B = {
+    atUri: `at://${DID}/bio.lexicons.temp.v0-1.surveyTarget/targetB`,
+    record: {
+      $type: 'bio.lexicons.temp.v0-1.surveyTarget',
+      protocol: PROTOCOL_URI,
+      scope: [
+        {
+          $type: 'bio.lexicons.temp.v0-1.surveyTarget#taxonScope',
+          taxonID: 'https://www.inaturalist.org/taxa/2',
+          scientificName: 'Species B',
+          taxonRank: 'species',
+        },
+      ],
+    },
+  };
+  const SCOPE_C = [
+    {
+      $type: 'bio.lexicons.temp.v0-1.surveyTarget#taxonScope',
+      taxonID: 'https://www.inaturalist.org/taxa/3',
+      scientificName: 'Species C',
+      taxonRank: 'species',
+    },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getProtocolDetailByHandleAndRkey).mockResolvedValue({
+      ...FAKE_PROTOCOL,
+      targets: [TARGET_A, TARGET_B],
+    } as never);
+    vi.mocked(putRecord).mockResolvedValue({
+      uri: FAKE_PROTOCOL.atUri,
+      cid: FAKE_CID,
+    });
+    vi.mocked(createRecord).mockResolvedValue({
+      uri: `at://${DID}/bio.lexicons.temp.v0-1.surveyTarget/newC`,
+      cid: FAKE_CID,
+    });
+  });
+
+  // Submits Target A (existing, with URI) + Target C (new, no URI); omits Target B → delete
+  async function submitWithAandC() {
+    return submitEdit({
+      title: 'Title',
+      description: 'Description',
+      targets: JSON.stringify([
+        { scope: TARGET_A.record.scope, atUri: TARGET_A.atUri },
+        { scope: SCOPE_C },
+      ]),
+      locationOptions: '[]',
+    });
+  }
+
+  test('does not delete a target submitted with its URI', async () => {
+    await submitWithAandC();
+    expect(deleteRecord).not.toHaveBeenCalledWith(TARGET_A.atUri);
+  });
+
+  test('deletes an existing target whose URI was not submitted', async () => {
+    await submitWithAandC();
+    expect(deleteRecord).toHaveBeenCalledWith(TARGET_B.atUri);
+  });
+
+  test('does not create a target submitted with an existing URI', async () => {
+    await submitWithAandC();
+    expect(createRecord).not.toHaveBeenCalledWith(
+      DID,
+      'bio.lexicons.temp.v0-1.surveyTarget',
+      expect.objectContaining({ scope: TARGET_A.record.scope }),
+    );
+  });
+
+  test('creates a target submitted without a URI', async () => {
+    await submitWithAandC();
+    expect(createRecord).toHaveBeenCalledWith(
+      DID,
+      'bio.lexicons.temp.v0-1.surveyTarget',
+      expect.objectContaining({ scope: SCOPE_C }),
+    );
+  });
+
+  test('does not call putRecord or createRecord for an unchanged existing target', async () => {
+    await submitEdit({
+      title: 'Title',
+      description: 'Description',
+      targets: JSON.stringify([
+        { scope: TARGET_A.record.scope, atUri: TARGET_A.atUri },
+        { scope: TARGET_B.record.scope, atUri: TARGET_B.atUri },
+      ]),
+      locationOptions: '[]',
+    });
+    expect(createRecord).not.toHaveBeenCalledWith(
+      DID,
+      'bio.lexicons.temp.v0-1.surveyTarget',
+      expect.anything(),
+    );
+    expect(putRecord).not.toHaveBeenCalledWith(
+      DID,
+      'bio.lexicons.temp.v0-1.surveyTarget',
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  test('updates a verbatim target in place when its text changes', async () => {
+    const TARGET_V = {
+      atUri: `at://${DID}/bio.lexicons.temp.v0-1.surveyTarget/targetV`,
+      record: {
+        $type: 'bio.lexicons.temp.v0-1.surveyTarget',
+        protocol: PROTOCOL_URI,
+        scope: [
+          {
+            $type: 'bio.lexicons.temp.v0-1.surveyTarget#verbatimScope',
+            verbatimTargetScope: 'Old text',
+          },
+        ],
+      },
+    };
+    vi.mocked(getProtocolDetailByHandleAndRkey).mockResolvedValue({
+      ...FAKE_PROTOCOL,
+      targets: [TARGET_V],
+    } as never);
+    const updatedScope = [
+      { ...TARGET_V.record.scope[0], verbatimTargetScope: 'New text' },
+    ];
+    await submitEdit({
+      title: 'Title',
+      description: 'Description',
+      targets: JSON.stringify([{ scope: updatedScope, atUri: TARGET_V.atUri }]),
+      locationOptions: '[]',
+    });
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      'bio.lexicons.temp.v0-1.surveyTarget',
+      TARGET_V.atUri.split('/').at(-1),
+      expect.objectContaining({
+        scope: expect.arrayContaining([
+          expect.objectContaining({ verbatimTargetScope: 'New text' }),
+        ]),
+      }),
+    );
+    expect(deleteRecord).not.toHaveBeenCalledWith(TARGET_V.atUri);
+    expect(createRecord).not.toHaveBeenCalledWith(
+      DID,
+      'bio.lexicons.temp.v0-1.surveyTarget',
+      expect.objectContaining({ scope: updatedScope }),
+    );
+  });
+
+  test('updates an existing target in place when its scope changes', async () => {
+    const updatedScopeA = [
+      { ...TARGET_A.record.scope[0], vernacularName: 'Common A' },
+    ];
+    await submitEdit({
+      title: 'Title',
+      description: 'Description',
+      targets: JSON.stringify([
+        { scope: updatedScopeA, atUri: TARGET_A.atUri },
+        { scope: TARGET_B.record.scope, atUri: TARGET_B.atUri },
+      ]),
+      locationOptions: '[]',
+    });
+    expect(createRecord).not.toHaveBeenCalledWith(
+      DID,
+      'bio.lexicons.temp.v0-1.surveyTarget',
+      expect.objectContaining({ scope: updatedScopeA }),
+    );
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      'bio.lexicons.temp.v0-1.surveyTarget',
+      TARGET_A.atUri.split('/').at(-1),
+      expect.objectContaining({
+        scope: expect.arrayContaining([
+          expect.objectContaining({ vernacularName: 'Common A' }),
+        ]),
+      }),
+    );
+    expect(deleteRecord).not.toHaveBeenCalledWith(TARGET_A.atUri);
   });
 });

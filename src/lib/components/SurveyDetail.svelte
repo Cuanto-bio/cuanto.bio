@@ -15,8 +15,20 @@ interface Props {
 
 let { protocol, survey }: Props = $props();
 
+const targetUris = $derived(new Set(protocol.targets.map((t) => t.atUri)));
+
 const incidentalOccs = $derived(
   survey.occurrences.filter((o) => !o.record.surveyTargetID),
+);
+
+const orphanedOccs = $derived(
+  survey.occurrences.filter(
+    (o) => o.record.surveyTargetID && !targetUris.has(o.record.surveyTargetID),
+  ),
+);
+
+const targetOccCount = $derived(
+  survey.occurrences.length - incidentalOccs.length - orphanedOccs.length,
 );
 
 function formatDate(iso: string | null): string {
@@ -63,10 +75,10 @@ function formatDate(iso: string | null): string {
   </Card.Root>
 
   <h2 class="mb-3 text-lg font-semibold">
-    Occurrences ({survey.occurrences.length - incidentalOccs.length} / {protocol.targets.length})
+    Occurrences ({targetOccCount} / {protocol.targets.length})
   </h2>
 
-  {#if survey.occurrences.length === incidentalOccs.length}
+  {#if targetOccCount === 0}
     <p class="text-muted-foreground text-sm">No occurrences recorded.</p>
   {:else}
     <ul class="flex flex-col gap-3">

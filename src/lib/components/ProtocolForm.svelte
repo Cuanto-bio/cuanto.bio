@@ -31,7 +31,12 @@ let { protocol }: Props = $props();
 
 const onlineState = useOnline();
 
-type Target = l.$Typed<TaxonScope> | l.$Typed<VerbatimScope>;
+// Not AtSurveyTarget: atUri is optional (new targets have none yet) and we don't
+// track protocol or $type here — those are only needed when writing to the PDS.
+type Target = {
+  atUri?: string;
+  scope: (l.$Typed<TaxonScope> | l.$Typed<VerbatimScope>)[];
+};
 
 type PlaceEntry = {
   name: string;
@@ -59,13 +64,10 @@ let requiredFieldSurveyorCount = $state(
 
 // svelte-ignore state_referenced_locally -- intentional: initialize from server data
 let targets = $state<Target[]>(
-  (protocol?.targets || []).flatMap((t): Target[] => {
-    const scope = t.record.scope[0];
-    if (!scope) return [];
-    if (taxonScopeType.isTypeOf(scope)) return [{ ...scope }];
-    if (verbatimScopeType.isTypeOf(scope)) return [{ ...scope }];
-    return [];
-  }),
+  (protocol?.targets || []).map((t) => ({
+    atUri: t.atUri,
+    scope: t.record.scope as (l.$Typed<TaxonScope> | l.$Typed<VerbatimScope>)[],
+  })),
 );
 
 // svelte-ignore state_referenced_locally -- intentional: initialize from server data
@@ -93,27 +95,39 @@ let bulkProgress = $state<{ current: number; total: number } | null>(null);
 let bulkUnmatched = $state<string[]>([]);
 
 function targetsJson(): string {
-  return JSON.stringify(targets.map((t) => ({ scope: [t] })));
+  return JSON.stringify(
+    targets.map((t) => ({ scope: t.scope, atUri: t.atUri })),
+  );
 }
 
 function addTaxon(result: TaxonResult) {
-  const target: l.$Typed<TaxonScope> = {
-    $type: 'bio.lexicons.temp.v0-1.surveyTarget#taxonScope',
-    scientificName: result.scientificName,
-    taxonRank: result.taxonRank,
-    ...(result.taxonID ? { taxonID: result.taxonID as l.UriString } : {}),
-    ...(result.kingdom ? { kingdom: result.kingdom } : {}),
-    ...(result.commonName ? { vernacularName: result.commonName } : {}),
-  };
-  targets = [...targets, target];
+  targets = [
+    ...targets,
+    {
+      scope: [
+        {
+          $type: 'bio.lexicons.temp.v0-1.surveyTarget#taxonScope' as const,
+          scientificName: result.scientificName,
+          taxonRank: result.taxonRank,
+          ...(result.taxonID ? { taxonID: result.taxonID as l.UriString } : {}),
+          ...(result.kingdom ? { kingdom: result.kingdom } : {}),
+          ...(result.commonName ? { vernacularName: result.commonName } : {}),
+        },
+      ],
+    },
+  ];
 }
 
 function addVerbatim() {
   targets = [
     ...targets,
     {
-      $type: 'bio.lexicons.temp.v0-1.surveyTarget#verbatimScope' as const,
-      verbatimTargetScope: '',
+      scope: [
+        {
+          $type: 'bio.lexicons.temp.v0-1.surveyTarget#verbatimScope' as const,
+          verbatimTargetScope: '',
+        },
+      ],
     },
   ];
 }
@@ -349,20 +363,21 @@ function removeAddress(i: number, j: number) {
         {#if targets.length > 0}
           <ul class="flex flex-col gap-4">
             {#each targets as target, i (i)}
+              {@const scope = target.scope[0]}
               <li class="flex items-start justify-between rounded-lg border p-4 text-sm bg-background">
-                {#if verbatimScopeType.isTypeOf(target)}
+                {#if scope && verbatimScopeType.isTypeOf(scope)}
                   <Input
                     placeholder="Describe what to look for…"
-                    bind:value={target.verbatimTargetScope}
+                    bind:value={scope.verbatimTargetScope}
                   />
-                {:else if taxonScopeType.isTypeOf(target)}
+                {:else if scope && taxonScopeType.isTypeOf(scope)}
                   <div class="flex flex-1 flex-col gap-2">
                     <div class="flex flex-row gap-2">
                       <div class="flex flex-col gap-2 grow">
                         <Label for={`target-sciname-${i}`}>Scientific name</Label>
                         <Input
                           disabled
-                          value={target.scientificName}
+                          value={scope.scientificName}
                           id={`target-sciname-${i}`}
                         />
                       </div>
@@ -370,7 +385,7 @@ function removeAddress(i: number, j: number) {
                         <Label for={`target-rank-${i}`}>Rank</Label>
                         <Input
                           disabled
-                          value={target.taxonRank}
+                          value={scope.taxonRank}
                           id={`target-rank-${i}`}
                         />
                       </div>
@@ -379,15 +394,15 @@ function removeAddress(i: number, j: number) {
                     <Input
                       id={`target-vername-${i}`}
                       placeholder="Common name (optional)"
-                      value={target.vernacularName ?? ''}
+                      value={scope.vernacularName ?? ''}
                       oninput={(e) => {
-                        target.vernacularName =
+                        scope.vernacularName =
                           (e.target as HTMLInputElement).value || undefined;
                       }}
                     />
-                    {#if target.taxonID}
+                    {#if scope.taxonID}
                       <div class="text-xs text-muted-foreground">
-                        Source: <a href={target.taxonID} target="_blank">{target.taxonID}</a>
+                        Source: <a href={scope.taxonID} target="_blank">{scope.taxonID}</a>
                       </div>
                     {/if}
                   </div>
