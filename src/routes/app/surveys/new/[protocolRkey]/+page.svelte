@@ -274,7 +274,7 @@ function toDatetimeLocal(isoString: string): string {
 }
 
 async function autoSave() {
-  if (!protocol || saving) return;
+  if (!protocol || saving || navigatingAway) return;
   saving = true;
   try {
     const survey = buildSurveyPayload(protocol, resumingComplete);

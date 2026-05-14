@@ -1346,3 +1346,88 @@ test('existing protocol occurrence tests are unaffected by incidentals changes',
   expect(identRows).toHaveLength(1);
   expect(identRows[0].record.scientificName).toBe('Quercus agrifolia');
 });
+
+// ── Race condition: auto-save orphan after successful submit ──────────────────
+
+test('does not leave an orphaned in-progress draft when auto-save fires during navigation after submit', async ({
+  page,
+  protocolRkey,
+}) => {
+  // Install fake clock before any navigation so the form's setInterval is
+  // registered under the fake clock and we can fire it on demand.
+  await page.clock.install({ time: Date.now() });
+
+  // Delay the survey detail GET so goto() stays pending long enough for
+  // us to advance the clock and fire the auto-save interval after deletion.
+  await page.route('**/api/surveys/user-survey-spec/**', async (route) => {
+    if (route.request().method() === 'GET') {
+      await new Promise<void>((r) => setTimeout(r, 800));
+    }
+    await route.continue();
+  });
+
+  await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+  await page.fill(
+    '[placeholder="e.g. Mission Dolores Park"]',
+    'Race Condition Site',
+  );
+
+  // Fire the 10s auto-save interval to create a draft in IDB with complete: false.
+  await page.clock.runFor(11_000);
+
+  // Wait for the IDB write to settle before submitting.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            new Promise<number>((resolve) => {
+              const req = indexedDB.open('cuanto');
+              req.onsuccess = () => {
+                const tx = req.result.transaction(
+                  'pending-surveys',
+                  'readonly',
+                );
+                const countReq = tx.objectStore('pending-surveys').count();
+                countReq.onsuccess = () => resolve(countReq.result);
+                countReq.onerror = () => resolve(0);
+              };
+              req.onerror = () => resolve(0);
+            }),
+        ),
+      { timeout: 5_000 },
+    )
+    .toBe(1);
+
+  // Submit. The upload succeeds quickly, deletePendingSurvey runs, then
+  // goto() starts and blocks on the delayed survey detail GET (800ms real).
+  await page.getByRole('button', { name: 'Finish Survey' }).click();
+  await page.getByRole('button', { name: 'Finish', exact: true }).click();
+
+  // Let the upload and delete complete in real time (~100ms on localhost).
+  // goto() is now awaiting the delayed GET response.
+  await page.waitForTimeout(300);
+
+  // Fire the auto-save interval again. Without the fix, autoSave() runs,
+  // calls updatePendingSurvey with complete: false, and re-inserts the
+  // deleted draft as an orphan because navigatingAway is not checked.
+  await page.clock.runFor(11_000);
+
+  await expect(page).toHaveURL(/\/app\/surveys\/user-survey-spec\/\w+/, {
+    timeout: 10_000,
+  });
+
+  const pending = await page.evaluate(
+    () =>
+      new Promise<unknown[]>((resolve) => {
+        const req = indexedDB.open('cuanto');
+        req.onsuccess = () => {
+          const tx = req.result.transaction('pending-surveys', 'readonly');
+          const getAllReq = tx.objectStore('pending-surveys').getAll();
+          getAllReq.onsuccess = () => resolve(getAllReq.result);
+        };
+      }),
+  );
+
+  expect(pending).toHaveLength(0);
+});
