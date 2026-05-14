@@ -11,7 +11,10 @@ import { geo } from '$lib/lexicons/community/lexicon/location';
 import * as Place from '$lib/lexicons/org/atgeo/place';
 import type { Main as AtgeoPlace } from '$lib/lexicons/org/atgeo/place.defs';
 import sql from '$lib/server/db';
-import { insertIdentification } from '$lib/server/db/identifications';
+import {
+  getIdentificationsForOccurrences,
+  insertIdentification,
+} from '$lib/server/db/identifications';
 import type { ProtocolRow } from '$lib/server/db/survey-protocols';
 import { getProtocolByUri } from '$lib/server/db/survey-protocols';
 import {
@@ -36,7 +39,18 @@ export const GET: RequestHandler = async ({ locals }) => {
   const occurrences = await getOccurrencesForSurveys(
     surveys.map((s) => s.at_uri),
   );
-  return json(toSurveyResponse(surveys, groupOccurrencesBySurvey(occurrences)));
+  const incidentalUris = occurrences
+    .filter((o) => !o.record.surveyTargetID)
+    .map((o) => o.at_uri);
+  const identsByOccurrence =
+    await getIdentificationsForOccurrences(incidentalUris);
+  const occurrencesWithIdents = occurrences.map((o) => ({
+    ...o,
+    identification: identsByOccurrence.get(o.at_uri),
+  }));
+  return json(
+    toSurveyResponse(surveys, groupOccurrencesBySurvey(occurrencesWithIdents)),
+  );
 };
 
 type OccurrenceInput = {

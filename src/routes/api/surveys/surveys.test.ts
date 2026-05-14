@@ -8,10 +8,15 @@ vi.mock('$lib/server/pds', () => ({
 vi.mock('$lib/server/db/surveys', () => ({
   insertSurvey: vi.fn(),
   insertOccurrence: vi.fn(),
+  getSurveysByDid: vi.fn(),
+  getOccurrencesForSurveys: vi.fn(),
+  groupOccurrencesBySurvey: vi.fn(),
+  toSurveyResponse: vi.fn(),
 }));
 
 vi.mock('$lib/server/db/identifications', () => ({
   insertIdentification: vi.fn(),
+  getIdentificationsForOccurrences: vi.fn(),
 }));
 
 vi.mock('$lib/server/db/survey-protocols', () => ({
@@ -31,11 +36,21 @@ vi.mock('$lib/server/db', () => {
 
 import { isHttpError } from '@sveltejs/kit';
 import sql from '$lib/server/db';
-import { insertIdentification } from '$lib/server/db/identifications';
+import {
+  getIdentificationsForOccurrences,
+  insertIdentification,
+} from '$lib/server/db/identifications';
 import { getProtocolByUri } from '$lib/server/db/survey-protocols';
-import { insertOccurrence, insertSurvey } from '$lib/server/db/surveys';
+import {
+  getOccurrencesForSurveys,
+  getSurveysByDid,
+  groupOccurrencesBySurvey,
+  insertOccurrence,
+  insertSurvey,
+  toSurveyResponse,
+} from '$lib/server/db/surveys';
 import { createRecord, putRecord } from '$lib/server/pds';
-import { POST } from './+server';
+import { GET, POST } from './+server';
 
 const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
 const DID = 'did:test:surveys-spec';
@@ -245,5 +260,67 @@ describe('POST /api/surveys — incidentals', () => {
     expect(resp.status).toBe(200);
     expect(insertOccurrence).not.toHaveBeenCalled();
     expect(insertIdentification).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/surveys', () => {
+  const SURVEY_URI = `at://${DID}/bio.lexicons.temp.v0-1.survey/s1`;
+  const INCIDENTAL_URI = `at://${DID}/bio.lexicons.temp.v0-1.occurrence/occ-incidental`;
+
+  beforeEach(() => {
+    vi.mocked(getSurveysByDid).mockResolvedValue([]);
+    vi.mocked(getOccurrencesForSurveys).mockResolvedValue([
+      {
+        at_uri: INCIDENTAL_URI,
+        survey_uri: SURVEY_URI,
+        // no surveyTargetID → incidental
+        record: {
+          $type: 'bio.lexicons.temp.v0-1.occurrence',
+          eventID: SURVEY_URI,
+        } as unknown as Parameters<
+          typeof groupOccurrencesBySurvey
+        >[0][0]['record'],
+      },
+    ]);
+    vi.mocked(getIdentificationsForOccurrences).mockResolvedValue(
+      new Map([
+        [
+          INCIDENTAL_URI,
+          {
+            scientificName: 'Lupinus chamissonis',
+            vernacularName: 'Silver bush lupine',
+          },
+        ],
+      ]),
+    );
+    vi.mocked(groupOccurrencesBySurvey).mockReturnValue(new Map());
+    vi.mocked(toSurveyResponse).mockReturnValue([]);
+  });
+
+  test('fetches identifications for incidental occurrences', async () => {
+    const resp = await GET({
+      locals: { did: DID },
+    } as unknown as Parameters<typeof GET>[0]);
+    expect(resp.status).toBe(200);
+    expect(vi.mocked(getIdentificationsForOccurrences)).toHaveBeenCalledWith([
+      INCIDENTAL_URI,
+    ]);
+  });
+
+  test('passes identification data to groupOccurrencesBySurvey', async () => {
+    await GET({
+      locals: { did: DID },
+    } as unknown as Parameters<typeof GET>[0]);
+    expect(vi.mocked(groupOccurrencesBySurvey)).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          at_uri: INCIDENTAL_URI,
+          identification: {
+            scientificName: 'Lupinus chamissonis',
+            vernacularName: 'Silver bush lupine',
+          },
+        }),
+      ]),
+    );
   });
 });
