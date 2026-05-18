@@ -109,7 +109,13 @@ Create three Railway services in a project:
 Run migrations via the Railway CLI before or after deploying:
 
 ```sh
-railway run --service <app-service-name> pnpm migrate:up
+# Requires PUBLIC_DATABASE_URL var on the app service that references the TCP
+# proxy URL of the db service
+railway run --service app -- sh -c 'DATABASE_URL=$PUBLIC_DATABASE_URL pnpm migrate:up'
+
+# also present as pnpm scripts:
+pnpm railway:migrate:up
+pnpm railway:migrate:down
 ```
 
 ### Replaying historical data
