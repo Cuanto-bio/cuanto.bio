@@ -11,6 +11,7 @@ import type { Main as LocationBbox } from '$lib/lexicons/community/lexicon/locat
 import type { Main as LocationGeo } from '$lib/lexicons/community/lexicon/location/geo.defs';
 import type { Protocol, TaxonScope, VerbatimScope } from '$lib/offline/db';
 import { LOCATION_COMBOBOX_THRESHOLD } from '$lib/places';
+import { sanitizeHtml } from '$lib/sanitize';
 import Handle from './handle.svelte';
 import Taxon from './Taxon.svelte';
 import * as Table from './ui/table';
@@ -82,7 +83,7 @@ function formatDate(iso: string) {
 
   <div class="text-muted-foreground text-xs mb-1">PROTOCOL</div>
   <h1>{protocol.record.title}</h1>
-  <p>{protocol.record.description}</p>
+  {@html sanitizeHtml(protocol.record.description ?? '')}
 
   <div class="flex items-center gap-3">
     {#if canFollow}

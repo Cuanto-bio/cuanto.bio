@@ -1,6 +1,7 @@
 <script lang="ts">
 import * as Card from '$lib/components/ui/card';
 import type { Protocol } from '$lib/offline/db';
+import { stripHtml } from '$lib/sanitize';
 import Handle from './handle.svelte';
 
 let { protocol }: { protocol: Protocol } = $props();
@@ -11,7 +12,7 @@ let { protocol }: { protocol: Protocol } = $props();
     <Card.Title>{protocol.record.title}</Card.Title>
   </Card.Header>
   <Card.Content>
-    <Card.Description>{protocol.record.description}</Card.Description>
+    <Card.Description>{stripHtml(protocol.record.description ?? '')}</Card.Description>
   </Card.Content>
   <Card.Footer class="flex flex-row justify-between">
     <Handle handle={protocol.handle} avatarUrl={protocol.avatarUrl} />
