@@ -175,7 +175,10 @@ export async function getProtocolsPage(
     LIMIT ${limit}
     OFFSET ${offset}
   `;
-  return rows.map((r) => toProtocol(r, []));
+  const protocolUris = rows.map((r) => r.at_uri);
+  const targetRows = await getTargetsForProtocols(protocolUris);
+  const byProtocol = groupTargetsByProtocol(targetRows);
+  return rows.map((p) => toProtocol(p, byProtocol.get(p.at_uri) ?? []));
 }
 
 export async function getProtocolsPageByDid(

@@ -13,7 +13,10 @@ let { protocol }: { protocol: Protocol } = $props();
   <Card.Content>
     <Card.Description>{protocol.record.description}</Card.Description>
   </Card.Content>
-  <Card.Footer>
+  <Card.Footer class="flex flex-row justify-between">
     <Handle handle={protocol.handle} avatarUrl={protocol.avatarUrl} />
+    <div class="text-muted-foreground">
+      {protocol.targets.length} targets
+    </div>
   </Card.Footer>
 </Card.Root>

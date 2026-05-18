@@ -26,7 +26,13 @@ function formatDuration(value: number | null, unit: string | null): string {
       {#each data.surveys as survey (survey.atUri)}
         <li>
           <a href="/surveys/{survey.handle}/{survey.rkey}">
-            <SurveyCard survey={survey} />
+            <SurveyCard
+              survey={survey}
+              currentUser={data.handle
+                ? { avatarUrl: data.avatarUrl, handle: data.handle! }
+                : undefined
+              }
+            />
           </a>
         </li>
       {/each}

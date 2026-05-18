@@ -84,7 +84,13 @@ async function confirmDelete() {
                   href="/app/surveys/new/{survey.protocolRkey}?resumeId={survey.id}"
                   class="min-w-0 flex-1"
                 >
-                  <SurveyCard {survey} />
+                  <SurveyCard
+                    {survey}
+                    currentUser={data.handle
+                      ? { avatarUrl: data.avatarUrl, handle: data.handle! }
+                      : undefined
+                    }
+                  />
                 </a>
                 <div class="flex flex-col gap-2 justify-between">
                   <a href="/app/surveys/new/{survey.protocolRkey}?resumeId={survey.id}">
@@ -133,7 +139,13 @@ async function confirmDelete() {
                   href="/app/surveys/new/{survey.protocolRkey}?resumeId={survey.id}"
                   class="min-w-0 flex-1"
                 >
-                  <SurveyCard {survey} />
+                  <SurveyCard
+                    {survey}
+                    currentUser={data.handle
+                      ? { avatarUrl: data.avatarUrl, handle: data.handle! }
+                      : undefined
+                    }
+                  />
                 </a>
                 <div class="flex flex-col gap-2 justify-between">
                   <a href="/app/surveys/new/{survey.protocolRkey}?resumeId={survey.id}">
@@ -201,7 +213,13 @@ async function confirmDelete() {
             {#each readyToUpload as survey (survey.id)}
               <li class="flex items-start gap-2">
                 <div class="min-w-0 flex-1">
-                  <SurveyCard {survey} />
+                  <SurveyCard
+                    {survey}
+                    currentUser={data.handle
+                      ? { avatarUrl: data.avatarUrl, handle: data.handle! }
+                      : undefined
+                    }
+                  />
                 </div>
                 <Button
                   variant="ghost"
@@ -227,7 +245,13 @@ async function confirmDelete() {
       {#each data.surveys as survey (survey.atUri)}
         <li>
           <a href="/app/surveys/{survey.handle}/{survey.rkey}">
-            <SurveyCard survey={survey} />
+            <SurveyCard
+              survey={survey}
+              currentUser={data.handle
+                ? { avatarUrl: data.avatarUrl, handle: data.handle! }
+                : undefined
+              }
+            />
           </a>
         </li>
       {/each}
