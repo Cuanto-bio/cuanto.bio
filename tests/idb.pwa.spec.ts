@@ -40,22 +40,25 @@ async function seedSurvey(
   sql: Sql,
   did: string,
   protocolUri: string,
+  locationName = 'Offline Test Park',
+  createdAt = new Date().toISOString(),
 ): Promise<string> {
   const rkey = `survey${Date.now()}`;
   const atUri = `at://${did}/bio.lexicons.temp.v0-1.survey/${rkey}`;
   const record = {
     $type: 'bio.lexicons.temp.v0-1.survey',
     protocol: { uri: protocolUri, cid: FAKE_CID },
-    createdAt: new Date().toISOString(),
-    location: { $type: 'org.atgeo.place', name: 'Offline Test Park' },
+    createdAt,
+    location: { $type: 'org.atgeo.place', name: locationName },
   };
   await sql`
-    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, record, indexed_at)
+    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, created_at, record, indexed_at)
     VALUES (
       ${atUri},
       ${did},
       ${rkey},
       ${protocolUri},
+      ${new Date(createdAt)},
       ${sql.json(record)},
       now()
     )
@@ -253,6 +256,49 @@ test('sidebar shows handle offline from IDB', async ({
 
     // Root +layout.ts reads IDB when offline; sidebar renders @handle.
     await expect(page.getByText(`@${HANDLE}`)).toBeVisible();
+  } finally {
+    await teardownDid(sql, DID);
+  }
+});
+
+test('surveys page renders cached surveys in createdAt DESC order when offline', async ({
+  page,
+  context,
+  sql,
+}) => {
+  await context.addCookies([AUTH_COOKIE]);
+  const { protocolRkey } = await seedProtocol(sql, DID);
+  const protocolUri = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+
+  // Seed older first to confirm IDB cache order doesn't determine display order.
+  await seedSurvey(
+    sql,
+    DID,
+    protocolUri,
+    'Older Site',
+    '2026-01-01T00:00:00.000Z',
+  );
+  await seedSurvey(
+    sql,
+    DID,
+    protocolUri,
+    'Newer Site',
+    '2026-06-01T00:00:00.000Z',
+  );
+
+  try {
+    // Visit online to prime IDB cache.
+    await page.goto('/app/surveys');
+    await waitForSW(page);
+    await expect(page.getByText('Newer Site')).toBeVisible();
+
+    await context.setOffline(true);
+    await page.goto('/app/surveys');
+    await page.waitForLoadState('networkidle', { timeout: 10000 });
+
+    const items = page.locator('ul').last().locator('li');
+    await expect(items.nth(0)).toContainText('Newer Site');
+    await expect(items.nth(1)).toContainText('Older Site');
   } finally {
     await teardownDid(sql, DID);
   }

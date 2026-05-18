@@ -25,6 +25,7 @@ export interface Protocol {
   avatarUrl?: string;
   record: AtSurveyProtocol;
   targets: Target[];
+  followedAt?: string;
 }
 
 export interface CachedProtocol extends Protocol {
@@ -248,7 +249,12 @@ export async function deletePendingSurvey(id: number): Promise<void> {
 
 export async function getCachedFollowedProtocols(): Promise<CachedProtocol[]> {
   const db = await getDB();
-  return db.getAll('followed-protocols');
+  const protocols = await db.getAll('followed-protocols');
+  // sort by follow date desc
+  return protocols.sort((a, b) => {
+    if (!a.followedAt || !b.followedAt) return 0;
+    return new Date(b.followedAt).getTime() - new Date(a.followedAt).getTime();
+  });
 }
 
 export async function getCachedFollowedProtocolByRkey(
@@ -294,7 +300,13 @@ export async function getCachedSurveyByRkey(
 
 export async function getCachedSurveys(): Promise<CachedSurvey[]> {
   const db = await getDB();
-  return db.getAll('cached-surveys');
+  const surveys = await db.getAll('cached-surveys');
+  // sort by created desc
+  return surveys.sort(
+    (a, b) =>
+      new Date(b.record.createdAt).getTime() -
+      new Date(a.record.createdAt).getTime(),
+  );
 }
 
 export async function saveIdbUser(user: IdbUser): Promise<void> {

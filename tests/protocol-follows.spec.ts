@@ -8,12 +8,13 @@ async function seedFollow(
   sql: Sql,
   did: string,
   protocolUri: string,
+  createdAt: Date = new Date(),
 ): Promise<string> {
   const rkey = `testfollow${Date.now()}`;
   const atUri = `at://${did}/bio.cuanto.surveyProtocol.follow/${rkey}`;
   await sql`
     INSERT INTO protocol_follows (at_uri, did, rkey, protocol_uri, created_at)
-    VALUES (${atUri}, ${did}, ${rkey}, ${protocolUri}, now())
+    VALUES (${atUri}, ${did}, ${rkey}, ${protocolUri}, ${createdAt})
   `;
   return atUri;
 }
@@ -174,4 +175,50 @@ test('/protocols/following empty state', async ({ page, sql, context }) => {
 test('/app/protocols/following requires auth', async ({ page }) => {
   await page.goto('/app/protocols/following');
   await expect(page).toHaveURL(/\/auth\/signin/);
+});
+
+test('/app/protocols/following renders protocols in follow date DESC order', async ({
+  page,
+  sql,
+  context,
+}) => {
+  const DID_A = 'did:test:follow-order-a';
+  const DID_B = 'did:test:follow-order-b';
+
+  await context.addCookies([
+    {
+      name: 'did',
+      value: DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  await sql`INSERT INTO users (did, handle) VALUES (${DID}, ${HANDLE}) ON CONFLICT (did) DO NOTHING`;
+
+  const { protocolRkey: rKeyA } = await seedProtocol(sql, DID_A);
+  const { protocolRkey: rKeyB } = await seedProtocol(sql, DID_B);
+  const uriA = `at://${DID_A}/bio.lexicons.temp.v0-1.surveyProtocol/${rKeyA}`;
+  const uriB = `at://${DID_B}/bio.lexicons.temp.v0-1.surveyProtocol/${rKeyB}`;
+
+  const handleA = `user-${DID_A.split(':').pop()}`;
+  const handleB = `user-${DID_B.split(':').pop()}`;
+
+  // Follow A first (older), then B (newer).
+  await seedFollow(sql, DID, uriA, new Date('2026-01-01T00:00:00.000Z'));
+  await seedFollow(sql, DID, uriB, new Date('2026-06-01T00:00:00.000Z'));
+
+  try {
+    await page.goto('/app/protocols/following');
+    await page.waitForLoadState('networkidle');
+
+    const items = page.locator('main ul li');
+    await expect(items.nth(0)).toContainText(handleB);
+    await expect(items.nth(1)).toContainText(handleA);
+  } finally {
+    await teardownDid(sql, DID);
+    await teardownDid(sql, DID_A);
+    await teardownDid(sql, DID_B);
+  }
 });

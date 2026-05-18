@@ -60,6 +60,7 @@ export interface ProtocolRow {
   handle: string;
   avatar_url: string | null;
   record: AtSurveyProtocol;
+  followed_at?: string;
 }
 
 interface TargetRow {
@@ -118,6 +119,7 @@ function toProtocol(row: ProtocolRow, targets: TargetRow[]): Protocol {
     avatarUrl: row.avatar_url ?? undefined,
     record: row.record,
     targets: targets.map(toTarget),
+    ...(row.followed_at ? { followedAt: row.followed_at } : {}),
   };
 }
 
@@ -151,11 +153,13 @@ export async function getFollowedProtocolsByDid(
   did: string,
 ): Promise<Protocol[]> {
   const rows = await sql<ProtocolRow[]>`
-    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle, u.avatar_url
+    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle, u.avatar_url,
+           pf.created_at AS followed_at
     FROM protocol_follows pf
     JOIN survey_protocols sp ON sp.at_uri = pf.protocol_uri
     JOIN users u ON u.did = sp.did
     WHERE pf.did = ${did}
+    ORDER BY pf.created_at DESC
   `;
   const protocolUris = rows.map((r) => r.at_uri);
   const targetRows = await getTargetsForProtocols(protocolUris);

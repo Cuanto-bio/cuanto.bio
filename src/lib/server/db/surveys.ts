@@ -44,7 +44,7 @@ export async function getSurveysByDid(
   return sql<SurveyRow[]>`
     ${surveysFromJoin}
     WHERE s.did = ${did}
-    ORDER BY s.event_date DESC NULLS LAST, s.indexed_at DESC
+    ORDER BY s.created_at DESC NULLS LAST
     ${limit != null ? sql`LIMIT ${limit}` : sql``}
   `;
 }
@@ -148,7 +148,7 @@ export async function getSurveysPage(limit: number = 100, offset: number = 0) {
     JOIN survey_protocols sp ON sp.at_uri = s.protocol_uri
     JOIN users u ON u.did = s.did
     JOIN users spu ON spu.did = sp.did
-    ORDER BY s.event_date DESC NULLS LAST, s.indexed_at DESC
+    ORDER BY s.created_at DESC NULLS LAST
     LIMIT ${limit}
     OFFSET ${offset}
   `;
@@ -211,21 +211,23 @@ export async function insertSurvey(
     return Number.isNaN(d.getTime()) ? null : d;
   })();
 
-  // event_date is stored separately for ORDER BY; record contains the full lexicon record.
+  // event_date and created_at are stored separately for ORDER BY; record contains the full lexicon record.
   await sql`
-    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, event_date, record, indexed_at)
+    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, event_date, created_at, record, indexed_at)
     VALUES (
       ${atUri},
       ${did},
       ${rkey},
       ${record.protocol.uri},
       ${eventDate},
+      ${new Date(record.createdAt)},
       ${sql.json(record as Parameters<typeof sql.json>[0])},
       now()
     )
     ON CONFLICT (at_uri) DO UPDATE SET
       protocol_uri = EXCLUDED.protocol_uri,
       event_date = EXCLUDED.event_date,
+      created_at = EXCLUDED.created_at,
       record = EXCLUDED.record
   `;
 }

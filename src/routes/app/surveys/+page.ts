@@ -14,7 +14,9 @@ export const load: PageLoad = async ({ fetch }) => {
       .catch((err) => {
         log.warn({ err }, 'Failed to update cached surveys');
       });
-    return { surveys: cached };
+    return {
+      surveys: cached,
+    };
   }
   try {
     const res = await fetch('/api/surveys');

@@ -175,18 +175,19 @@ export async function seedSurvey(
   did: string,
   protocolUri: string,
   locationName = 'Test Location',
+  createdAt = new Date().toISOString(),
 ): Promise<{ surveyRkey: string }> {
   const rkey = `testsurvey${Date.now()}`;
   const atUri = `at://${did}/bio.lexicons.temp.v0-1.survey/${rkey}`;
   const record = {
     $type: 'bio.lexicons.temp.v0-1.survey',
     protocol: { uri: protocolUri, cid: FAKE_CID },
-    createdAt: new Date().toISOString(),
+    createdAt,
     location: { $type: 'org.atgeo.place', name: locationName },
   };
   await sql`
-    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, record, indexed_at)
-    VALUES (${atUri}, ${did}, ${rkey}, ${protocolUri}, ${sql.json(record)}, now())
+    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, created_at, record, indexed_at)
+    VALUES (${atUri}, ${did}, ${rkey}, ${protocolUri}, ${new Date(createdAt)}, ${sql.json(record)}, now())
   `;
   return { surveyRkey: rkey };
 }
