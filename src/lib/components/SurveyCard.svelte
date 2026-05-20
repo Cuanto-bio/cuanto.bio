@@ -54,7 +54,7 @@ function formatDuration(value: number | null, unit: string | null): string {
   </Card.Header>
   <Card.Footer class="text-muted-foreground flex flex-row text-sm justify-between gap-2 items-end">
     <div>
-      <Card.Description>{locationName} lisd gjlksfn lskfghjsl fhn</Card.Description>
+      <Card.Description>{locationName}</Card.Description>
       {formatDate(eventDate)}
     </div>
     <div class="flex flex-row gap-2">
