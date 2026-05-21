@@ -1,7 +1,10 @@
 <script lang="ts">
+import type { TaxonProp } from '$lib/components/Taxon.svelte';
 import Taxon from '$lib/components/Taxon.svelte';
 import * as Card from '$lib/components/ui/card';
+import { verbatimScope } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs';
 import type {
+  Occurrence,
   Protocol,
   Survey,
   TaxonScope,
@@ -36,6 +39,38 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleString();
 }
 </script>
+
+{#snippet surveyTargetRow(opts: {
+  verbatimTargetScope?: string,
+  taxon?: TaxonProp,
+  occurrence?: Occurrence
+})}
+  <li
+    class="
+      flex
+      items-center
+      justify-between
+      border
+      px-4
+      py-3
+      border-b-0
+      last:border-b-1
+      first:rounded-t
+      last:rounded-b
+    "
+  >
+    <span class="text-sm">
+      {#if opts.taxon}
+        <Taxon taxon={opts.taxon} />
+      {:else if opts.verbatimTargetScope}
+        {opts.verbatimTargetScope ?? 'Unknown'}
+      {/if}
+    </span>
+    <span class="font-mono text-sm font-semibold">
+      {opts.occurrence?.record.organismQuantity ?? 0}
+    </span>
+  </li>
+{/snippet}
 
 <main class="mx-auto max-w-2xl px-4 pb-8">
   <div class="text-muted-foreground text-xs mb-4">SURVEY</div>
@@ -75,16 +110,31 @@ function formatDate(iso: string | null): string {
   </Card.Root>
 
   <h2 class="mb-3 text-lg font-semibold">
-    Occurrences ({targetOccCount} / {protocol.targets.length})
+    Targets ({targetOccCount} / {protocol.targets.length})
   </h2>
 
   {#if targetOccCount === 0}
     <p class="text-muted-foreground text-sm">No occurrences recorded.</p>
   {:else}
-    <ul class="flex flex-col gap-3">
+    <ul class="flex flex-col gap-0">
       {#each protocol.targets as target (target.atUri)}
-        {@const first = target.record.scope[0]}
-        <li class="flex items-center justify-between rounded border px-4 py-3">
+        {@const taxonScope = target.record.scope.find(s => s.$type.endsWith('#taxonScope')) as TaxonScope}
+        {@const verbatimScope = target.record.scope.find(s => s.$type.endsWith('#verbatimScope')) as VerbatimScope}
+        {@const occurrence = survey.occurrences.find(o => o.record.surveyTargetID === target.atUri)}
+        <!-- <li
+          class="
+            flex
+            items-center
+            justify-between
+            border
+            px-4
+            py-3
+            border-b-0
+            last:border-b-1
+            first:rounded-t
+            last:rounded-b
+          "
+        >
           <span class="text-sm">
             {#if first?.$type?.endsWith('#taxonScope')}
               <Taxon taxon={first as TaxonScope} />
@@ -93,7 +143,12 @@ function formatDate(iso: string | null): string {
             {/if}
           </span>
           <span class="font-mono text-sm font-semibold">{survey.occurrences.find(o => o.record.surveyTargetID === target.atUri)?.record.organismQuantity ?? 0}</span>
-        </li>
+        </li> -->
+        {#if taxonScope}
+          {@render surveyTargetRow({ occurrence, taxon: taxonScope })}
+        {:else if verbatimScope}
+          {@render surveyTargetRow({ occurrence, verbatimTargetScope: verbatimScope.verbatimTargetScope })}
+        {/if}
       {/each}
     </ul>
   {/if}
@@ -101,8 +156,8 @@ function formatDate(iso: string | null): string {
   {#if incidentalOccs.length > 0}
     <h2 class="mb-3 mt-6 text-lg font-semibold">Incidentals ({incidentalOccs.length})</h2>
     <ul class="flex flex-col gap-3">
-      {#each incidentalOccs as occ (occ.atUri)}
-        <li class="flex items-center justify-between rounded border px-4 py-3">
+      {#each incidentalOccs as occurrence (occurrence.atUri)}
+<!--         <li class="flex items-center justify-between rounded border px-4 py-3">
           <span class="text-sm">
             {#if occ.identification?.vernacularName}
               <span class="font-medium">{occ.identification.vernacularName}</span>
@@ -114,7 +169,8 @@ function formatDate(iso: string | null): string {
             {/if}
           </span>
           <span class="font-mono text-sm font-semibold">{occ.record.organismQuantity ?? 0}</span>
-        </li>
+        </li> -->
+        {@render surveyTargetRow({ occurrence, taxon: occurrence.identification })}
       {/each}
     </ul>
   {/if}

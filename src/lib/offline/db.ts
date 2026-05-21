@@ -35,7 +35,11 @@ export interface CachedProtocol extends Protocol {
 export interface Occurrence {
   atUri: string;
   record: AtOccurrence;
-  identification?: { scientificName: string; vernacularName?: string };
+  identification?: {
+    scientificName: string;
+    vernacularName?: string;
+    taxonRank?: string;
+  };
 }
 
 export interface Survey {

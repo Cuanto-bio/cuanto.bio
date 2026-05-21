@@ -1,6 +1,12 @@
 import type { Main as AtIdentification } from '$lib/lexicons/bio/lexicons/temp/v0-1/identification.defs.js';
 import sql from './index.js';
 
+export interface IdentificationRow {
+  scientificName: string;
+  vernacularName?: string;
+  taxonRank?: string;
+}
+
 export async function getIdentificationsForOccurrences(
   occurrenceUris: string[],
 ): Promise<Map<string, { scientificName: string; vernacularName?: string }>> {
@@ -11,14 +17,12 @@ export async function getIdentificationsForOccurrences(
     SELECT occurrence_uri, record FROM identifications
     WHERE occurrence_uri = ANY(${sql.array(occurrenceUris)})
   `;
-  const map = new Map<
-    string,
-    { scientificName: string; vernacularName?: string }
-  >();
+  const map = new Map<string, IdentificationRow>();
   for (const row of rows) {
     map.set(row.occurrence_uri, {
       scientificName: row.record.scientificName,
       vernacularName: row.record.vernacularName,
+      taxonRank: row.record.taxonRank,
     });
   }
   return map;

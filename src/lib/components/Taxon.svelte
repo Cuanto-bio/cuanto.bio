@@ -1,14 +1,14 @@
 <script lang="ts">
-interface Taxon {
+export interface TaxonProp {
   scientificName: string;
   vernacularName?: string;
-  taxonRank: string;
+  taxonRank?: string;
   kingdom?: string;
 }
-const { taxon }: { taxon: Taxon } = $props();
+const { taxon }: { taxon: TaxonProp } = $props();
 </script>
 
-{#if ['genus', 'species', 'subspecies', 'variety', 'infraspecies'].includes(taxon.taxonRank)}
+{#if ['genus', 'species', 'subspecies', 'variety', 'infraspecies'].includes(taxon.taxonRank ?? '')}
   {#if taxon.vernacularName}
     {taxon.vernacularName} (<i>{taxon.scientificName}</i>)
   {:else}
@@ -16,7 +16,7 @@ const { taxon }: { taxon: Taxon } = $props();
   {/if}
 {:else}
   {#if taxon.vernacularName}
-    {taxon.vernacularName} ({taxon.taxonRank} {taxon.scientificName})
+    {taxon.vernacularName} ({taxon.taxonRank ?? '??'} {taxon.scientificName})
   {:else}
     {taxon.taxonRank} {taxon.scientificName}
   {/if}
