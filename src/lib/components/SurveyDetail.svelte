@@ -18,6 +18,8 @@ interface Props {
 
 let { protocol, survey }: Props = $props();
 
+let showAllTargets = $state(false);
+
 const targetUris = $derived(new Set(protocol.targets.map((t) => t.atUri)));
 
 const incidentalOccs = $derived(
@@ -32,6 +34,14 @@ const orphanedOccs = $derived(
 
 const targetOccCount = $derived(
   survey.occurrences.length - incidentalOccs.length - orphanedOccs.length,
+);
+
+const visibleTargets = $derived(
+  showAllTargets
+    ? protocol.targets
+    : protocol.targets.filter((t) =>
+        survey.occurrences.some((o) => o.record.surveyTargetID === t.atUri),
+      ),
 );
 
 function formatDate(iso: string | null): string {
@@ -109,41 +119,26 @@ function formatDate(iso: string | null): string {
     </Card.Content>
   </Card.Root>
 
-  <h2 class="mb-3 text-lg font-semibold">
-    Targets ({targetOccCount} / {protocol.targets.length})
-  </h2>
+  <div class="mb-3 flex items-center justify-between">
+    <h2 class="text-lg font-semibold">
+      Targets ({targetOccCount} / {protocol.targets.length})
+    </h2>
+    <button
+      class="text-muted-foreground text-xs underline"
+      onclick={() => (showAllTargets = !showAllTargets)}
+    >
+      {showAllTargets ? 'Hide unrecorded' : 'Show all'}
+    </button>
+  </div>
 
-  {#if targetOccCount === 0}
+  {#if visibleTargets.length === 0}
     <p class="text-muted-foreground text-sm">No occurrences recorded.</p>
   {:else}
     <ul class="flex flex-col gap-0">
-      {#each protocol.targets as target (target.atUri)}
+      {#each visibleTargets as target (target.atUri)}
         {@const taxonScope = target.record.scope.find(s => s.$type.endsWith('#taxonScope')) as TaxonScope}
         {@const verbatimScope = target.record.scope.find(s => s.$type.endsWith('#verbatimScope')) as VerbatimScope}
         {@const occurrence = survey.occurrences.find(o => o.record.surveyTargetID === target.atUri)}
-        <!-- <li
-          class="
-            flex
-            items-center
-            justify-between
-            border
-            px-4
-            py-3
-            border-b-0
-            last:border-b-1
-            first:rounded-t
-            last:rounded-b
-          "
-        >
-          <span class="text-sm">
-            {#if first?.$type?.endsWith('#taxonScope')}
-              <Taxon taxon={first as TaxonScope} />
-            {:else if first?.$type?.endsWith('#verbatimScope')}
-              {(first as VerbatimScope).verbatimTargetScope ?? 'Unknown'}
-            {/if}
-          </span>
-          <span class="font-mono text-sm font-semibold">{survey.occurrences.find(o => o.record.surveyTargetID === target.atUri)?.record.organismQuantity ?? 0}</span>
-        </li> -->
         {#if taxonScope}
           {@render surveyTargetRow({ occurrence, taxon: taxonScope })}
         {:else if verbatimScope}
