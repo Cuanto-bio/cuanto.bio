@@ -232,19 +232,25 @@ export const POST: RequestHandler = async ({ request }) => {
     } catch (e) {
       if (isFkViolation(e)) {
         const occurrenceUri = identification.occurrence?.uri;
+        log.warn(
+          { atUri, occurrenceUri, errorCode: (e as { code?: string }).code },
+          'identification FK violation; attempting backfill',
+        );
         if (!occurrenceUri) {
-          log.warn(
-            { atUri },
-            'identification FK violation but no occurrence.uri; skipping',
-          );
+          log.warn({ atUri }, 'identification has no occurrence.uri; skipping');
         } else {
           const occRec = await fetchAtRecord(occurrenceUri);
           const occ = occRec.value as Occurrence;
           const { did: occDid, rkey: occRkey } = parseAtUri(occurrenceUri);
           try {
             await insertOccurrence(occDid, occRkey, occ, occurrenceUri);
+            log.info({ atUri, occurrenceUri }, 'backfilled missing occurrence');
           } catch (occErr) {
             if (isFkViolation(occErr) && occ.eventID) {
+              log.warn(
+                { atUri, occurrenceUri, surveyUri: occ.eventID },
+                'occurrence FK violation; backfilling survey',
+              );
               // TODO: backfillSurvey fetches all occurrences for the DID via
               // listAtRecords, which becomes expensive at scale. Consider
               // running this in a background job, or relying on tap delivering
@@ -252,9 +258,27 @@ export const POST: RequestHandler = async ({ request }) => {
               // identification event arrives.
               await backfillSurvey(occ.eventID);
               await insertOccurrence(occDid, occRkey, occ, occurrenceUri);
+              log.info(
+                { atUri, occurrenceUri, surveyUri: occ.eventID },
+                'backfilled missing survey and occurrence',
+              );
             } else throw occErr;
           }
-          await insertIdentification(evt.did, evt.rkey, identification, atUri);
+          try {
+            await insertIdentification(
+              evt.did,
+              evt.rkey,
+              identification,
+              atUri,
+            );
+          } catch (idErr) {
+            if (isFkViolation(idErr)) {
+              log.warn(
+                { atUri, occurrenceUri },
+                'identification FK violation after backfill; skipping',
+              );
+            } else throw idErr;
+          }
         }
       } else throw e;
     }
