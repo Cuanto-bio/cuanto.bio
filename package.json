@@ -64,6 +64,9 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
+      "@tailwindcss/oxide",
+      "core-js",
+      "esbuild",
       "lefthook"
     ],
     "overrides": {

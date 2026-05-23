@@ -1,11 +1,11 @@
 <script lang="ts">
 import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
-import MoreVertical from '@lucide/svelte/icons/more-vertical';
 import { onMount } from 'svelte';
 import { toast } from 'svelte-sonner';
 import { beforeNavigate, goto, replaceState } from '$app/navigation';
 import { page } from '$app/state';
 import Button from '$lib/components/Button.svelte';
+import TargetFilterControls from '$lib/components/TargetFilterControls.svelte';
 import Taxon from '$lib/components/Taxon.svelte';
 import TaxonAutocomplete, {
   type TaxonResult,
@@ -13,7 +13,6 @@ import TaxonAutocomplete, {
 import * as AlertDialog from '$lib/components/ui/alert-dialog';
 import * as Command from '$lib/components/ui/command';
 import * as Dialog from '$lib/components/ui/dialog';
-import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 import * as Field from '$lib/components/ui/field';
 import { Input } from '$lib/components/ui/input';
 import { Label } from '$lib/components/ui/label';
@@ -43,6 +42,11 @@ import {
   validatePastTiming,
   validateSurveyorCount,
 } from '$lib/surveys';
+import {
+  createTargetFilter,
+  targetLabel,
+  targetTaxonID,
+} from '$lib/targets.svelte';
 
 let protocol = $state<CachedProtocol | null>(null);
 let notFound = $state(false);
@@ -72,10 +76,6 @@ let sheetOpen = $state(false);
 let selectedTarget = $state<Target | null>(null);
 let editingQuantity = $state('');
 let isWide = $state(false);
-let filterQuery = $state('');
-type TargetSort = 'default' | 'scientific' | 'common';
-let targetSort = $state<TargetSort>('default');
-let onlyObserved = $state(false);
 let surveyorCountStr = $state('');
 let surveyorCountError = $state<string | null>(null);
 let cancelDialogOpen = $state(false);
@@ -103,45 +103,13 @@ let navigatingAway = $state(false);
 // prevents concurrent autoSave() calls from both inserting a new IDB record
 let saving = false;
 
-const filteredTargets = $derived.by(() => {
-  // Filter by search query and "only observed" toggle
-  const filtered = (protocol?.targets ?? []).filter((t) => {
-    if (onlyObserved) {
-      const qty = parseInt(organismQuantities[t.atUri] ?? '0', 10);
-      if (Number.isNaN(qty) || qty <= 0) return false;
-    }
-    if (!filterQuery.trim()) return true;
-    const label = targetLabel(t.record.scope);
-    return label.toLowerCase().includes(filterQuery.toLowerCase());
-  });
-  if (targetSort === 'default') return filtered;
-  return [...filtered].sort((a, b) => {
-    // Support sorting by sci name or ver name, but with support for verbatim
-    // targets too
-    const af = a.record.scope[0] as Record<string, string> | undefined;
-    const bf = b.record.scope[0] as Record<string, string> | undefined;
-    const aVal =
-      targetSort === 'scientific'
-        ? isTaxonScope(af)
-          ? (af?.scientificName ?? '')
-          : (af?.verbatimTargetScope ?? '')
-        : isTaxonScope(af)
-          ? (af?.vernacularName ?? '')
-          : (af?.verbatimTargetScope ?? '');
-    const bVal =
-      targetSort === 'scientific'
-        ? isTaxonScope(bf)
-          ? (bf?.scientificName ?? '')
-          : (bf?.verbatimTargetScope ?? '')
-        : isTaxonScope(bf)
-          ? (bf?.vernacularName ?? '')
-          : (bf?.verbatimTargetScope ?? '');
-    if (!aVal && !bVal) return 0;
-    if (!aVal) return 1;
-    if (!bVal) return -1;
-    return aVal.localeCompare(bVal);
-  });
-});
+const targetFilter = createTargetFilter(
+  () => protocol?.targets ?? [],
+  (t) => {
+    const qty = parseInt(organismQuantities[t.atUri] ?? '0', 10);
+    return !Number.isNaN(qty) && qty > 0;
+  },
+);
 
 const nonZeroOccurrences = $derived(
   Object.values(organismQuantities).filter((q) => q && q !== '0').length,
@@ -290,31 +258,6 @@ async function autoSave() {
   } finally {
     saving = false;
   }
-}
-
-function isTaxonScope(s: Record<string, string> | undefined): boolean {
-  return !!s?.$type?.endsWith('#taxonScope');
-}
-
-function targetLabel(scope: (TaxonScope | VerbatimScope | unknown)[]): string {
-  const first = scope[0] as Record<string, string> | undefined;
-  if (!first) return 'Unknown target';
-  if (first.$type?.endsWith('#taxonScope')) {
-    return first.vernacularName
-      ? `${first.vernacularName} (${first.scientificName})`
-      : (first.scientificName ?? 'Unknown');
-  }
-  if (first.$type?.endsWith('#verbatimScope'))
-    return first.verbatimTargetScope ?? 'Unknown';
-  return 'Unknown target';
-}
-
-function targetTaxonID(
-  scope: (TaxonScope | VerbatimScope | unknown)[],
-): string | undefined {
-  const first = scope[0] as Record<string, string> | undefined;
-  if (first?.$type?.endsWith('#taxonScope')) return first.taxonID;
-  return undefined;
 }
 
 // for now this assumes organismQuantityType is always individuals-count and
@@ -739,44 +682,15 @@ function displayCount(qty: undefined | string | number) {
       {#if protocol.targets.length === 0}
         <p class="text-muted-foreground mb-6 text-sm">No targets defined for this protocol.</p>
       {:else}
-        <div class="sticky top-0 z-10 -mx-4 bg-background px-4 py-2 sm:mx-0 flex gap-2">
-          <Input
-            type="search"
-            placeholder="Search targets…"
-            bind:value={filterQuery}
-            class="flex-1"
-          />
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger>
-              {#snippet child({ props })}
-                <Button variant="outline" size="icon" aria-label="Sort and filter" {...props}>
-                  <MoreVertical class="size-4" />
-                </Button>
-              {/snippet}
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content align="end">
-              <DropdownMenu.Label>Sort</DropdownMenu.Label>
-              <DropdownMenu.RadioGroup
-                value={targetSort}
-                onValueChange={(v) => (targetSort = v as TargetSort)}
-              >
-                <DropdownMenu.RadioItem value="default">Default</DropdownMenu.RadioItem>
-                <DropdownMenu.RadioItem value="scientific">Scientific name</DropdownMenu.RadioItem>
-                <DropdownMenu.RadioItem value="common">Common name</DropdownMenu.RadioItem>
-              </DropdownMenu.RadioGroup>
-              <DropdownMenu.Separator />
-              <DropdownMenu.Label>Filter</DropdownMenu.Label>
-              <DropdownMenu.CheckboxItem bind:checked={onlyObserved}>
-                Only observed
-              </DropdownMenu.CheckboxItem>
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
-        </div>
-        {#if filteredTargets.length === 0}
-          <p class="text-muted-foreground mb-6 mt-2 text-sm">No targets match "{filterQuery}".</p>
+        <TargetFilterControls
+          filter={targetFilter}
+          class="sticky top-0 z-10 -mx-4 bg-background px-4 py-2 sm:mx-0"
+        />
+        {#if targetFilter.filtered.length === 0}
+          <p class="text-muted-foreground mb-6 mt-2 text-sm">No targets match "{targetFilter.filterQuery}".</p>
         {:else}
           <ul class="-mx-4 mb-6 divide-y border-y sm:mx-0 sm:rounded-lg sm:border">
-            {#each filteredTargets as target (target.atUri)}
+            {#each targetFilter.filtered as target (target.atUri)}
               {@const qty = organismQuantities[target.atUri]}
               {@const hasCount = qty !== undefined && qty !== '' && qty !== '0'}
               {@const first = target.record.scope[0]}
@@ -809,11 +723,11 @@ function displayCount(qty: undefined | string | number) {
             {/each}
           </ul>
         {/if}
-        {#if filterQuery.trim() || onlyObserved}
+        {#if targetFilter.filterQuery.trim() || targetFilter.onlyObserved}
           <Button
             variant="ghost"
             class="w-full mb-4"
-            onclick={() => { filterQuery = ''; onlyObserved = false; targetSort = 'default'; }}
+            onclick={() => targetFilter.reset()}
           >
             Show all targets
           </Button>

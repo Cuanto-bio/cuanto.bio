@@ -5,3 +5,4 @@ allowBuilds:
 onlyBuiltDependencies:
   - esbuild
   - '@tailwindcss/oxide'
+confirmModulesPurge: false

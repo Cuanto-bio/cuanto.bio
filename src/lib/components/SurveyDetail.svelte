@@ -1,4 +1,5 @@
 <script lang="ts">
+import TargetFilterControls from '$lib/components/TargetFilterControls.svelte';
 import type { TaxonProp } from '$lib/components/Taxon.svelte';
 import Taxon from '$lib/components/Taxon.svelte';
 import * as Card from '$lib/components/ui/card';
@@ -10,6 +11,7 @@ import type {
   TaxonScope,
   VerbatimScope,
 } from '$lib/offline/db';
+import { createTargetFilter } from '$lib/targets.svelte';
 
 interface Props {
   protocol: Protocol;
@@ -17,8 +19,6 @@ interface Props {
 }
 
 let { protocol, survey }: Props = $props();
-
-let showAllTargets = $state(false);
 
 const targetUris = $derived(new Set(protocol.targets.map((t) => t.atUri)));
 
@@ -36,12 +36,10 @@ const targetOccCount = $derived(
   survey.occurrences.length - incidentalOccs.length - orphanedOccs.length,
 );
 
-const visibleTargets = $derived(
-  showAllTargets
-    ? protocol.targets
-    : protocol.targets.filter((t) =>
-        survey.occurrences.some((o) => o.record.surveyTargetID === t.atUri),
-      ),
+const targetFilter = createTargetFilter(
+  () => protocol.targets,
+  (t) => survey.occurrences.some((o) => o.record.surveyTargetID === t.atUri),
+  { initialOnlyObserved: true },
 );
 
 function formatDate(iso: string | null): string {
@@ -119,23 +117,28 @@ function formatDate(iso: string | null): string {
     </Card.Content>
   </Card.Root>
 
-  <div class="mb-3 flex items-center justify-between">
-    <h2 class="text-lg font-semibold">
-      Targets ({targetOccCount} / {protocol.targets.length})
-    </h2>
-    <button
-      class="text-muted-foreground text-xs underline"
-      onclick={() => (showAllTargets = !showAllTargets)}
-    >
-      {showAllTargets ? 'Hide unrecorded' : 'Show all'}
-    </button>
-  </div>
+  <h2 class="mb-3 text-lg font-semibold">
+    Targets ({targetOccCount} / {protocol.targets.length})
+  </h2>
+  <TargetFilterControls filter={targetFilter} class="mb-3" />
 
-  {#if visibleTargets.length === 0}
-    <p class="text-muted-foreground text-sm">No occurrences recorded.</p>
+  {#if targetFilter.filtered.length === 0}
+    <p class="text-muted-foreground text-sm">
+      {#if targetFilter.filterQuery.trim()}
+        No targets match "{targetFilter.filterQuery.trim()}".
+      {:else if targetFilter.onlyObserved}
+        No occurrences recorded.
+        <button
+          class="underline"
+          onclick={() => (targetFilter.onlyObserved = false)}
+        >Show all targets</button>
+      {:else}
+        No occurrences recorded.
+      {/if}
+    </p>
   {:else}
     <ul class="flex flex-col gap-0">
-      {#each visibleTargets as target (target.atUri)}
+      {#each targetFilter.filtered as target (target.atUri)}
         {@const taxonScope = target.record.scope.find(s => s.$type.endsWith('#taxonScope')) as TaxonScope}
         {@const verbatimScope = target.record.scope.find(s => s.$type.endsWith('#verbatimScope')) as VerbatimScope}
         {@const occurrence = survey.occurrences.find(o => o.record.surveyTargetID === target.atUri)}
