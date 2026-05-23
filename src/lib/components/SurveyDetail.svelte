@@ -1,9 +1,11 @@
 <script lang="ts">
+import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
+import ExternalLink from '@lucide/svelte/icons/external-link';
 import TargetFilterControls from '$lib/components/TargetFilterControls.svelte';
 import type { TaxonProp } from '$lib/components/Taxon.svelte';
 import Taxon from '$lib/components/Taxon.svelte';
 import * as Card from '$lib/components/ui/card';
-import { verbatimScope } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs';
+import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 import type {
   Occurrence,
   Protocol,
@@ -12,6 +14,12 @@ import type {
   VerbatimScope,
 } from '$lib/offline/db';
 import { createTargetFilter } from '$lib/targets.svelte';
+
+function parseAtUri(atUri: string): { did: string; rkey: string } {
+  // atUri format: at://{did}/{collection}/{rkey}
+  const [, , did, , rkey] = atUri.split('/');
+  return { did, rkey };
+}
 
 interface Props {
   protocol: Protocol;
@@ -46,6 +54,13 @@ function formatDate(iso: string | null): string {
   if (!iso) return 'Unknown date';
   return new Date(iso).toLocaleString();
 }
+
+const externalLinkProps =
+  typeof window !== 'undefined' &&
+  (window.matchMedia('(display-mode: standalone)').matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true)
+    ? { target: '_blank', rel: 'noopener noreferrer' }
+    : {};
 </script>
 
 {#snippet surveyTargetRow(opts: {
@@ -65,6 +80,7 @@ function formatDate(iso: string | null): string {
       last:border-b-1
       first:rounded-t
       last:rounded-b
+      gap-2
     "
   >
     <span class="text-sm">
@@ -74,9 +90,69 @@ function formatDate(iso: string | null): string {
         {opts.verbatimTargetScope ?? 'Unknown'}
       {/if}
     </span>
-    <span class="font-mono text-sm font-semibold">
-      {opts.occurrence?.record.organismQuantity ?? 0}
-    </span>
+    <div class="flex items-center gap-4">
+      <span class="font-mono text-sm font-semibold">
+        {opts.occurrence?.record.organismQuantity ?? 0}
+      </span>
+      {#if opts.occurrence}
+        {@const occurrence = opts.occurrence}
+        {@const { did, rkey } = parseAtUri(occurrence.atUri)}
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger>
+            {#snippet child({ props })}
+              <button
+                class="text-muted-foreground hover:text-foreground p-1"
+                aria-label="View occurrence"
+                {...props}
+              >
+                <EllipsisVertical class="size-4" />
+              </button>
+            {/snippet}
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content align="end">
+            <DropdownMenu.Label>View occurrence</DropdownMenu.Label>
+            <DropdownMenu.Item>
+              {#snippet child({ props })}
+                <a
+                  href="https://observ.ing/observation/{did}/{rkey}"
+                  {...externalLinkProps}
+                  {...props}
+                >
+                  <ExternalLink class="size-4" />
+                  observ.ing
+                </a>
+              {/snippet}
+            </DropdownMenu.Item>
+            <DropdownMenu.Item>
+              {#snippet child({ props })}
+                <a
+                  href="https://pds.ls/{occurrence.atUri}"
+                  {...externalLinkProps}
+                  {...props}
+                >
+                  <ExternalLink class="size-4" />
+                  pds.ls
+                </a>
+              {/snippet}
+            </DropdownMenu.Item>
+            {#if occurrence.record.taxonID}
+              {@const taxonID = occurrence.record.taxonID}
+              {@const taxonLabel = taxonID.includes('inaturalist.org') ? 'iNaturalist' : taxonID}
+              <DropdownMenu.Separator />
+              <DropdownMenu.Label>View taxon</DropdownMenu.Label>
+              <DropdownMenu.Item>
+                {#snippet child({ props })}
+                  <a href={taxonID} {...externalLinkProps} {...props}>
+                    <ExternalLink class="size-4" />
+                    {taxonLabel}
+                  </a>
+                {/snippet}
+              </DropdownMenu.Item>
+            {/if}
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+      {/if}
+    </div>
   </li>
 {/snippet}
 
