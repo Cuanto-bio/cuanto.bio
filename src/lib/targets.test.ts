@@ -22,8 +22,8 @@ function taxonTarget(
     record: {
       $type: 'bio.lexicons.temp.v0-1.surveyTarget',
       protocol: 'at://example.com/protocol/1',
-      // biome-ignore lint/suspicious/noExplicitAny: test fixture, taxonID is UriString in production
       scope: [
+        // biome-ignore lint/suspicious/noExplicitAny: test fixture, taxonID is UriString in production
         { $type: TAXON_TYPE, scientificName, vernacularName, taxonID } as any,
       ],
     },
