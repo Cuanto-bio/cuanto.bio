@@ -177,7 +177,7 @@ export async function seedSurvey(
   locationName = 'Test Location',
   createdAt = new Date().toISOString(),
 ): Promise<{ surveyRkey: string }> {
-  const rkey = `testsurvey${Date.now()}`;
+  const rkey = `testsurvey${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
   const atUri = `at://${did}/bio.lexicons.temp.v0-1.survey/${rkey}`;
   const record = {
     $type: 'bio.lexicons.temp.v0-1.survey',
