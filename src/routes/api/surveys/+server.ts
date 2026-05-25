@@ -1,6 +1,5 @@
 import type { l } from '@atproto/lex';
 import { error, json } from '@sveltejs/kit';
-import * as Identification from '$lib/lexicons/bio/lexicons/temp/v0-1/identification';
 import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
 import * as Survey from '$lib/lexicons/bio/lexicons/temp/v0-1/survey';
 import {
@@ -11,22 +10,21 @@ import { geo } from '$lib/lexicons/community/lexicon/location';
 import * as Place from '$lib/lexicons/org/atgeo/place';
 import type { Main as AtgeoPlace } from '$lib/lexicons/org/atgeo/place.defs';
 import sql from '$lib/server/db';
-import {
-  getIdentificationsForOccurrences,
-  insertIdentification,
-} from '$lib/server/db/identifications';
+import { getIdentificationsForOccurrences } from '$lib/server/db/identifications';
 import type { ProtocolRow } from '$lib/server/db/survey-protocols';
 import { getProtocolByUri } from '$lib/server/db/survey-protocols';
 import {
   getOccurrencesForSurveys,
   getSurveysByDid,
+  getSurveyTargetsByUri,
   groupOccurrencesBySurvey,
   insertOccurrence,
   insertSurvey,
   toSurveyResponse,
 } from '$lib/server/db/surveys';
 import logger from '$lib/server/logger';
-import { createRecord, putRecord } from '$lib/server/pds';
+import { createRecord } from '$lib/server/pds';
+import { attachIdentificationToOccurrence } from '$lib/server/survey-records';
 import type { IncidentalInput } from '$lib/surveys';
 import type { RequestHandler } from './$types';
 
@@ -85,11 +83,7 @@ async function fetchProtocolRecords(body: SurveyInput) {
 
   // Pre-fetch targets for all occurrences in one query; build taxon-scope map.
   const targetUris = body.occurrences.map((o) => o.surveyTargetUri);
-  const targetRows = await sql<
-    { at_uri: string; record: { scope?: unknown[] } }[]
-  >`
-    SELECT at_uri, record FROM survey_targets WHERE at_uri = ANY(${sql.array(targetUris)})
-  `;
+  const targetRows = await getSurveyTargetsByUri(targetUris);
   const taxonScopeMap = new Map<string, TaxonScope>();
   for (const row of targetRows) {
     const taxonScopeEntry = row.record.scope?.find((s) =>
@@ -160,39 +154,6 @@ async function createOccurrence(
   return { occUri, occCid, occRkey, occurrenceRecord };
 }
 
-async function createIdentification(
-  occUri: string,
-  occCid: string,
-  taxonScope: TaxonScope,
-  did: string,
-) {
-  const identRecord = Identification.$build({
-    occurrence: {
-      uri: occUri as l.AtUriString,
-      cid: occCid as l.CidString,
-    },
-    scientificName: taxonScope.scientificName,
-    taxonRank: taxonScope.taxonRank,
-    // remaining attributes are optional, hence the spreads
-    ...(taxonScope.kingdom ? { kingdom: taxonScope.kingdom } : {}),
-    ...(taxonScope.taxonID
-      ? { taxonID: taxonScope.taxonID as l.UriString }
-      : {}),
-    ...(taxonScope.vernacularName
-      ? { vernacularName: taxonScope.vernacularName }
-      : {}),
-  });
-  const { uri: identUri, cid: identCid } = await createRecord(
-    did,
-    Identification.$nsid,
-    identRecord,
-  );
-  const identRkey = identUri.split('/').at(-1) ?? '';
-  await insertIdentification(did, identRkey, identRecord, identUri);
-
-  return { uri: identUri, cid: identCid };
-}
-
 async function createIncidentalOccurrence(
   input: IncidentalInput,
   surveyUri: string,
@@ -255,33 +216,17 @@ export const POST: RequestHandler = async ({ request, locals }) => {
       await createOccurrence(input, surveyUri, did);
 
     // If target has taxon scope, create an Identification and update the Occurrence
+    // to indicate that this is the Occurrence user's accepted ident
     const taxonScope = taxonScopeMap.get(input.surveyTargetUri);
     if (taxonScope) {
-      let ident: { uri: string; cid: string } | undefined;
-      try {
-        ident = await createIdentification(occUri, occCid, taxonScope, did);
-      } catch (err) {
-        log.error({ occUri }, 'Failed to create identification: %s', err);
-      }
-      // If we successfully create the ident, we update the Occurrence to
-      // indicate that this is the Occurrence user's accepted ident
-      if (ident) {
-        // update the occurrence
-        const updatedOccurrenceRecord = {
-          ...occurrenceRecord,
-          acceptedIdentificationID: {
-            uri: ident.uri as l.AtUriString,
-            cid: ident.cid as l.CidString,
-          },
-        };
-        await putRecord(
-          did,
-          Occurrence.$type,
-          occRkey,
-          updatedOccurrenceRecord,
-        );
-        await insertOccurrence(did, occRkey, updatedOccurrenceRecord, occUri);
-      }
+      await attachIdentificationToOccurrence(
+        did,
+        occUri,
+        occCid,
+        occRkey,
+        occurrenceRecord,
+        taxonScope,
+      );
     }
   }
 
@@ -296,34 +241,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     const { occUri, occCid, occRkey, occurrenceRecord } =
       await createIncidentalOccurrence(incidental, surveyUri, did);
 
-    let ident: { uri: string; cid: string } | undefined;
-    try {
-      ident = await createIdentification(
-        occUri,
-        occCid,
-        // taxonID validated above; cast bridges string → branded l.UriString
-        incidental as TaxonScope,
-        did,
-      );
-    } catch (err) {
-      log.error(
-        { occUri },
-        'Failed to create incidental identification: %s',
-        err,
-      );
-    }
-
-    if (ident) {
-      const updatedOccurrenceRecord = {
-        ...occurrenceRecord,
-        acceptedIdentificationID: {
-          uri: ident.uri as l.AtUriString,
-          cid: ident.cid as l.CidString,
-        },
-      };
-      await putRecord(did, Occurrence.$type, occRkey, updatedOccurrenceRecord);
-      await insertOccurrence(did, occRkey, updatedOccurrenceRecord, occUri);
-    }
+    // taxonID validated above; cast bridges string → branded l.UriString
+    await attachIdentificationToOccurrence(
+      did,
+      occUri,
+      occCid,
+      occRkey,
+      occurrenceRecord,
+      incidental as TaxonScope,
+    );
   }
 
   const [user] = await sql<{ handle: string }[]>`

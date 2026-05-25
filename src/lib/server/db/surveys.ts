@@ -1,5 +1,6 @@
 import type { Main as AtOccurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs.js';
 import type { Main as AtSurvey } from '$lib/lexicons/bio/lexicons/temp/v0-1/survey.defs.js';
+import type { Main as AtSurveyTarget } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs.js';
 import type { Occurrence, Survey } from '$lib/offline/db';
 import { getIdentificationsForOccurrences } from './identifications.js';
 import sql from './index.js';
@@ -15,10 +16,15 @@ interface SurveyRow {
   record: AtSurvey;
 }
 
-interface OccurrenceRow {
+interface OccurrenceRowForSurvey {
   at_uri: string;
   survey_uri: string;
   record: AtOccurrence;
+}
+
+interface SurveyTargetRow {
+  at_uri: string;
+  record: AtSurveyTarget;
 }
 
 const surveysFromJoin = sql`
@@ -63,9 +69,9 @@ async function getSurveyByDidAndRkey(
 
 export async function getOccurrencesForSurveys(
   surveyUris: string[],
-): Promise<OccurrenceRow[]> {
+): Promise<OccurrenceRowForSurvey[]> {
   if (surveyUris.length === 0) return [];
-  return sql<OccurrenceRow[]>`
+  return sql<OccurrenceRowForSurvey[]>`
     SELECT at_uri, survey_uri, record
     FROM occurrences
     WHERE survey_uri = ANY(${sql.array(surveyUris)})
@@ -73,7 +79,7 @@ export async function getOccurrencesForSurveys(
 }
 
 export function groupOccurrencesBySurvey(
-  occurrences: (OccurrenceRow & {
+  occurrences: (OccurrenceRowForSurvey & {
     identification?: Occurrence['identification'];
   })[],
 ): Map<string, Occurrence[]> {
@@ -232,6 +238,29 @@ export async function insertSurvey(
   `;
 }
 
+export async function getSurveyOwnerDid(atUri: string): Promise<string | null> {
+  const [row] = await sql<{ did: string }[]>`
+    SELECT did FROM surveys WHERE at_uri = ${atUri}
+  `;
+  return row?.did ?? null;
+}
+
+export async function deleteSurveyByAtUri(atUri: string): Promise<void> {
+  await sql`DELETE FROM surveys WHERE at_uri = ${atUri}`;
+}
+
+export async function deleteOccurrencesBySurveyUri(
+  surveyUri: string,
+): Promise<{ at_uri: string }[]> {
+  return sql<{ at_uri: string }[]>`
+    DELETE FROM occurrences WHERE survey_uri = ${surveyUri} RETURNING at_uri
+  `;
+}
+
+export async function deleteOccurrenceByAtUri(atUri: string): Promise<void> {
+  await sql`DELETE FROM occurrences WHERE at_uri = ${atUri}`;
+}
+
 export async function insertOccurrence(
   did: string,
   rkey: string,
@@ -261,5 +290,11 @@ export async function insertOccurrence(
       survey_uri = EXCLUDED.survey_uri,
       record = EXCLUDED.record,
       geom = EXCLUDED.geom
+  `;
+}
+
+export async function getSurveyTargetsByUri(uris: string[]) {
+  return sql<SurveyTargetRow[]>`
+    SELECT at_uri, record FROM survey_targets WHERE at_uri = ANY(${sql.array(uris)})
   `;
 }

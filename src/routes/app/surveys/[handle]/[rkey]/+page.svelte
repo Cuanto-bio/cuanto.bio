@@ -18,7 +18,11 @@ async function refreshSurvey() {
 }
 </script>
 
-<SurveyDetail survey={data.survey} protocol={data.protocol} />
+<SurveyDetail
+  survey={data.survey}
+  protocol={data.protocol}
+  editable={data.isOwner}
+/>
 {#if data.isOwner}
   <div class="mx-auto max-w-2xl px-4">
     <OrphanedOccurrences

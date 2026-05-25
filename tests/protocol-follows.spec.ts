@@ -4,13 +4,15 @@ import { expect, seedProtocol, teardownDid, test } from './fixtures.js';
 const DID = 'did:test:follow-spec';
 const HANDLE = 'user-follow-spec';
 
+let followCounter = 0;
+
 async function seedFollow(
   sql: Sql,
   did: string,
   protocolUri: string,
   createdAt: Date = new Date(),
 ): Promise<string> {
-  const rkey = `testfollow${Date.now()}`;
+  const rkey = `testfollow${Date.now()}${followCounter++}`;
   const atUri = `at://${did}/bio.cuanto.surveyProtocol.follow/${rkey}`;
   await sql`
     INSERT INTO protocol_follows (at_uri, did, rkey, protocol_uri, created_at)

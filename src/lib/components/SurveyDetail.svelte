@@ -1,6 +1,7 @@
 <script lang="ts">
 import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
 import ExternalLink from '@lucide/svelte/icons/external-link';
+import PencilIcon from '@lucide/svelte/icons/pencil';
 import TargetFilterControls from '$lib/components/TargetFilterControls.svelte';
 import type { TaxonProp } from '$lib/components/Taxon.svelte';
 import Taxon from '$lib/components/Taxon.svelte';
@@ -14,6 +15,7 @@ import type {
   VerbatimScope,
 } from '$lib/offline/db';
 import { createTargetFilter } from '$lib/targets.svelte';
+import Button from './Button.svelte';
 
 function parseAtUri(atUri: string): { did: string; rkey: string } {
   // atUri format: at://{did}/{collection}/{rkey}
@@ -24,9 +26,10 @@ function parseAtUri(atUri: string): { did: string; rkey: string } {
 interface Props {
   protocol: Protocol;
   survey: Survey;
+  editable?: boolean;
 }
 
-let { protocol, survey }: Props = $props();
+let { protocol, survey, editable = false }: Props = $props();
 
 const targetUris = $derived(new Set(protocol.targets.map((t) => t.atUri)));
 
@@ -157,7 +160,18 @@ const externalLinkProps =
 {/snippet}
 
 <main class="mx-auto max-w-2xl px-4 pb-8">
-  <div class="text-muted-foreground text-xs mb-4">SURVEY</div>
+  <div class="mb-4 flex items-center justify-between text-xs">
+    <span class="text-muted-foreground">SURVEY</span>
+    {#if editable}
+      <Button
+        href="/app/surveys/{survey.handle}/{survey.rkey}/edit"
+        variant="outline"
+      >
+        <PencilIcon />
+        Edit
+      </Button>
+    {/if}
+  </div>
   <Card.Root class="mb-6">
     <Card.Header>
       <Card.Title>{survey.protocolTitle}</Card.Title>

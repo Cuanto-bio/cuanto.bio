@@ -3,6 +3,7 @@ import { defineConfig } from '@playwright/test';
 const PORT = 5174;
 
 export default defineConfig({
+  globalSetup: './tests/global-setup.ts',
   workers: 1,
   webServer: {
     command: `pnpm dev --port ${PORT}`,

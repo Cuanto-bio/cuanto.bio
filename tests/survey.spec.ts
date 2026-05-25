@@ -1452,6 +1452,7 @@ test('GET /api/surveys returns surveys ordered by createdAt DESC', async ({
     },
   ]);
 
+  await teardownDid(sql, ORDER_DID);
   const { protocolRkey } = await seedProtocol(sql, ORDER_DID);
   const protocolUri = `at://${ORDER_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
 
@@ -1475,6 +1476,98 @@ test('GET /api/surveys returns surveys ordered by createdAt DESC', async ({
   }
 });
 
+// ── Edit route ───────────────────────────────────────────────────────────────
+
+const EDIT_DID = 'did:test:survey-edit-route';
+const EDIT_HANDLE = 'user-survey-edit-route';
+
+test('survey detail page shows Edit link for owner', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: 'did',
+      value: EDIT_DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  const { protocolRkey } = await seedProtocol(sql, EDIT_DID);
+  const protocolUri = `at://${EDIT_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const { surveyRkey } = await seedSurvey(
+    sql,
+    EDIT_DID,
+    protocolUri,
+    'Edit Route Test',
+  );
+
+  try {
+    // Cache protocol in IDB before visiting the survey detail page
+    await page.goto(`/app/protocols/${EDIT_HANDLE}/${protocolRkey}`);
+    await page.waitForLoadState('networkidle');
+    await page.goto(`/app/surveys/${EDIT_HANDLE}/${surveyRkey}`);
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('link', { name: 'Edit' })).toBeVisible();
+  } finally {
+    await teardownDid(sql, EDIT_DID);
+  }
+});
+
+test('edit page saves updated location name', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: 'did',
+      value: EDIT_DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  const { protocolRkey } = await seedProtocol(sql, EDIT_DID);
+  const protocolUri = `at://${EDIT_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const { surveyRkey } = await seedSurvey(
+    sql,
+    EDIT_DID,
+    protocolUri,
+    'Original Name',
+  );
+
+  try {
+    // Cache protocol in IDB before visiting the edit page
+    await page.goto(`/app/protocols/${EDIT_HANDLE}/${protocolRkey}`);
+    await page.waitForLoadState('networkidle');
+    await page.goto(`/app/surveys/${EDIT_HANDLE}/${surveyRkey}/edit`);
+    await page.waitForSelector('[placeholder="e.g. Mission Dolores Park"]', {
+      state: 'visible',
+    });
+
+    await page.fill(
+      '[placeholder="e.g. Mission Dolores Park"]',
+      'Updated Name',
+    );
+    await page.getByRole('button', { name: 'Save Survey' }).click();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+    await expect(page).toHaveURL(
+      new RegExp(`/app/surveys/${EDIT_HANDLE}/${surveyRkey}`),
+    );
+    await expect(page.getByText('Updated Name')).toBeVisible();
+  } finally {
+    await teardownDid(sql, EDIT_DID);
+  }
+});
+
 test('/app/surveys renders surveys in createdAt DESC order', async ({
   page,
   sql,
@@ -1491,6 +1584,7 @@ test('/app/surveys renders surveys in createdAt DESC order', async ({
     },
   ]);
 
+  await teardownDid(sql, ORDER_DID);
   const { protocolRkey } = await seedProtocol(sql, ORDER_DID);
   const protocolUri = `at://${ORDER_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
 

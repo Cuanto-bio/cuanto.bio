@@ -1,10 +1,9 @@
 import { test as base, expect, type Page } from '@playwright/test';
 import postgres, { type Sql } from 'postgres';
 import { CUANTO_IDB_VERSION } from '../src/lib/offline/constants';
-import { seedProtocol, teardownDid } from './fixtures.js';
+import { seedProtocol, seedSurvey, teardownDid } from './fixtures.js';
 
 const TEST_DB_URL = 'postgresql://cuanto:cuanto@localhost:5432/cuanto_test';
-const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
 
 const DID = 'did:test:idb-pwa';
 const HANDLE = 'user-idb-pwa';
@@ -34,36 +33,6 @@ async function seedFollow(
       now()
     )
   `;
-}
-
-async function seedSurvey(
-  sql: Sql,
-  did: string,
-  protocolUri: string,
-  locationName = 'Offline Test Park',
-  createdAt = new Date().toISOString(),
-): Promise<string> {
-  const rkey = `survey${Date.now()}`;
-  const atUri = `at://${did}/bio.lexicons.temp.v0-1.survey/${rkey}`;
-  const record = {
-    $type: 'bio.lexicons.temp.v0-1.survey',
-    protocol: { uri: protocolUri, cid: FAKE_CID },
-    createdAt,
-    location: { $type: 'org.atgeo.place', name: locationName },
-  };
-  await sql`
-    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, created_at, record, indexed_at)
-    VALUES (
-      ${atUri},
-      ${did},
-      ${rkey},
-      ${protocolUri},
-      ${new Date(createdAt)},
-      ${sql.json(record)},
-      now()
-    )
-  `;
-  return atUri;
 }
 
 // Wait for the SW to install and control the page, then reach network idle.
@@ -122,7 +91,7 @@ test('surveys page shows cached surveys offline', async ({
   await context.addCookies([AUTH_COOKIE]);
   const { protocolRkey } = await seedProtocol(sql, DID);
   const protocolUri = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
-  await seedSurvey(sql, DID, protocolUri);
+  await seedSurvey(sql, DID, protocolUri, 'Offline Test Park');
 
   try {
     // Visit online — fetches from /api/surveys and writes to IDB.
@@ -299,6 +268,92 @@ test('surveys page renders cached surveys in createdAt DESC order when offline',
     const items = page.locator('ul').last().locator('li');
     await expect(items.nth(0)).toContainText('Newer Site');
     await expect(items.nth(1)).toContainText('Older Site');
+  } finally {
+    await teardownDid(sql, DID);
+  }
+});
+
+test('deleting a survey removes it from IDB so it is gone when offline', async ({
+  page,
+  context,
+  sql,
+}) => {
+  await context.addCookies([AUTH_COOKIE]);
+  const { protocolRkey } = await seedProtocol(sql, DID);
+  const protocolUri = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const { surveyRkey } = await seedSurvey(
+    sql,
+    DID,
+    protocolUri,
+    'Deletable Park',
+  );
+
+  try {
+    // Visit /app/surveys online to install SW and cache the survey in IDB.
+    await page.goto('/app/surveys');
+    await waitForSW(page);
+    await expect(page.getByText('Deletable Park')).toBeVisible();
+
+    // Inject a minimal protocol into followed-protocols so the edit page can load.
+    await page.evaluate(
+      ({ protocolUri, protocolRkey, HANDLE, CUANTO_IDB_VERSION }) => {
+        return new Promise<void>((resolve, reject) => {
+          const req = indexedDB.open('cuanto', CUANTO_IDB_VERSION);
+          req.onsuccess = () => {
+            const db = req.result;
+            const tx = db.transaction('followed-protocols', 'readwrite');
+            tx.objectStore('followed-protocols').put({
+              atUri: protocolUri,
+              rkey: protocolRkey,
+              handle: HANDLE,
+              record: {
+                $type: 'bio.lexicons.temp.v0-1.surveyProtocol',
+                title: 'Test Protocol',
+                description: '',
+                createdAt: new Date().toISOString(),
+                requiredFields: [],
+              },
+              targets: [],
+              cachedAt: Date.now(),
+            });
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+          };
+          req.onerror = () => reject(req.error);
+        });
+      },
+      { protocolUri, protocolRkey, HANDLE, CUANTO_IDB_VERSION },
+    );
+
+    // Navigate to the edit page and delete the survey.
+    await page.goto(`/app/surveys/${HANDLE}/${surveyRkey}/edit`);
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('button', { name: 'Delete survey' }).click();
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
+
+    // Wait for redirect to the surveys list after deletion.
+    await page.waitForURL('**/app/surveys');
+
+    // The survey must be gone from IDB.
+    const inIdb = await page.evaluate(
+      ({ surveyRkey, CUANTO_IDB_VERSION }) => {
+        return new Promise<boolean>((resolve, reject) => {
+          const req = indexedDB.open('cuanto', CUANTO_IDB_VERSION);
+          req.onsuccess = () => {
+            const db = req.result;
+            const tx = db.transaction('cached-surveys', 'readonly');
+            const index = tx.objectStore('cached-surveys').index('by-rkey');
+            const get = index.get(surveyRkey);
+            get.onsuccess = () => resolve(get.result !== undefined);
+            get.onerror = () => reject(get.error);
+          };
+          req.onerror = () => reject(req.error);
+        });
+      },
+      { surveyRkey, CUANTO_IDB_VERSION },
+    );
+
+    expect(inIdb).toBe(false);
   } finally {
     await teardownDid(sql, DID);
   }

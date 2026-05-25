@@ -10,6 +10,7 @@ vi.mock('$lib/server/db/surveys', () => ({
   insertOccurrence: vi.fn(),
   getSurveysByDid: vi.fn(),
   getOccurrencesForSurveys: vi.fn(),
+  getSurveyTargetsByUri: vi.fn().mockResolvedValue([]),
   groupOccurrencesBySurvey: vi.fn(),
   toSurveyResponse: vi.fn(),
 }));

@@ -28,6 +28,17 @@ export async function getIdentificationsForOccurrences(
   return map;
 }
 
+export async function deleteIdentificationsByOccurrenceUris(
+  occurrenceUris: string[],
+): Promise<{ at_uri: string }[]> {
+  if (occurrenceUris.length === 0) return [];
+  return sql<{ at_uri: string }[]>`
+    DELETE FROM identifications
+    WHERE occurrence_uri = ANY(${sql.array(occurrenceUris)})
+    RETURNING at_uri
+  `;
+}
+
 export async function insertIdentification(
   did: string,
   rkey: string,

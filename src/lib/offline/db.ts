@@ -286,6 +286,11 @@ export async function cacheSurvey(survey: Survey): Promise<void> {
   await db.put('cached-surveys', { ...survey, cachedAt: Date.now() });
 }
 
+export async function deleteCachedSurvey(atUri: string): Promise<void> {
+  const db = await getDB();
+  await db.delete('cached-surveys', atUri);
+}
+
 export async function getCachedSurvey(
   atUri: string,
 ): Promise<CachedSurvey | undefined> {
