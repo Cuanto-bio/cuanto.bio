@@ -255,6 +255,8 @@ let sheetOpen = $state(false);
 let selectedTarget = $state<Target | null>(null);
 let editingQuantity = $state('');
 let isWide = $state(false);
+let flashingTargets = $state<Record<string, number>>({});
+let flashingIncidentals = $state<Record<string, number>>({});
 
 let cancelDialogOpen = $state(false);
 let finishDialogOpen = $state(false);
@@ -566,7 +568,33 @@ function requestGps() {
 
 // ─── target sheet helpers ────────────────────────────────────────────────────
 
+function liFlash(node: HTMLElement, count: number) {
+  function restart() {
+    if (count === 0) return;
+    node.classList.remove('li-flash');
+    void node.offsetWidth;
+    node.classList.add('li-flash');
+  }
+  restart();
+  return {
+    update(newCount: number) {
+      count = newCount;
+      restart();
+    },
+  };
+}
+
+function haptic() {
+  if ('vibrate' in navigator) navigator.vibrate(10);
+}
+
+function flashItem(record: Record<string, number>, key: string) {
+  record[key] = (record[key] ?? 0) + 1;
+}
+
 function increment(uri: string) {
+  haptic();
+  flashItem(flashingTargets, uri);
   const current = parseInt(organismQuantities[uri] ?? '0', 10);
   organismQuantities[uri] = String(Number.isNaN(current) ? 1 : current + 1);
 }
@@ -661,6 +689,8 @@ function deleteIncidental() {
 }
 
 function incrementIncidental(localId: string) {
+  haptic();
+  flashItem(flashingIncidentals, localId);
   const idx = incidentals.findIndex((i) => i.localId === localId);
   if (idx < 0) return;
   const current = parseInt(incidentals[idx].organismQuantity ?? '0', 10);
@@ -875,7 +905,7 @@ function displayCount(qty: undefined | string | number) {
             {@const qty = organismQuantities[target.atUri]}
             {@const hasCount = qty !== undefined && qty !== '' && qty !== '0'}
             {@const first = target.record.scope[0]}
-            <li class="flex items-center p-2">
+            <li use:liFlash={flashingTargets[target.atUri] ?? 0} class="flex items-center p-2">
               <button
                 type="button"
                 class="flex flex-1 items-center gap-2 px-4 py-3 text-left"
@@ -891,7 +921,7 @@ function displayCount(qty: undefined | string | number) {
               </button>
               <button
                 type="button"
-                class="mr-3 flex min-h-11 min-w-11 p-2 items-center justify-center rounded-full text-sm font-bold tabular-nums transition-colors
+                class="mr-3 flex min-h-11 min-w-11 p-2 items-center justify-center rounded-full text-sm font-bold tabular-nums active:scale-120 transition-transform
                   {hasCount
                     ? 'bg-primary text-primary-foreground'
                     : 'border-2 border-border text-muted-foreground hover:border-primary hover:text-foreground'}"
@@ -918,7 +948,7 @@ function displayCount(qty: undefined | string | number) {
       <ul class="-mx-4 mb-4 divide-y border-y sm:mx-0 sm:rounded-lg sm:border">
         {#each incidentals as incidental (incidental.localId)}
           {@const resolved = !!incidental.taxonID}
-          <li class="flex items-center p-2">
+          <li use:liFlash={flashingIncidentals[incidental.localId] ?? 0} class="flex items-center p-2">
             <button
               type="button"
               class="flex flex-1 items-center gap-2 px-4 py-3 text-left"
@@ -942,7 +972,7 @@ function displayCount(qty: undefined | string | number) {
             </button>
             <button
               type="button"
-              class="mr-3 flex min-h-11 min-w-11 items-center justify-center rounded-full p-2 text-sm font-bold tabular-nums transition-colors
+              class="mr-3 flex min-h-11 min-w-11 items-center justify-center rounded-full p-2 text-sm font-bold tabular-nums active:scale-120 transition-transform
                 {incidental.organismQuantity && Number(incidental.organismQuantity) > 0
                   ? 'bg-primary text-primary-foreground'
                   : 'border-2 border-border text-muted-foreground hover:border-primary hover:text-foreground'}"
@@ -1188,3 +1218,34 @@ function displayCount(qty: undefined | string | number) {
     </Sheet.Content>
   </Sheet.Root>
 {/if}
+
+<style>
+  @keyframes li-flash {
+    from {
+      transform: translateY(-50%) scale(0);
+      opacity: 0.6;
+    }
+    to {
+      transform: translateY(-50%) scale(16);
+      opacity: 0;
+    }
+  }
+
+  :global(.li-flash) {
+    position: relative;
+    overflow: hidden;
+  }
+
+  :global(.li-flash::after) {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+    border-radius: 50%;
+    background: oklch(0.85 0.2 91.936);
+    width: 3rem;
+    height: 3rem;
+    top: 50%;
+    right: 0.625rem;
+    animation: li-flash 500ms ease-out forwards;
+  }
+</style>
