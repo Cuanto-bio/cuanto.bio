@@ -3,6 +3,7 @@ import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
 import { onMount } from 'svelte';
 import { toast } from 'svelte-sonner';
 import { beforeNavigate, goto, replaceState } from '$app/navigation';
+import * as Alert from '$lib/components/alert';
 import Button from '$lib/components/Button.svelte';
 import TargetFilterControls from '$lib/components/TargetFilterControls.svelte';
 import Taxon from '$lib/components/Taxon.svelte';
@@ -30,7 +31,10 @@ import {
   updatePendingSurvey,
   type VerbatimScope,
 } from '$lib/offline/db';
-import { uploadPendingSurvey } from '$lib/offline/upload';
+import {
+  PdsSessionExpiredError,
+  uploadPendingSurvey,
+} from '$lib/offline/upload';
 import { LOCATION_COMBOBOX_THRESHOLD } from '$lib/places';
 import {
   buildSurveyTiming,
@@ -240,6 +244,7 @@ let incidentals = $state<IncidentalOccurrence[]>(
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
 let pendingSurveyId = $state<number | null>(initialPendingSurveyId ?? null);
 let navigatingAway = $state(false);
+let sessionExpired = $state(false);
 let saving = false;
 let submitting = $state(false);
 
@@ -505,7 +510,11 @@ async function finish() {
       navigatingAway = true;
       await goto(`/app/surveys/${handle}/${rkey}`);
       return;
-    } catch {
+    } catch (err) {
+      if (err instanceof PdsSessionExpiredError) {
+        sessionExpired = true;
+        return;
+      }
       // fall through — survey is saved in IDB as complete
     }
   }
@@ -711,6 +720,19 @@ function displayCount(qty: undefined | string | number) {
 
 <main class="mx-auto max-w-2xl px-4">
   <div class="flex min-h-dvh flex-col pt-8">
+
+  {#if sessionExpired}
+    <Alert.Root class="mb-6 border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
+      <Alert.Title>Session expired</Alert.Title>
+      <Alert.Description>
+        Your connection to the AT Protocol network has expired. Your survey is saved —
+        sign in again to upload it.
+        <a href="/auth/signin?returnTo=/app/surveys" class="underline font-medium ml-1">
+          Sign in
+        </a>
+      </Alert.Description>
+    </Alert.Root>
+  {/if}
 
   <div class="mb-6 flex items-start justify-between">
     <div>

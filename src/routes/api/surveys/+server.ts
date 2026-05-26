@@ -23,7 +23,7 @@ import {
   toSurveyResponse,
 } from '$lib/server/db/surveys';
 import logger from '$lib/server/logger';
-import { createRecord } from '$lib/server/pds';
+import { createRecord, PdsSessionExpiredError } from '$lib/server/pds';
 import { attachIdentificationToOccurrence } from '$lib/server/survey-records';
 import type { IncidentalInput } from '$lib/surveys';
 import type { RequestHandler } from './$types';
@@ -122,8 +122,10 @@ async function createSurvey(
   try {
     ({ uri: surveyUri } = await createRecord(did, Survey.$nsid, surveyRecord));
   } catch (err) {
+    if (err instanceof PdsSessionExpiredError) throw err;
     throw error(502, `PDS error: ${String(err)}`);
   }
+
   const surveyRkey = surveyUri.split('/').at(-1) ?? '';
 
   await insertSurvey(did, surveyRkey, surveyRecord, surveyUri);
@@ -179,6 +181,20 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   if (!locals.did) return json({ error: 'Unauthorized' }, { status: 401 });
   const did = locals.did;
 
+  try {
+    return await postSurvey(request, did);
+  } catch (err) {
+    if (err instanceof PdsSessionExpiredError) {
+      return json(
+        { error: 'pds_session_expired', message: err.message },
+        { status: 401 },
+      );
+    }
+    throw err;
+  }
+};
+
+async function postSurvey(request: Request, did: string) {
   const body = (await request.json()) as SurveyInput;
 
   if (body.surveyorCount != null) {
@@ -256,4 +272,4 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     SELECT handle FROM users WHERE did = ${did}
   `;
   return json({ surveyUri, handle: user?.handle ?? '' });
-};
+}

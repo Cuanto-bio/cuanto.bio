@@ -2,6 +2,12 @@ import { hasUnresolvedIncidentals } from '$lib/surveys';
 import type { PendingSurvey } from './db';
 import { deletePendingSurvey, getPendingSurveys } from './db';
 
+export class PdsSessionExpiredError extends Error {
+  constructor() {
+    super('AT Protocol session expired. Please sign in again.');
+  }
+}
+
 export async function uploadPendingSurvey(
   survey: PendingSurvey,
 ): Promise<{ surveyUri: string; handle: string }> {
@@ -10,7 +16,14 @@ export async function uploadPendingSurvey(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(survey),
   });
-  if (!resp.ok) throw new Error(`Upload failed: ${resp.status}`);
+  if (!resp.ok) {
+    if (resp.status === 401) {
+      const body = (await resp.json()) as { error?: string };
+      if (body.error === 'pds_session_expired')
+        throw new PdsSessionExpiredError();
+    }
+    throw new Error(`Upload failed: ${resp.status}`);
+  }
   return (await resp.json()) as { surveyUri: string; handle: string };
 }
 
@@ -22,7 +35,8 @@ export async function uploadAllPending(): Promise<void> {
     try {
       await uploadPendingSurvey(survey);
       if (survey.id != null) await deletePendingSurvey(survey.id);
-    } catch {
+    } catch (err) {
+      if (err instanceof PdsSessionExpiredError) throw err;
       // leave in queue; will retry next call
     }
   }

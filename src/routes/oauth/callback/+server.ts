@@ -39,5 +39,11 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
     body: JSON.stringify({ dids: [session.did] }),
   }).catch((err) => console.error('Failed to register DID with tap:', err));
 
+  const returnTo = cookies.get('return_to');
+  if (returnTo?.startsWith('/') && !returnTo.startsWith('//')) {
+    cookies.delete('return_to', { path: '/' });
+    redirect(302, returnTo);
+  }
+
   redirect(302, '/');
 };

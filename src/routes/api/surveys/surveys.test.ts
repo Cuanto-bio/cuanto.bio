@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 vi.mock('$lib/server/pds', () => ({
   createRecord: vi.fn(),
   putRecord: vi.fn(),
+  PdsSessionExpiredError: class PdsSessionExpiredError extends Error {
+    constructor() {
+      super('PDS session expired');
+    }
+  },
 }));
 
 vi.mock('$lib/server/db/surveys', () => ({
@@ -50,7 +55,11 @@ import {
   insertSurvey,
   toSurveyResponse,
 } from '$lib/server/db/surveys';
-import { createRecord, putRecord } from '$lib/server/pds';
+import {
+  createRecord,
+  PdsSessionExpiredError,
+  putRecord,
+} from '$lib/server/pds';
 import { GET, POST } from './+server';
 
 const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
@@ -114,6 +123,19 @@ beforeEach(() => {
   vi.mocked(sql as any)
     .mockResolvedValueOnce([]) // survey_targets
     .mockResolvedValue([{ handle: 'alice' }]); // users (and any subsequent calls)
+});
+
+describe('POST /api/surveys — PDS session expiry', () => {
+  test('returns 401 with pds_session_expired when createRecord throws PdsSessionExpiredError', async () => {
+    vi.mocked(createRecord).mockRejectedValueOnce(new PdsSessionExpiredError());
+    const resp = await callPost({
+      request: makeRequest(baseSurveyBody),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(401);
+    const body = (await resp.json()) as { error: string };
+    expect(body.error).toBe('pds_session_expired');
+  });
 });
 
 describe('POST /api/surveys — surveyorCount validation', () => {

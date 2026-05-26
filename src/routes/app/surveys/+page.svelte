@@ -12,7 +12,7 @@ import { Button } from '$lib/components/ui/button';
 import { useOnline } from '$lib/composables/online.svelte';
 import type { PendingSurvey } from '$lib/offline/db';
 import { deletePendingSurvey, getPendingSurveys } from '$lib/offline/db';
-import { uploadAllPending } from '$lib/offline/upload';
+import { PdsSessionExpiredError, uploadAllPending } from '$lib/offline/upload';
 import { hasUnresolvedIncidentals } from '$lib/surveys';
 
 let { data } = $props();
@@ -20,6 +20,7 @@ let { data } = $props();
 let allPendingSurveys = $state<PendingSurvey[]>([]);
 let uploading = $state(false);
 let deleteTargetId = $state<number | null>(null);
+let sessionExpired = $state(false);
 const online = useOnline();
 
 const inProgressSurveys = $derived(
@@ -50,6 +51,11 @@ async function tryUpload() {
   try {
     await uploadAllPending();
     allPendingSurveys = await getPendingSurveys();
+  } catch (err) {
+    if (err instanceof PdsSessionExpiredError) {
+      sessionExpired = true;
+      allPendingSurveys = await getPendingSurveys();
+    }
   } finally {
     uploading = false;
   }
@@ -65,6 +71,19 @@ async function confirmDelete() {
 
 <main class="mx-auto max-w-2xl px-4 pb-8">
   <h1 class="mb-6 text-2xl font-semibold">Your Surveys</h1>
+
+  {#if sessionExpired}
+    <Alert.Root class="mb-6 border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
+      <Alert.Title>Session expired</Alert.Title>
+      <Alert.Description>
+        Your connection to the AT Protocol network has expired. Your surveys are saved —
+        sign in again to upload them.
+        <a href="/auth/signin?returnTo=/app/surveys" class="underline font-medium ml-1">
+          Sign in
+        </a>
+      </Alert.Description>
+    </Alert.Root>
+  {/if}
 
   {#if inProgressSurveys.length > 0}
     <section class="mb-6">

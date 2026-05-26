@@ -5,7 +5,11 @@ import {
   getPendingSurveys,
   savePendingSurvey,
 } from './db';
-import { uploadAllPending } from './upload';
+import {
+  PdsSessionExpiredError,
+  uploadAllPending,
+  uploadPendingSurvey,
+} from './upload';
 
 const baseSurvey: Omit<import('./db').PendingSurvey, 'id'> = {
   protocolUri: 'at://did:test:1/bio.lexicons.temp.v0-1.surveyProtocol/p1',
@@ -21,6 +25,64 @@ const baseSurvey: Omit<import('./db').PendingSurvey, 'id'> = {
   createdAt: Date.now(),
   complete: true,
 };
+
+const baseSurveyRaw = { ...baseSurvey, id: 1 } as import('./db').PendingSurvey;
+
+describe('uploadPendingSurvey — PdsSessionExpiredError', () => {
+  test('throws PdsSessionExpiredError when server returns 401 with pds_session_expired', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: () => Promise.resolve({ error: 'pds_session_expired' }),
+    });
+    await expect(uploadPendingSurvey(baseSurveyRaw)).rejects.toBeInstanceOf(
+      PdsSessionExpiredError,
+    );
+  });
+
+  test('throws generic error for non-session 401', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: () => Promise.resolve({ error: 'Unauthorized' }),
+    });
+    await expect(uploadPendingSurvey(baseSurveyRaw)).rejects.not.toBeInstanceOf(
+      PdsSessionExpiredError,
+    );
+  });
+});
+
+describe('uploadAllPending — PdsSessionExpiredError propagation', () => {
+  afterEach(async () => {
+    const all = await getPendingSurveys();
+    await Promise.all(
+      all.map((s) => s.id != null && deletePendingSurvey(s.id)),
+    );
+    vi.restoreAllMocks();
+  });
+
+  test('re-throws PdsSessionExpiredError instead of swallowing it', async () => {
+    await savePendingSurvey({ ...baseSurvey, complete: true });
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: () => Promise.resolve({ error: 'pds_session_expired' }),
+    });
+    await expect(uploadAllPending()).rejects.toBeInstanceOf(
+      PdsSessionExpiredError,
+    );
+  });
+
+  test('swallows other errors', async () => {
+    await savePendingSurvey({ ...baseSurvey, complete: true });
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: () => Promise.resolve({ error: 'server error' }),
+    });
+    await expect(uploadAllPending()).resolves.toBeUndefined();
+  });
+});
 
 describe('uploadAllPending', () => {
   beforeEach(() => {

@@ -1,5 +1,37 @@
 import { IdResolver } from '@atproto/identity';
+import {
+  OAuthResponseError,
+  TokenRefreshError,
+  TokenRevokedError,
+} from '@atproto/oauth-client-node';
+import sql from '$lib/server/db';
 import { getClient } from './auth.js';
+
+export class PdsSessionExpiredError extends Error {
+  constructor() {
+    super('AT Protocol session expired. Please sign in again.');
+  }
+}
+
+export function isPdsSessionError(err: unknown): boolean {
+  if (err instanceof TokenRevokedError) return true;
+  if (err instanceof TokenRefreshError) return true;
+  if (err instanceof OAuthResponseError) {
+    return (
+      err.error === 'invalid_request' ||
+      err.error === 'invalid_token' ||
+      err.error === 'invalid_grant'
+    );
+  }
+  if (err instanceof Error) {
+    return (
+      err.message.includes('OAuth "invalid_request"') ||
+      err.message.includes('OAuth "invalid_token"') ||
+      err.message.includes('OAuth "invalid_grant"')
+    );
+  }
+  return false;
+}
 
 let mockSeq = 0;
 const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
@@ -134,6 +166,21 @@ export async function fetchAtRecord(atUri: string): Promise<AtRecord | null> {
  * process, which means there is no way to mock this function from the test layer
  * (e.g. vi.mock) — any mocking must be configured via the environment.
  */
+async function withSessionErrorHandling<T>(
+  did: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (isPdsSessionError(err)) {
+      await sql`DELETE FROM oauth_sessions WHERE key = ${did}`;
+      throw new PdsSessionExpiredError();
+    }
+    throw err;
+  }
+}
+
 export async function createRecord(
   did: string,
   collection: string,
@@ -144,17 +191,19 @@ export async function createRecord(
     return { uri: `at://${did}/${collection}/test${mockSeq}`, cid: FAKE_CID };
   }
 
-  const session = await (await getClient()).restore(did);
-  const resp = await session.fetchHandler(
-    '/xrpc/com.atproto.repo.createRecord',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ repo: did, collection, record }),
-    },
-  );
-  if (!resp.ok) throw new Error(await resp.text());
-  return resp.json() as Promise<{ uri: string; cid: string }>;
+  return withSessionErrorHandling(did, async () => {
+    const session = await (await getClient()).restore(did);
+    const resp = await session.fetchHandler(
+      '/xrpc/com.atproto.repo.createRecord',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo: did, collection, record }),
+      },
+    );
+    if (!resp.ok) throw new Error(await resp.text());
+    return resp.json() as Promise<{ uri: string; cid: string }>;
+  });
 }
 
 /**
@@ -172,14 +221,19 @@ export async function putRecord(
     return { uri: `at://${did}/${collection}/${rkey}`, cid: FAKE_CID };
   }
 
-  const session = await (await getClient()).restore(did);
-  const resp = await session.fetchHandler('/xrpc/com.atproto.repo.putRecord', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ repo: did, collection, rkey, record }),
+  return withSessionErrorHandling(did, async () => {
+    const session = await (await getClient()).restore(did);
+    const resp = await session.fetchHandler(
+      '/xrpc/com.atproto.repo.putRecord',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo: did, collection, rkey, record }),
+      },
+    );
+    if (!resp.ok) throw new Error(await resp.text());
+    return resp.json() as Promise<{ uri: string; cid: string }>;
   });
-  if (!resp.ok) throw new Error(await resp.text());
-  return resp.json() as Promise<{ uri: string; cid: string }>;
 }
 
 /**
@@ -191,14 +245,16 @@ export async function deleteRecord(atUri: string): Promise<void> {
   if (process.env.PDS_MOCK === 'true') return;
 
   const { did, collection, rkey } = parseAtUri(atUri);
-  const session = await (await getClient()).restore(did);
-  const resp = await session.fetchHandler(
-    '/xrpc/com.atproto.repo.deleteRecord',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ repo: did, collection, rkey }),
-    },
-  );
-  if (!resp.ok) throw new Error(await resp.text());
+  return withSessionErrorHandling(did, async () => {
+    const session = await (await getClient()).restore(did);
+    const resp = await session.fetchHandler(
+      '/xrpc/com.atproto.repo.deleteRecord',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo: did, collection, rkey }),
+      },
+    );
+    if (!resp.ok) throw new Error(await resp.text());
+  });
 }

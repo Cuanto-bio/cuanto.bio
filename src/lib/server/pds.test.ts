@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-
-// fetchWithRetry is exported for testing
-import { fetchWithRetry } from './pds';
+import { TokenRefreshError } from '@atproto/oauth-client-node';
+import { fetchWithRetry, isPdsSessionError } from './pds';
 
 describe('fetchWithRetry', () => {
   beforeEach(() => {
@@ -77,5 +76,57 @@ describe('fetchWithRetry', () => {
     const result = await fetchWithRetry('https://example.com', {}, mockFetch);
     expect(result.status).toBe(404);
     expect(mockFetch).toHaveBeenCalledOnce();
+  });
+});
+
+describe('isPdsSessionError', () => {
+  test('returns true for OAuth invalid_request error message', () => {
+    expect(
+      isPdsSessionError(
+        new Error(
+          'OAuth "invalid_request" error: client authentication method "private_key_jwt" required a "client_assertion"',
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  test('returns true for OAuth invalid_token error message', () => {
+    expect(
+      isPdsSessionError(
+        new Error('OAuth "invalid_token" error: token expired'),
+      ),
+    ).toBe(true);
+  });
+
+  test('returns true for OAuth invalid_grant error message', () => {
+    expect(
+      isPdsSessionError(
+        new Error('OAuth "invalid_grant" error: refresh token revoked'),
+      ),
+    ).toBe(true);
+  });
+
+  test('returns true for TokenRefreshError (session deleted by another process)', () => {
+    expect(
+      isPdsSessionError(
+        new TokenRefreshError(
+          'did:test:1',
+          'The session was deleted by another process',
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  test('returns false for unrelated errors', () => {
+    expect(isPdsSessionError(new Error('Network error'))).toBe(false);
+    expect(isPdsSessionError(new Error('PDS unreachable'))).toBe(false);
+    expect(isPdsSessionError(new TypeError('fetch failed'))).toBe(false);
+  });
+
+  test('returns false for non-Error values', () => {
+    expect(isPdsSessionError('some string')).toBe(false);
+    expect(isPdsSessionError(null)).toBe(false);
+    expect(isPdsSessionError(undefined)).toBe(false);
+    expect(isPdsSessionError(42)).toBe(false);
   });
 });
