@@ -23,6 +23,10 @@ interface Props {
   canFollow?: boolean;
   offline?: boolean;
   isOwner?: boolean;
+  lastSurveyByTargetUri?: Record<
+    string,
+    { date: string; handle: string; rkey: string }
+  >;
   onAfterFollowChange?: () => void;
 }
 
@@ -33,6 +37,7 @@ let {
   canFollow,
   offline = false,
   isOwner = false,
+  lastSurveyByTargetUri,
   onAfterFollowChange = () => {},
 }: Props = $props();
 
@@ -44,6 +49,10 @@ let showAllPlaces = $state(false);
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString();
+}
+
+function formatSurveyDate(iso: string) {
+  return new Date(iso).toLocaleDateString();
 }
 </script>
 
@@ -184,10 +193,12 @@ function formatDate(iso: string) {
         <Table.Row>
           <Table.Head>Type</Table.Head>
           <Table.Head>Target</Table.Head>
+          <Table.Head>Last Survey</Table.Head>
         </Table.Row>
       </Table.Header>
       <Table.Body>
         {#each protocol.targets as target (target.atUri)}
+          {@const lastSurvey = lastSurveyByTargetUri?.[target.atUri]}
           <Table.Row>
             <Table.Cell>
               {#if target.record.scope.length === 1}
@@ -205,7 +216,7 @@ function formatDate(iso: string) {
                 {#if idx > 0}
                   <p>AND</p>
                 {/if}
-                <div>
+                <div class="text-wrap">
                   {#if scope.$type?.endsWith('taxonScope')}
                     <Taxon taxon={scope as TaxonScope} />
                   {:else if scope.$type?.endsWith('verbatimScope')}
@@ -214,6 +225,18 @@ function formatDate(iso: string) {
                   {/if}
                 </div>
               {/each}
+            </Table.Cell>
+            <Table.Cell>
+              {#if lastSurvey}
+                <a
+                  class="underline"
+                  href="/surveys/{lastSurvey.handle}/{lastSurvey.rkey}"
+                >
+                  {formatSurveyDate(lastSurvey.date)}
+                </a>
+              {:else}
+                —
+              {/if}
             </Table.Cell>
           </Table.Row>
         {/each}

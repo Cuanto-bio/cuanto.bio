@@ -7,4 +7,5 @@ let { data } = $props();
 <ProtocolDetail
   protocol={data.protocol}
   followerCount={data.followerCount}
+  lastSurveyByTargetUri={data.lastSurveyByTargetUri}
 />

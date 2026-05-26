@@ -177,7 +177,7 @@ export async function seedSurvey(
   locationName = 'Test Location',
   createdAt = new Date().toISOString(),
 ): Promise<{ surveyRkey: string }> {
-  const rkey = `testsurvey${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
+  const rkey = `testsurvey${Date.now()}${Math.floor(Math.random() * 1000)}`;
   const atUri = `at://${did}/bio.lexicons.temp.v0-1.survey/${rkey}`;
   const record = {
     $type: 'bio.lexicons.temp.v0-1.survey',
@@ -190,6 +190,25 @@ export async function seedSurvey(
     VALUES (${atUri}, ${did}, ${rkey}, ${protocolUri}, ${new Date(createdAt)}, ${sql.json(record)}, now())
   `;
   return { surveyRkey: rkey };
+}
+
+export async function seedOccurrence(
+  sql: Sql,
+  did: string,
+  surveyUri: string,
+  surveyTargetUri: string,
+): Promise<void> {
+  const rkey = `testocc${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  const atUri = `at://${did}/bio.lexicons.temp.v0-1.occurrence/${rkey}`;
+  const record = {
+    $type: 'bio.lexicons.temp.v0-1.occurrence',
+    eventID: surveyUri,
+    surveyTargetID: surveyTargetUri,
+  };
+  await sql`
+    INSERT INTO occurrences (at_uri, did, rkey, survey_uri, record, indexed_at)
+    VALUES (${atUri}, ${did}, ${rkey}, ${surveyUri}, ${sql.json(record)}, now())
+  `;
 }
 
 export async function teardownDid(sql: Sql, did: string): Promise<void> {

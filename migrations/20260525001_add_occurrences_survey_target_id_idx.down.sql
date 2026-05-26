@@ -1,0 +1,1 @@
+DROP INDEX occurrences_survey_target_id_idx;

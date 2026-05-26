@@ -10,6 +10,16 @@ import type { PageLoad } from './$types';
 
 const log = logger.child({ component: 'app-protocol-detail' });
 
+type LastSurveyByTargetUri = Record<
+  string,
+  { date: string; handle: string; rkey: string }
+>;
+
+interface ProtocolApiResponse {
+  protocol: Protocol;
+  lastSurveyByTargetUri?: LastSurveyByTargetUri;
+}
+
 function toPageData(
   cachedProtocol: Protocol,
   offline: boolean,
@@ -37,16 +47,20 @@ export const load: PageLoad = async ({ fetch, params, parent, url }) => {
 
   const cachedProtocol = await findCached();
   if (cachedProtocol && !updated) {
-    // Update the cache if possible
-    fetch(`/api/protocols/${params.handle}/${params.rkey}`)
+    // Render the cached protocol immediately and stream fresh last-survey data
+    // in when the network fetch resolves (it also refreshes the cache).
+    const lastSurveyByTargetUri = fetch(
+      `/api/protocols/${params.handle}/${params.rkey}`,
+    )
       .then(async (res) => {
-        if (res.ok) {
-          const data: { protocol: Protocol } = await res.json();
-          await cacheProtocol(data.protocol);
-        }
+        if (!res.ok) return undefined;
+        const data: ProtocolApiResponse = await res.json();
+        await cacheProtocol(data.protocol);
+        return data.lastSurveyByTargetUri;
       })
       .catch((err) => {
         log.warn({ err }, 'Failed to update protocol cache');
+        return undefined;
       });
     const cachedFollowedProtocol = await getCachedFollowedProtocolByRkey(
       cachedProtocol.rkey,
@@ -59,13 +73,14 @@ export const load: PageLoad = async ({ fetch, params, parent, url }) => {
         !!cachedFollowedProtocol,
       ),
       isOwner: cachedProtocol.handle === currentUserHandle,
+      lastSurveyByTargetUri,
     };
   }
 
   try {
     const res = await fetch(`/api/protocols/${params.handle}/${params.rkey}`);
     if (res.ok) {
-      const data: { protocol: Protocol } = await res.json();
+      const data: ProtocolApiResponse = await res.json();
       await cacheProtocol(data.protocol);
       const cachedFollowedProtocol = await getCachedFollowedProtocolByRkey(
         params.rkey,

@@ -13,7 +13,14 @@ vi.mock('$lib/server/db', () => {
 });
 
 import sql from '$lib/server/db';
-import { insertOccurrence, insertSurvey, parseCoords } from './surveys';
+import {
+  getLastSurveyByTargetUris,
+  insertOccurrence,
+  insertSurvey,
+  type LastSurveyRow,
+  parseCoords,
+  toLastSurveyMap,
+} from './surveys';
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 
@@ -184,5 +191,47 @@ describe('insertOccurrence', () => {
       'at://did:plc:abc/bio.lexicons.temp.v0-1.occurrence/3occ',
     );
     expect(mockSql).not.toHaveBeenCalled();
+  });
+});
+
+// ── getLastSurveyByTargetUris ─────────────────────────────────────────────────
+
+describe('getLastSurveyByTargetUris', () => {
+  test('returns [] and makes no SQL call for an empty array', async () => {
+    await expect(getLastSurveyByTargetUris([])).resolves.toEqual([]);
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  test('calls sql once for a non-empty array', async () => {
+    await getLastSurveyByTargetUris([
+      'at://did:plc:abc/bio.lexicons.temp.v0-1.surveyTarget/3tgt',
+    ]);
+    expect(mockSql).toHaveBeenCalledOnce();
+  });
+});
+
+// ── toLastSurveyMap ───────────────────────────────────────────────────────────
+
+describe('toLastSurveyMap', () => {
+  test('keys rows by target URI with an ISO date string', () => {
+    const rows: LastSurveyRow[] = [
+      {
+        target_uri: 'at://did:plc:abc/bio.lexicons.temp.v0-1.surveyTarget/3tgt',
+        survey_date: new Date('2026-04-13T10:00:00.000Z'),
+        survey_handle: 'alice.test',
+        survey_rkey: '3xyz',
+      },
+    ];
+    expect(toLastSurveyMap(rows)).toEqual({
+      'at://did:plc:abc/bio.lexicons.temp.v0-1.surveyTarget/3tgt': {
+        date: '2026-04-13T10:00:00.000Z',
+        handle: 'alice.test',
+        rkey: '3xyz',
+      },
+    });
+  });
+
+  test('returns an empty object for no rows', () => {
+    expect(toLastSurveyMap([])).toEqual({});
   });
 });

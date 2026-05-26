@@ -6,6 +6,23 @@ import { syncOfflineData } from '$lib/offline/sync';
 
 let { data } = $props();
 
+type LastSurveyByTargetUri = Record<
+  string,
+  { date: string; handle: string; rkey: string }
+>;
+
+// lastSurveyByTargetUri may be a resolved object (cold path) or a promise that
+// streams in over the cached render (warm path). Normalize to reactive state so
+// the column renders "—" first and fills in when the fetch resolves.
+let lastSurveyByTargetUri = $state<LastSurveyByTargetUri | undefined>(
+  undefined,
+);
+$effect(() => {
+  Promise.resolve(data.lastSurveyByTargetUri).then((v) => {
+    lastSurveyByTargetUri = v;
+  });
+});
+
 // This page serves cached content first, but if we landed here after
 // updating the protocol, we use a param to indicate the page should fetch
 // fresh content ASAP. This just removes that param from the URL.
@@ -26,5 +43,6 @@ afterNavigate(() => {
   canFollow={!data.offline}
   offline={data.offline}
   isOwner={data.isOwner}
+  {lastSurveyByTargetUri}
   onAfterFollowChange={() => syncOfflineData(fetch)}
 />

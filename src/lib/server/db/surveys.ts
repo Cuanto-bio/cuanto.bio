@@ -78,6 +78,53 @@ export async function getOccurrencesForSurveys(
   `;
 }
 
+export interface LastSurveyRow {
+  target_uri: string;
+  survey_date: Date;
+  survey_handle: string;
+  survey_rkey: string;
+}
+
+export type LastSurveyByTargetUri = Record<
+  string,
+  { date: string; handle: string; rkey: string }
+>;
+
+// Most recent survey (across all users) with an occurrence linked to each
+// target. Display and ordering both use COALESCE(event_date, created_at) so
+// they can never diverge.
+export async function getLastSurveyByTargetUris(
+  targetUris: string[],
+): Promise<LastSurveyRow[]> {
+  if (targetUris.length === 0) return [];
+  return sql<LastSurveyRow[]>`
+    SELECT DISTINCT ON (o.record->>'surveyTargetID')
+      o.record->>'surveyTargetID'          AS target_uri,
+      COALESCE(s.event_date, s.created_at) AS survey_date,
+      u.handle                             AS survey_handle,
+      s.rkey                               AS survey_rkey
+    FROM occurrences o
+    JOIN surveys s ON s.at_uri = o.survey_uri
+    JOIN users u   ON u.did    = s.did
+    WHERE o.record->>'surveyTargetID' = ANY(${sql.array(targetUris)})
+    ORDER BY
+      o.record->>'surveyTargetID',
+      COALESCE(s.event_date, s.created_at) DESC NULLS LAST
+  `;
+}
+
+export function toLastSurveyMap(rows: LastSurveyRow[]): LastSurveyByTargetUri {
+  const map: LastSurveyByTargetUri = {};
+  for (const r of rows) {
+    map[r.target_uri] = {
+      date: r.survey_date.toISOString(),
+      handle: r.survey_handle,
+      rkey: r.survey_rkey,
+    };
+  }
+  return map;
+}
+
 export function groupOccurrencesBySurvey(
   occurrences: (OccurrenceRowForSurvey & {
     identification?: Occurrence['identification'];
