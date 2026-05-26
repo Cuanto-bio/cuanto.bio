@@ -47,8 +47,12 @@ async function ensureUser(did: string): Promise<void> {
   if (handle) await insertUser(did, handle, avatarUrl);
 }
 
-async function backfillProtocol(protocolUri: string): Promise<void> {
+async function backfillProtocol(protocolUri: string): Promise<boolean> {
   const rec = await fetchAtRecord(protocolUri);
+  if (!rec) {
+    log.warn({ protocolUri }, 'protocol not found on PDS; skipping backfill');
+    return false;
+  }
   const { did, rkey } = parseAtUri(protocolUri);
   await ensureUser(did);
   await insertProtocol(
@@ -71,6 +75,7 @@ async function backfillProtocol(protocolUri: string): Promise<void> {
   }
 
   log.info({ protocolUri }, 'backfilled missing protocol');
+  return true;
 }
 
 async function ingestOccurrencesForSurvey(
@@ -89,8 +94,12 @@ async function ingestOccurrencesForSurvey(
   }
 }
 
-async function backfillSurvey(surveyUri: string): Promise<void> {
+async function backfillSurvey(surveyUri: string): Promise<boolean> {
   const rec = await fetchAtRecord(surveyUri);
+  if (!rec) {
+    log.warn({ surveyUri }, 'survey not found on PDS; skipping backfill');
+    return false;
+  }
   const { did, rkey } = parseAtUri(surveyUri);
   const surveyRecord = rec.value as Survey;
   await ensureUser(did);
@@ -98,7 +107,8 @@ async function backfillSurvey(surveyUri: string): Promise<void> {
     await insertSurvey(did, rkey, surveyRecord, rec.uri);
   } catch (e) {
     if (isFkViolation(e)) {
-      await backfillProtocol(surveyRecord.protocol.uri);
+      const backfilled = await backfillProtocol(surveyRecord.protocol.uri);
+      if (!backfilled) return false;
       await insertSurvey(did, rkey, surveyRecord, rec.uri);
     } else {
       throw e;
@@ -106,6 +116,7 @@ async function backfillSurvey(surveyUri: string): Promise<void> {
   }
   await ingestOccurrencesForSurvey(did, surveyUri);
   log.info({ surveyUri }, 'backfilled missing survey');
+  return true;
 }
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -159,8 +170,8 @@ export const POST: RequestHandler = async ({ request }) => {
         await createFollow(followRecord);
       } catch (e) {
         if (isFkViolation(e)) {
-          await backfillProtocol(followRecord.protocolUri);
-          await createFollow(followRecord);
+          const backfilled = await backfillProtocol(followRecord.protocolUri);
+          if (backfilled) await createFollow(followRecord);
         } else if (isUniqueViolation(e)) {
           log.info({ atUri }, 'follow already exists, skipping');
         } else {
@@ -195,8 +206,8 @@ export const POST: RequestHandler = async ({ request }) => {
       await insertTarget(evt.did, evt.rkey, target, atUri);
     } catch (e) {
       if (isFkViolation(e)) {
-        await backfillProtocol(target.protocol);
-        await insertTarget(evt.did, evt.rkey, target, atUri);
+        const backfilled = await backfillProtocol(target.protocol);
+        if (backfilled) await insertTarget(evt.did, evt.rkey, target, atUri);
       } else throw e;
     }
     log.info({ atUri }, 'ingested survey target');
@@ -207,8 +218,8 @@ export const POST: RequestHandler = async ({ request }) => {
       await insertSurvey(evt.did, evt.rkey, survey, atUri);
     } catch (e) {
       if (isFkViolation(e)) {
-        await backfillProtocol(survey.protocol.uri);
-        await insertSurvey(evt.did, evt.rkey, survey, atUri);
+        const backfilled = await backfillProtocol(survey.protocol.uri);
+        if (backfilled) await insertSurvey(evt.did, evt.rkey, survey, atUri);
       } else throw e;
     }
     await ingestOccurrencesForSurvey(evt.did, atUri);
@@ -220,8 +231,9 @@ export const POST: RequestHandler = async ({ request }) => {
       await insertOccurrence(evt.did, evt.rkey, occurrence, atUri);
     } catch (e) {
       if (isFkViolation(e) && surveyUri) {
-        await backfillSurvey(surveyUri);
-        await insertOccurrence(evt.did, evt.rkey, occurrence, atUri);
+        const backfilled = await backfillSurvey(surveyUri);
+        if (backfilled)
+          await insertOccurrence(evt.did, evt.rkey, occurrence, atUri);
       } else throw e;
     }
     log.info({ atUri }, 'ingested occurrence');
@@ -240,44 +252,61 @@ export const POST: RequestHandler = async ({ request }) => {
           log.warn({ atUri }, 'identification has no occurrence.uri; skipping');
         } else {
           const occRec = await fetchAtRecord(occurrenceUri);
-          const occ = occRec.value as Occurrence;
-          const { did: occDid, rkey: occRkey } = parseAtUri(occurrenceUri);
-          try {
-            await insertOccurrence(occDid, occRkey, occ, occurrenceUri);
-            log.info({ atUri, occurrenceUri }, 'backfilled missing occurrence');
-          } catch (occErr) {
-            if (isFkViolation(occErr) && occ.eventID) {
-              log.warn(
-                { atUri, occurrenceUri, surveyUri: occ.eventID },
-                'occurrence FK violation; backfilling survey',
-              );
-              // TODO: backfillSurvey fetches all occurrences for the DID via
-              // listAtRecords, which becomes expensive at scale. Consider
-              // running this in a background job, or relying on tap delivering
-              // the survey and occurrence events independently before the
-              // identification event arrives.
-              await backfillSurvey(occ.eventID);
+          if (!occRec) {
+            log.warn(
+              { atUri, occurrenceUri },
+              'occurrence not found on PDS; skipping identification',
+            );
+          } else {
+            const occ = occRec.value as Occurrence;
+            const { did: occDid, rkey: occRkey } = parseAtUri(occurrenceUri);
+            let occurrenceInserted = false;
+            try {
               await insertOccurrence(occDid, occRkey, occ, occurrenceUri);
               log.info(
-                { atUri, occurrenceUri, surveyUri: occ.eventID },
-                'backfilled missing survey and occurrence',
-              );
-            } else throw occErr;
-          }
-          try {
-            await insertIdentification(
-              evt.did,
-              evt.rkey,
-              identification,
-              atUri,
-            );
-          } catch (idErr) {
-            if (isFkViolation(idErr)) {
-              log.warn(
                 { atUri, occurrenceUri },
-                'identification FK violation after backfill; skipping',
+                'backfilled missing occurrence',
               );
-            } else throw idErr;
+              occurrenceInserted = true;
+            } catch (occErr) {
+              if (isFkViolation(occErr) && occ.eventID) {
+                log.warn(
+                  { atUri, occurrenceUri, surveyUri: occ.eventID },
+                  'occurrence FK violation; backfilling survey',
+                );
+                // TODO: backfillSurvey fetches all occurrences for the DID via
+                // listAtRecords, which becomes expensive at scale. Consider
+                // running this in a background job, or relying on tap delivering
+                // the survey and occurrence events independently before the
+                // identification event arrives.
+                const backfilled = await backfillSurvey(occ.eventID);
+                if (backfilled) {
+                  await insertOccurrence(occDid, occRkey, occ, occurrenceUri);
+                  log.info(
+                    { atUri, occurrenceUri, surveyUri: occ.eventID },
+                    'backfilled missing survey and occurrence',
+                  );
+                  occurrenceInserted = true;
+                }
+              } else throw occErr;
+            }
+            if (occurrenceInserted) {
+              try {
+                await insertIdentification(
+                  evt.did,
+                  evt.rkey,
+                  identification,
+                  atUri,
+                );
+              } catch (idErr) {
+                if (isFkViolation(idErr)) {
+                  log.warn(
+                    { atUri, occurrenceUri },
+                    'identification FK violation after backfill; skipping',
+                  );
+                } else throw idErr;
+              }
+            }
           }
         }
       } else throw e;

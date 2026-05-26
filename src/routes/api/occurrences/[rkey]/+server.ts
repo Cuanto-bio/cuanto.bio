@@ -93,6 +93,10 @@ export const PATCH: RequestHandler = async ({ request, locals, params }) => {
         if (taxon) {
           try {
             const occRecord = await fetchAtRecord(occurrence.at_uri);
+            if (!occRecord)
+              throw new Error(
+                `Occurrence not found on PDS: ${occurrence.at_uri}`,
+              );
             const identRecord = Identification.$build({
               occurrence: {
                 uri: occurrence.at_uri as l.AtUriString,

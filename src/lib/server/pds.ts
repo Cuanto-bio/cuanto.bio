@@ -6,6 +6,34 @@ const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
 
 const idResolver = new IdResolver();
 
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 1000;
+
+type FetchFn = typeof fetch;
+
+/** Wraps fetch with retry logic for 429 responses, honouring Retry-After. */
+export async function fetchWithRetry(
+  url: string | URL,
+  init: RequestInit,
+  fetchFn: FetchFn = fetch,
+): Promise<Response> {
+  let attempt = 0;
+  while (true) {
+    const resp = await fetchFn(url, init);
+    if (resp.status !== 429) return resp;
+    if (attempt >= MAX_RETRIES)
+      throw new Error(`HTTP 429 after ${MAX_RETRIES} retries`);
+
+    const retryAfter = resp.headers.get('Retry-After');
+    const delayMs = retryAfter
+      ? parseFloat(retryAfter) * 1000
+      : BASE_DELAY_MS * 2 ** attempt;
+
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    attempt++;
+  }
+}
+
 export interface AtRecord {
   uri: string;
   cid: string;
@@ -61,7 +89,7 @@ export async function listAtRecords(
     url.searchParams.set('limit', '100');
     if (cursor) url.searchParams.set('cursor', cursor);
 
-    const resp = await fetch(url);
+    const resp = await fetchWithRetry(url, {});
     if (!resp.ok)
       throw new Error(
         `Failed to list records for ${did}/${collection}: ${resp.status}`,
@@ -77,7 +105,7 @@ export async function listAtRecords(
   return all;
 }
 
-export async function fetchAtRecord(atUri: string): Promise<AtRecord> {
+export async function fetchAtRecord(atUri: string): Promise<AtRecord | null> {
   const { did, collection, rkey } = parseAtUri(atUri);
   const data = await idResolver.did.resolveAtprotoData(did);
   const pdsUrl = data.pds;
@@ -87,9 +115,14 @@ export async function fetchAtRecord(atUri: string): Promise<AtRecord> {
   url.searchParams.set('collection', collection);
   url.searchParams.set('rkey', rkey);
 
-  const resp = await fetch(url);
-  if (!resp.ok)
-    throw new Error(`Failed to fetch record ${atUri}: ${resp.status}`);
+  const resp = await fetchWithRetry(url, {});
+  if (!resp.ok) {
+    const body = (await resp.json()) as { error?: string };
+    if (resp.status === 400 && body.error === 'RecordNotFound') return null;
+    throw new Error(
+      `Failed to fetch record ${url} [status: ${resp.status}]: ${JSON.stringify(body)}`,
+    );
+  }
   return resp.json() as Promise<AtRecord>;
 }
 

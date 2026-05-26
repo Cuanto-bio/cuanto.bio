@@ -690,6 +690,83 @@ describe('POST /api/tap/webhook', () => {
     expect(insertIdentification).toHaveBeenCalledTimes(2);
   });
 
+  test('returns 200 without backfilling when protocol is RecordNotFound (insertTarget FK)', async () => {
+    vi.mocked(insertTarget).mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord).mockResolvedValueOnce(null);
+    const resp = await POST({
+      request: makeRequest(targetEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertProtocol).not.toHaveBeenCalled();
+    expect(insertTarget).toHaveBeenCalledOnce();
+  });
+
+  test('returns 200 without backfilling when protocol is RecordNotFound (insertSurvey FK)', async () => {
+    vi.mocked(insertSurvey).mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord).mockResolvedValueOnce(null);
+    const resp = await POST({
+      request: makeRequest(surveyEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertProtocol).not.toHaveBeenCalled();
+    expect(insertSurvey).toHaveBeenCalledOnce();
+  });
+
+  test('returns 200 without backfilling when protocol is RecordNotFound (createFollow FK)', async () => {
+    vi.mocked(createFollow).mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord).mockResolvedValueOnce(null);
+    const resp = await POST({
+      request: makeRequest(followCreateEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertProtocol).not.toHaveBeenCalled();
+    expect(createFollow).toHaveBeenCalledOnce();
+  });
+
+  test('returns 200 without backfilling when survey is RecordNotFound (insertOccurrence FK)', async () => {
+    vi.mocked(insertOccurrence).mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord).mockResolvedValueOnce(null);
+    const resp = await POST({
+      request: makeRequest(occurrenceEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertSurvey).not.toHaveBeenCalled();
+    expect(insertOccurrence).toHaveBeenCalledOnce();
+  });
+
+  test('returns 200 when occurrence is RecordNotFound during identification backfill', async () => {
+    vi.mocked(insertIdentification).mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord).mockResolvedValueOnce(null);
+    const resp = await POST({
+      request: makeRequest(identificationEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertOccurrence).not.toHaveBeenCalled();
+    expect(insertIdentification).toHaveBeenCalledOnce();
+  });
+
+  test('returns 200 when survey is RecordNotFound during identification nested backfill', async () => {
+    vi.mocked(insertIdentification).mockRejectedValueOnce(fkError);
+    vi.mocked(insertOccurrence).mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord)
+      .mockResolvedValueOnce({
+        uri: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.occurrence/3occ',
+        cid: TEST_CID,
+        value: {
+          $type: 'bio.lexicons.temp.v0-1.occurrence',
+          eventID: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.survey/3svy',
+        },
+      })
+      .mockResolvedValueOnce(null);
+    const resp = await POST({
+      request: makeRequest(identificationEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertSurvey).not.toHaveBeenCalled();
+    expect(insertOccurrence).toHaveBeenCalledOnce();
+    expect(insertIdentification).toHaveBeenCalledOnce();
+  });
+
   test('backfills survey when insertOccurrence also gets FK violation', async () => {
     vi.mocked(insertIdentification)
       .mockRejectedValueOnce(fkError)
