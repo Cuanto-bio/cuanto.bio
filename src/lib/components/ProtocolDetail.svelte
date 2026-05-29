@@ -1,11 +1,13 @@
 <script lang="ts">
 import ClipboardClockIcon from '@lucide/svelte/icons/clipboard-clock';
 import ClipboardPlusIcon from '@lucide/svelte/icons/clipboard-plus';
+import DownloadIcon from '@lucide/svelte/icons/download';
 import MinusIcon from '@lucide/svelte/icons/minus';
 import PencilIcon from '@lucide/svelte/icons/pencil';
 import PlusIcon from '@lucide/svelte/icons/plus';
 import Button from '$lib/components/Button.svelte';
 import Form from '$lib/components/Form.svelte';
+import ButtonGroup from '$lib/components/ui/button-group/button-group.svelte';
 import type { Main as LocationAddress } from '$lib/lexicons/community/lexicon/location/address.defs';
 import type { Main as LocationBbox } from '$lib/lexicons/community/lexicon/location/bbox.defs';
 import type { Main as LocationGeo } from '$lib/lexicons/community/lexicon/location/geo.defs';
@@ -20,9 +22,9 @@ interface Props {
   protocol: Protocol;
   followerCount: number;
   isFollowing?: boolean;
-  canFollow?: boolean;
-  offline?: boolean;
+  isOffline?: boolean;
   isOwner?: boolean;
+  isSignedIn?: boolean;
   lastSurveyByTargetUri?: Record<
     string,
     { date: string; handle: string; rkey: string }
@@ -34,9 +36,9 @@ let {
   protocol,
   followerCount: initialFollowerCount,
   isFollowing: initialIsFollowing,
-  canFollow,
-  offline = false,
+  isOffline,
   isOwner = false,
+  isSignedIn = false,
   lastSurveyByTargetUri,
   onAfterFollowChange = () => {},
 }: Props = $props();
@@ -56,46 +58,63 @@ function formatSurveyDate(iso: string) {
 }
 </script>
 
-<main class="mx-auto max-w-2xl px-4 pb-8">
-  <div class="mb-6 flex items-center justify-between">
-    <div class="flex items-center justify-between gap-2 w-full">
-      {#if isOwner}
-        <Button
-          href="/protocols/{protocol.handle}/{protocol.rkey}/edit"
-          variant="outline"
-        >
-          <PencilIcon />
-          Edit
-        </Button>
-      {/if}
-      <div class="flex gap-2">
-        <Button
-          href="/app/surveys/new/{protocol.atUri.split('/').at(-1)}?past=1"
-          variant="outline"
-          title="Enter past survey data"
-        >
-          <ClipboardPlusIcon />
-          <span class="sm:hidden">Add</span>
-          <span class="hidden sm:inline">Add Past Survey</span>
-        </Button>
-        <Button
-          href="/app/surveys/new/{protocol.atUri.split('/').at(-1)}"
-          title="Start a field survey now"
-        >
-          <ClipboardClockIcon />
-          <span class="sm:hidden">Start</span>
-          <span class="hidden sm:inline">Start Survey</span>
-        </Button>
+<main>
+  {#if isSignedIn}
+    <div class="mb-6 flex items-center justify-between">
+      <div class="flex items-center justify-between gap-2 w-full">
+        {#if isOwner}
+          <Button
+            href="/protocols/{protocol.handle}/{protocol.rkey}/edit"
+            variant="outline"
+          >
+            <PencilIcon />
+            Edit
+          </Button>
+        {/if}
+        <div class="flex gap-2">
+          {#if isOffline || isOwner}
+            <Button
+              href="/api/protocols/{protocol.handle}/{protocol.rkey}/export"
+              variant="outline"
+              title="Export as DarwinCore Data Package"
+            >
+              <DownloadIcon />
+              Export
+            </Button>
+          {/if}
+          <ButtonGroup>
+            <Button
+              href="/app/surveys/new/{protocol.atUri.split('/').at(-1)}?past=1"
+              variant="outline"
+              title="Enter past survey data"
+            >
+              <ClipboardPlusIcon />
+              <span class="sm:hidden">Add</span>
+              <span class="hidden sm:inline">Add Past Survey</span>
+            </Button>
+            <Button
+              href="/app/surveys/new/{protocol.atUri.split('/').at(-1)}"
+              title="Start a field survey now"
+              class="border-1 border-primary"
+            >
+              <ClipboardClockIcon />
+              <span class="sm:hidden">Start</span>
+              <span class="hidden sm:inline">Start Survey</span>
+            </Button>
+          </ButtonGroup>
+        </div>
       </div>
     </div>
-  </div>
+  {/if}
 
   <div class="text-muted-foreground text-xs mb-1">PROTOCOL</div>
   <h1>{protocol.record.title}</h1>
   {@html sanitizeHtml(protocol.record.description ?? '')}
 
   <div class="flex items-center gap-3">
-    {#if canFollow}
+    {#if isOffline}
+      <span class="text-muted-foreground text-xs">(follow requires connection)</span>
+    {:else if isSignedIn}
       {#if isFollowing}
         <Form
           method="POST"
@@ -147,8 +166,6 @@ function formatSurveyDate(iso: string) {
           </Button>
         </Form>
       {/if}
-    {:else if offline}
-      <span class="text-muted-foreground text-xs">(follow requires connection)</span>
     {/if}
     <span class="text-muted-foreground text-sm">
       {followerCount}

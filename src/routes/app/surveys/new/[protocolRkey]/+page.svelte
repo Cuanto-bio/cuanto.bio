@@ -43,7 +43,7 @@ onMount(() => {
 </script>
 
 {#if notFound}
-  <main class="mx-auto max-w-2xl px-4 pb-8">
+  <main>
     {#if page.url.searchParams.get('resumeId')}
       <p class="text-muted-foreground text-sm">
         This survey's protocol is no longer cached.
@@ -57,7 +57,7 @@ onMount(() => {
     {/if}
   </main>
 {:else if !ready || !protocol}
-  <main class="mx-auto max-w-2xl px-4 pb-8">
+  <main>
     <p class="text-muted-foreground text-sm">Loading…</p>
   </main>
 {:else}

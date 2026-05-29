@@ -159,7 +159,7 @@ const externalLinkProps =
   </li>
 {/snippet}
 
-<main class="mx-auto max-w-2xl px-4 pb-8">
+<main>
   <div class="mb-4 flex items-center justify-between text-xs">
     <span class="text-muted-foreground">SURVEY</span>
     {#if editable}

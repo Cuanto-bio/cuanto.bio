@@ -24,7 +24,7 @@ async function refreshSurvey() {
   editable={data.isOwner}
 />
 {#if data.isOwner}
-  <div class="mx-auto max-w-2xl px-4">
+  <div>
     <OrphanedOccurrences
       occurrences={data.survey.occurrences}
       targets={data.protocol.targets}

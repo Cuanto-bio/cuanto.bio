@@ -37,7 +37,7 @@ async function handleDelete() {
 
 <SurveyForm protocol={data.protocol} survey={data.survey} />
 
-<div class="mx-auto max-w-2xl px-4 pb-8 flex justify-center">
+<div class="flex justify-center">
   <Button
     type="button"
     variant="destructive"

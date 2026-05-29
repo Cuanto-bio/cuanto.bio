@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TokenRefreshError } from '@atproto/oauth-client-node';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { fetchWithRetry, isPdsSessionError } from './pds';
 
 describe('fetchWithRetry', () => {

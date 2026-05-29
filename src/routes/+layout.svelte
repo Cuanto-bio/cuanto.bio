@@ -86,7 +86,9 @@ onMount(() => {
       </Collapsible.Root>
     </div>
     <div class="mobile-scroll">
-      {@render children()}
+      <div class="mx-auto max-w-4xl px-4 pb-8">
+        {@render children()}
+      </div>
     </div>
     <MobileNav did={page.data.did ?? undefined} avatarUrl={page.data.avatarUrl ?? undefined} />
   </main>

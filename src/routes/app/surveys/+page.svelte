@@ -69,7 +69,7 @@ async function confirmDelete() {
 }
 </script>
 
-<main class="mx-auto max-w-2xl px-4 pb-8">
+<main>
   <h1 class="mb-6 text-2xl font-semibold">Your Surveys</h1>
 
   {#if sessionExpired}

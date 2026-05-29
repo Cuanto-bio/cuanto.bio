@@ -285,6 +285,171 @@ export async function insertSurvey(
   `;
 }
 
+export interface SurveyExportRow {
+  at_uri: string;
+  did: string;
+  handle: string;
+  record: AtSurvey;
+  protocol_title: string;
+}
+
+export interface OccurrenceExportRow {
+  occurrence_at_uri: string | null;
+  survey_at_uri: string;
+  survey_target_at_uri: string | null;
+  occurrence_did: string | null;
+  survey_did: string;
+  occurrence_record: AtOccurrence | null;
+  scientific_name: string | null;
+  taxon_rank: string | null;
+  taxon_id: string | null;
+  is_presence: boolean;
+}
+
+// Note: handle is captured at export time. ATProto handles are mutable — a
+// user who changes their handle after a survey is exported will appear under
+// the old handle in that export.
+export function streamSurveysByProtocolUri(protocolUri: string) {
+  return sql<SurveyExportRow[]>`
+    SELECT
+      s.at_uri,
+      s.did,
+      u.handle,
+      s.record,
+      sp.record->>'title' AS protocol_title
+    FROM surveys s
+    JOIN survey_protocols sp ON sp.at_uri = s.protocol_uri
+    JOIN users u ON u.did = s.did
+    WHERE s.protocol_uri = ${protocolUri}
+    ORDER BY s.event_date ASC NULLS LAST, s.indexed_at ASC
+  `.cursor(50);
+}
+
+export interface SurveyTargetExportRow {
+  survey_at_uri: string;
+  survey_target_at_uri: string;
+  scientific_name: string | null;
+  taxon_id: string | null;
+  verbatim_scope: string | null;
+}
+
+// One row per (survey × protocol target) pair, ordered by survey then target.
+// This expansion is needed because DwC-DP's survey-target table links individual
+// surveys to their targets — our targets are defined at the protocol level but
+// apply to every survey under that protocol.
+export function streamSurveyTargetsByProtocolUri(protocolUri: string) {
+  return sql<SurveyTargetExportRow[]>`
+    SELECT
+      s.at_uri                                    AS survey_at_uri,
+      st.at_uri                                   AS survey_target_at_uri,
+      st.record->'scope'->0->>'scientificName'       AS scientific_name,
+      st.record->'scope'->0->>'taxonID'              AS taxon_id,
+      st.record->'scope'->0->>'verbatimTargetScope'  AS verbatim_scope
+    FROM surveys s
+    JOIN survey_targets st ON st.protocol_uri = s.protocol_uri
+    WHERE s.protocol_uri = ${protocolUri}
+    ORDER BY s.at_uri, st.at_uri
+  `.cursor(100);
+}
+
+// Presence rows for occurrences explicitly linked to a survey target.
+export function streamTargetedOccurrencesByProtocolUri(protocolUri: string) {
+  return sql<OccurrenceExportRow[]>`
+    SELECT
+      o.at_uri           AS occurrence_at_uri,
+      s.at_uri           AS survey_at_uri,
+      st.at_uri          AS survey_target_at_uri,
+      o.did              AS occurrence_did,
+      s.did              AS survey_did,
+      o.record           AS occurrence_record,
+      COALESCE(
+        i.record->>'scientificName',
+        st.record->'scope'->0->>'scientificName'
+      )                  AS scientific_name,
+      COALESCE(
+        i.record->>'taxonRank',
+        st.record->'scope'->0->>'taxonRank'
+      )                  AS taxon_rank,
+      COALESCE(
+        i.record->>'taxonID',
+        o.record->>'taxonID',
+        st.record->'scope'->0->>'taxonID'
+      )                  AS taxon_id,
+      true               AS is_presence
+    FROM surveys s
+    JOIN survey_targets st ON st.protocol_uri = s.protocol_uri
+    JOIN occurrences o
+      ON o.survey_uri = s.at_uri
+      AND o.record->>'surveyTargetID' = st.at_uri
+    LEFT JOIN identifications i
+      ON i.occurrence_uri = o.at_uri
+      AND i.at_uri = o.record->'acceptedIdentificationID'->>'uri'
+    WHERE s.protocol_uri = ${protocolUri}
+    ORDER BY s.at_uri, o.at_uri
+  `.cursor(100);
+}
+
+// Synthesized absence rows: one per (survey × target) pair where no occurrence was recorded.
+export function streamAbsencesByProtocolUri(protocolUri: string) {
+  return sql<OccurrenceExportRow[]>`
+    SELECT
+      NULL               AS occurrence_at_uri,
+      s.at_uri           AS survey_at_uri,
+      st.at_uri          AS survey_target_at_uri,
+      NULL               AS occurrence_did,
+      s.did              AS survey_did,
+      NULL               AS occurrence_record,
+      st.record->'scope'->0->>'scientificName' AS scientific_name,
+      st.record->'scope'->0->>'taxonRank'      AS taxon_rank,
+      st.record->'scope'->0->>'taxonID'        AS taxon_id,
+      false              AS is_presence
+    FROM surveys s
+    JOIN survey_targets st ON st.protocol_uri = s.protocol_uri
+    LEFT JOIN occurrences o
+      ON o.survey_uri = s.at_uri
+      AND o.record->>'surveyTargetID' = st.at_uri
+    WHERE s.protocol_uri = ${protocolUri}
+      AND o.at_uri IS NULL
+    ORDER BY s.at_uri, st.at_uri
+  `.cursor(100);
+}
+
+// Incidental occurrences: linked to a survey in this protocol but without a surveyTargetID.
+// survey_target_at_uri is NULL for these rows.
+export function streamIncidentalOccurrencesByProtocolUri(protocolUri: string) {
+  return sql<OccurrenceExportRow[]>`
+    SELECT
+      o.at_uri           AS occurrence_at_uri,
+      s.at_uri           AS survey_at_uri,
+      NULL               AS survey_target_at_uri,
+      o.did              AS occurrence_did,
+      s.did              AS survey_did,
+      o.record           AS occurrence_record,
+      COALESCE(
+        i.record->>'scientificName',
+        o.record->>'scientificName'
+      )                  AS scientific_name,
+      COALESCE(
+        i.record->>'taxonRank',
+        o.record->>'taxonRank'
+      )                  AS taxon_rank,
+      COALESCE(
+        i.record->>'taxonID',
+        o.record->>'taxonID'
+      )                  AS taxon_id,
+      true               AS is_presence
+    FROM surveys s
+    JOIN occurrences o
+      ON o.survey_uri = s.at_uri
+      AND (o.record->>'surveyTargetID' IS NULL OR o.record->>'surveyTargetID' = '')
+    LEFT JOIN identifications i
+      ON i.occurrence_uri = o.at_uri
+      AND i.at_uri = o.record->'acceptedIdentificationID'->>'uri'
+    WHERE s.protocol_uri = ${protocolUri}
+    ORDER BY s.at_uri, o.at_uri
+  `.cursor(100);
+}
+
 export async function getSurveyOwnerDid(atUri: string): Promise<string | null> {
   const [row] = await sql<{ did: string }[]>`
     SELECT did FROM surveys WHERE at_uri = ${atUri}

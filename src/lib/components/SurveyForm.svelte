@@ -718,7 +718,7 @@ function displayCount(qty: undefined | string | number) {
 }
 </script>
 
-<main class="mx-auto max-w-2xl px-4">
+<main>
   <div class="flex min-h-dvh flex-col pt-8">
 
   {#if sessionExpired}

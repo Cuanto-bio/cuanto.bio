@@ -40,9 +40,9 @@ afterNavigate(() => {
   protocol={data.protocol}
   followerCount={data.followerCount}
   isFollowing={data.isFollowing}
-  canFollow={!data.offline}
-  offline={data.offline}
+  isOffline={data.offline}
   isOwner={data.isOwner}
+  isSignedIn={!!data.did}
   {lastSurveyByTargetUri}
   onAfterFollowChange={() => syncOfflineData(fetch)}
 />

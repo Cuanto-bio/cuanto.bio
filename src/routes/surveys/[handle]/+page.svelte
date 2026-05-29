@@ -14,7 +14,7 @@ function formatDuration(value: number | null, unit: string | null): string {
 }
 </script>
 
-<main class="mx-auto max-w-2xl px-4 pb-8">
+<main>
   <h1 class="mb-6 text-2xl font-semibold">@{data.handle}'s Surveys</h1>
 
   {#if data.surveys.length === 0}
