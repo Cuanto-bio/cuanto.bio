@@ -247,11 +247,11 @@ const externalLinkProps =
           </div>
         </Card.Content>
       </div>
-      <div class="min-w-1/3 h-[200px] md:h-auto">
-        {#if geo.lat && geo.lon}
+      {#if geo.lat && geo.lon}
+        <div class="min-w-1/3 h-[200px] md:h-auto">
           <GeoMap latitude={geo.lat} longitude={geo.lon} class="rounded-t-none h-full" />
-        {/if}
-      </div>
+        </div>
+      {/if}
     </div>
   </Card.Root>
 
