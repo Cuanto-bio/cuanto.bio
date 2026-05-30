@@ -4,6 +4,7 @@ import {
   seedProtocolWithLocationOptions,
   seedProtocolWithManyLocationOptions,
   seedSurvey,
+  seedSurveyWithCoordinates,
   teardownDid,
   test,
 } from './fixtures.js';
@@ -1613,5 +1614,86 @@ test('/app/surveys renders surveys in createdAt DESC order', async ({
     await expect(items.nth(1)).toContainText('Older Site');
   } finally {
     await teardownDid(sql, ORDER_DID);
+  }
+});
+
+const COORDS_DID = 'did:test:survey-spec-coords';
+const COORDS_HANDLE = 'user-survey-spec-coords';
+
+test('survey detail shows coordinates and map when survey has geo location', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: 'did',
+      value: COORDS_DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  const { protocolRkey } = await seedProtocol(sql, COORDS_DID);
+  const protocolUri = `at://${COORDS_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const { surveyRkey } = await seedSurveyWithCoordinates(
+    sql,
+    COORDS_DID,
+    protocolUri,
+    'Geo Test Park',
+    '37.7749',
+    '-122.4194',
+  );
+
+  try {
+    await page.goto(`/app/protocols/${COORDS_HANDLE}/${protocolRkey}`);
+    await page.waitForLoadState('networkidle');
+    await page.goto(`/app/surveys/${COORDS_HANDLE}/${surveyRkey}`);
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByText('37.7749, -122.4194')).toBeVisible();
+    await expect(page.locator('[data-testid="geo-map"]')).toBeVisible();
+  } finally {
+    await teardownDid(sql, COORDS_DID);
+  }
+});
+
+test('survey detail does not show coordinates or map when survey has no geo location', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: 'did',
+      value: COORDS_DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  const { protocolRkey } = await seedProtocol(sql, COORDS_DID);
+  const protocolUri = `at://${COORDS_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const { surveyRkey } = await seedSurvey(
+    sql,
+    COORDS_DID,
+    protocolUri,
+    'No Coords Park',
+  );
+
+  try {
+    await page.goto(`/app/protocols/${COORDS_HANDLE}/${protocolRkey}`);
+    await page.waitForLoadState('networkidle');
+    await page.goto(`/app/surveys/${COORDS_HANDLE}/${surveyRkey}`);
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByText('Coordinates:')).not.toBeVisible();
+    await expect(page.locator('[data-testid="geo-map"]')).not.toBeVisible();
+  } finally {
+    await teardownDid(sql, COORDS_DID);
   }
 });

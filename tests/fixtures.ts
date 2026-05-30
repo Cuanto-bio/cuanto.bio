@@ -192,6 +192,39 @@ export async function seedSurvey(
   return { surveyRkey: rkey };
 }
 
+export async function seedSurveyWithCoordinates(
+  sql: Sql,
+  did: string,
+  protocolUri: string,
+  locationName = 'Test Location',
+  latitude = '37.7749',
+  longitude = '-122.4194',
+): Promise<{ surveyRkey: string }> {
+  const rkey = `testsurvey${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  const atUri = `at://${did}/bio.lexicons.temp.v0-1.survey/${rkey}`;
+  const record = {
+    $type: 'bio.lexicons.temp.v0-1.survey',
+    protocol: { uri: protocolUri, cid: FAKE_CID },
+    createdAt: new Date().toISOString(),
+    location: {
+      $type: 'org.atgeo.place',
+      name: locationName,
+      locations: [
+        {
+          $type: 'community.lexicon.location.geo',
+          latitude,
+          longitude,
+        },
+      ],
+    },
+  };
+  await sql`
+    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, created_at, record, indexed_at)
+    VALUES (${atUri}, ${did}, ${rkey}, ${protocolUri}, now(), ${sql.json(record)}, now())
+  `;
+  return { surveyRkey: rkey };
+}
+
 export async function seedOccurrence(
   sql: Sql,
   did: string,

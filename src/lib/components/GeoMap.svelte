@@ -8,13 +8,18 @@ type Props = {
   longitude: string;
   oncoordinate?: (lat: string, lng: string) => void;
   class?: string;
+  zoom?: number;
 };
+
+const DEFAULT_ZOOM = 1;
+const DEFAULT_ZOOM_WITH_COORDS = 8;
 
 let {
   latitude,
   longitude,
   oncoordinate,
   class: className = '',
+  zoom: zoomProp,
 }: Props = $props();
 
 let container: HTMLDivElement;
@@ -37,8 +42,11 @@ onMount(async () => {
   const ml = await import('maplibre-gl');
   MarkerCls = ml.Marker;
   const coords = parsedCoords();
+  const zoom =
+    zoomProp ?? (coords ? DEFAULT_ZOOM_WITH_COORDS : DEFAULT_ZOOM_WITH_COORDS);
   map = new ml.Map({
     container,
+    cooperativeGestures: true,
     style: {
       version: 8,
       sources: {
@@ -54,9 +62,10 @@ onMount(async () => {
       layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
     },
     center: coords ?? [0, 0],
-    zoom: coords ? 12 : 1,
+    zoom,
     attributionControl: false,
   });
+  map.addControl(new ml.AttributionControl({ compact: true }));
   map.on('click', (e) => {
     if (suppressNextClick) {
       suppressNextClick = false;
@@ -81,8 +90,10 @@ $effect(() => {
     if (marker) {
       marker.setLngLat(coords);
     } else {
-      map.setZoom(12);
-      const m = new MarkerCls({ draggable: true }).setLngLat(coords).addTo(map);
+      map.setZoom(DEFAULT_ZOOM_WITH_COORDS);
+      const m = new MarkerCls({ draggable: !!oncoordinate })
+        .setLngLat(coords)
+        .addTo(map);
       m.on('dragend', () => {
         suppressNextClick = true;
         const { lat, lng } = m.getLngLat();

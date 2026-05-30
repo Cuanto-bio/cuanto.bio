@@ -2,6 +2,7 @@
 import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
 import ExternalLink from '@lucide/svelte/icons/external-link';
 import PencilIcon from '@lucide/svelte/icons/pencil';
+import GeoMap from '$lib/components/GeoMap.svelte';
 import TargetFilterControls from '$lib/components/TargetFilterControls.svelte';
 import type { TaxonProp } from '$lib/components/Taxon.svelte';
 import Taxon from '$lib/components/Taxon.svelte';
@@ -16,6 +17,7 @@ import type {
 } from '$lib/offline/db';
 import { createTargetFilter } from '$lib/targets.svelte';
 import Button from './Button.svelte';
+import * as Table from './ui/table';
 
 function parseAtUri(atUri: string): { did: string; rkey: string } {
   // atUri format: at://{did}/{collection}/{rkey}
@@ -30,6 +32,18 @@ interface Props {
 }
 
 let { protocol, survey, editable = false }: Props = $props();
+
+function extractGeo(s: Survey): { lat: string | null; lon: string | null } {
+  const entry = s.record.location?.locations?.find(
+    (l) => (l as { $type?: string }).$type === 'community.lexicon.location.geo',
+  ) as { latitude?: string; longitude?: string } | undefined;
+  return {
+    lat: entry?.latitude ? String(entry.latitude) || null : null,
+    lon: entry?.longitude ? String(entry.longitude) || null : null,
+  };
+}
+
+const geo = $derived(extractGeo(survey));
 
 const targetUris = $derived(new Set(protocol.targets.map((t) => t.atUri)));
 
@@ -172,39 +186,73 @@ const externalLinkProps =
       </Button>
     {/if}
   </div>
-  <Card.Root class="mb-6">
-    <Card.Header>
-      <Card.Title>{survey.protocolTitle}</Card.Title>
-      <Card.Description>{survey.record.location.name}</Card.Description>
-    </Card.Header>
-    <Card.Content class="space-y-2 text-sm">
-      <div>
-        <span class="text-muted-foreground font-medium">Date:</span>
-        <span class="ml-2">{formatDate(survey.record.eventDate ?? null)}</span>
+  <Card.Root class="mb-6 p-0">
+    <div class="flex flex-col md:flex-row">
+      <div class="py-6 flex-1">
+        <Card.Header>
+          <Card.Title>{survey.protocolTitle}</Card.Title>
+          <Card.Description>{survey.record.location.name}</Card.Description>
+        </Card.Header>
+        <Card.Content class="space-y-2 text-sm">
+          <div class="table-compact">
+            <Table.Root class="text-sm">
+              <Table.Body>
+                <Table.Row>
+                  <Table.Head>Date</Table.Head>
+                  <Table.Cell>{formatDate(survey.record.eventDate ?? null)}</Table.Cell>
+                </Table.Row>
+                {#if survey.record.eventDurationValue != null}
+                  <Table.Row>
+                    <Table.Head>Duration</Table.Head>
+                    <Table.Cell>
+                      {survey.record.eventDurationValue}
+                      {survey.record.eventDurationUnit ?? 'min'}
+                    </Table.Cell>
+                  </Table.Row>
+                {/if}
+                {#if survey.record.surveyorCount != null}
+                  <Table.Row>
+                    <Table.Head>Surveyors</Table.Head>
+                    <Table.Cell>{survey.record.surveyorCount}</Table.Cell>
+                  </Table.Row>
+                {/if}
+                {#if geo.lat && geo.lon}
+                  <Table.Row>
+                    <Table.Head>Coordinates</Table.Head>
+                    <Table.Cell>
+                      <p>
+                        <a
+                          href="https://www.openstreetmap.org/?mlat={geo.lat}&mlon={geo.lon}"
+                          class="flex items-center gap-2"
+                        >
+                          {geo.lat}, {geo.lon}
+                          <ExternalLink class="size-4" />
+                        </a>
+                      </p>
+                    </Table.Cell>
+                  </Table.Row>
+                {/if}
+                <Table.Row>
+                  <Table.Head class="ps-0">Protocol</Table.Head>
+                  <Table.Cell>
+                    <p>
+                      <a
+                        href="/app/protocols/{survey.protocolHandle}/{survey.protocolRkey}"
+                      >{survey.protocolTitle}</a>
+                    </p>
+                  </Table.Cell>
+                </Table.Row>
+              </Table.Body>
+            </Table.Root>
+          </div>
+        </Card.Content>
       </div>
-      {#if survey.record.eventDurationValue != null}
-        <div>
-          <span class="text-muted-foreground font-medium">Duration:</span>
-          <span class="ml-2">
-            {survey.record.eventDurationValue}
-            {survey.record.eventDurationUnit ?? 'min'}
-          </span>
-        </div>
-      {/if}
-      {#if survey.record.surveyorCount != null}
-        <div>
-          <span class="text-muted-foreground font-medium">Surveyors:</span>
-          <span class="ml-2">{survey.record.surveyorCount}</span>
-        </div>
-      {/if}
-      <div>
-        <span class="text-muted-foreground font-medium">Protocol:</span>
-        <a
-          href="/app/protocols/{survey.protocolHandle}/{survey.protocolRkey}"
-          class="text-primary ml-2 underline"
-        >{survey.protocolTitle}</a>
+      <div class="min-w-1/3 h-[200px] md:h-auto">
+        {#if geo.lat && geo.lon}
+          <GeoMap latitude={geo.lat} longitude={geo.lon} class="rounded-t-none h-full" />
+        {/if}
       </div>
-    </Card.Content>
+    </div>
   </Card.Root>
 
   <h2 class="mb-3 text-lg font-semibold">
@@ -245,21 +293,25 @@ const externalLinkProps =
     <h2 class="mb-3 mt-6 text-lg font-semibold">Incidentals ({incidentalOccs.length})</h2>
     <ul class="flex flex-col gap-3">
       {#each incidentalOccs as occurrence (occurrence.atUri)}
-<!--         <li class="flex items-center justify-between rounded border px-4 py-3">
-          <span class="text-sm">
-            {#if occ.identification?.vernacularName}
-              <span class="font-medium">{occ.identification.vernacularName}</span>
-              <span class="text-muted-foreground ml-1 italic">({occ.identification.scientificName})</span>
-            {:else if occ.identification?.scientificName}
-              <span class="font-medium italic">{occ.identification.scientificName}</span>
-            {:else}
-              <span class="text-muted-foreground italic">Unknown taxon</span>
-            {/if}
-          </span>
-          <span class="font-mono text-sm font-semibold">{occ.record.organismQuantity ?? 0}</span>
-        </li> -->
         {@render surveyTargetRow({ occurrence, taxon: occurrence.identification })}
       {/each}
     </ul>
   {/if}
 </main>
+
+<style>
+  .table-compact {
+    :global(th) {
+      padding-inline-start: 0;
+      line-height: calc(var(--tw-leading, var(--text-sm--line-height)) * 1.6);
+      height: auto;
+    }
+    :global(tr) {
+      border: 0;
+    }
+    :global(td) {
+      padding: 0;
+      line-height: calc(var(--tw-leading, var(--text-sm--line-height)) * 1.6);
+    }
+  }
+</style>
