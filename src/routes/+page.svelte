@@ -5,7 +5,7 @@ import Wordmark from '$lib/components/wordmark.svelte';
 let { data } = $props();
 </script>
 
-<section class="hero">
+<section class="hero -mx-4">
   <div class="bg-dots" aria-hidden="true"></div>
   <div class="bg-halo" aria-hidden="true"></div>
 
