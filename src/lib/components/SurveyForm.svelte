@@ -342,7 +342,7 @@ beforeNavigate(() => {
   if (isEdit) return;
   if (navigatingAway || !startedAt) return;
   autoSave().then(
-    () => toast.info('Survey saved — resume from Surveys'),
+    () => toast.info('Survey saved. Resume from Surveys'),
     () => toast.error('Could not save survey draft'),
   );
 });
@@ -725,8 +725,8 @@ function displayCount(qty: undefined | string | number) {
     <Alert.Root class="mb-6 border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
       <Alert.Title>Session expired</Alert.Title>
       <Alert.Description>
-        Your connection to the AT Protocol network has expired. Your survey is saved —
-        sign in again to upload it.
+        Your connection to the AT Protocol network has expired. Your survey is saved.
+        Sign in again to upload it.
         <a href="/auth/signin?returnTo=/app/surveys" class="underline font-medium ml-1">
           Sign in
         </a>
@@ -1159,7 +1159,7 @@ function displayCount(qty: undefined | string | number) {
       {#if !isEdit && hasUnresolvedIncidentals(incidentals)}
         {@const unresolvedCount = incidentals.filter((i) => !i.taxonID).length}
         <p class="text-sm text-yellow-700 dark:text-yellow-400 mt-1">
-          {unresolvedCount} incidental{unresolvedCount === 1 ? '' : 's'} without taxa — you can resolve them before uploading.
+          {unresolvedCount} incidental{unresolvedCount === 1 ? '' : 's'} without taxa. You can resolve them before uploading.
         </p>
       {/if}
     </AlertDialog.Header>

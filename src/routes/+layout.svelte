@@ -8,12 +8,15 @@ import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 import { Collapsible } from 'bits-ui';
 import favicon from '$lib/assets/favicon.svg';
 import * as Alert from '$lib/components/alert';
+import InstallFooter from '$lib/components/InstallFooter.svelte';
+import InstallPromptDialog from '$lib/components/InstallPromptDialog.svelte';
 import MobileHeader from '$lib/components/mobile-header.svelte';
 import MobileNav from '$lib/components/mobile-nav.svelte';
 import AppSidebar from '$lib/components/sidebar.svelte';
 import { SidebarProvider, SidebarTrigger } from '$lib/components/ui/sidebar';
 import { Toaster } from '$lib/components/ui/sonner';
 import { useOnline } from '$lib/composables/online.svelte';
+import { install } from '$lib/pwa/install.svelte';
 
 let { children } = $props();
 
@@ -29,6 +32,10 @@ afterNavigate(({ from, to }) => {
 });
 
 onMount(() => {
+  // Detect installed state early (appinstalled event + getInstalledRelatedApps)
+  // so we can suppress the prompt before any user interaction.
+  install.init();
+
   if ('serviceWorker' in navigator) {
     // Register at an absolute path so the scope is always the origin root,
     // regardless of the base URL. Use type:'module' in dev because Vite serves
@@ -88,9 +95,11 @@ onMount(() => {
     <div class="mobile-scroll">
       <div class="mx-auto max-w-4xl px-4 pb-8">
         {@render children()}
+        <InstallFooter />
       </div>
     </div>
     <MobileNav did={page.data.did ?? undefined} avatarUrl={page.data.avatarUrl ?? undefined} />
   </main>
 </SidebarProvider>
+<InstallPromptDialog />
 <Toaster richColors />

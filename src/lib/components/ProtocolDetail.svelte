@@ -13,6 +13,7 @@ import type { Main as LocationBbox } from '$lib/lexicons/community/lexicon/locat
 import type { Main as LocationGeo } from '$lib/lexicons/community/lexicon/location/geo.defs';
 import type { Protocol, TaxonScope, VerbatimScope } from '$lib/offline/db';
 import { LOCATION_COMBOBOX_THRESHOLD } from '$lib/places';
+import { install } from '$lib/pwa/install.svelte';
 import { sanitizeHtml } from '$lib/sanitize';
 import Handle from './handle.svelte';
 import Taxon from './Taxon.svelte';
@@ -153,6 +154,9 @@ function formatSurveyDate(iso: string) {
                 isFollowing = true;
                 followerCount = ogFollowerCount + 1;
                 onAfterFollowChange();
+                // Nudge the user to install the PWA after they commit to a
+                // protocol (suppressed if not applicable or already dismissed).
+                install.maybeAutoPrompt();
               } else {
                 isFollowing = false;
                 followerCount = ogFollowerCount;
