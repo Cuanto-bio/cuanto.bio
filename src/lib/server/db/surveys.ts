@@ -7,6 +7,7 @@ import sql from './index.js';
 
 interface SurveyRow {
   at_uri: string;
+  did: string;
   rkey: string;
   handle: string;
   avatar_url: string | null;
@@ -30,6 +31,7 @@ interface SurveyTargetRow {
 const surveysFromJoin = sql`
   SELECT
     s.at_uri,
+    s.did,
     s.rkey,
     u.handle,
     u.avatar_url,
@@ -149,6 +151,7 @@ export function toSurveyResponse(
 ): Survey[] {
   return surveys.map((s) => ({
     atUri: s.at_uri,
+    did: s.did,
     rkey: s.rkey,
     handle: s.handle,
     avatarUrl: s.avatar_url ?? undefined,
@@ -190,6 +193,7 @@ export async function getSurveysPage(limit: number = 100, offset: number = 0) {
   const surveyRows = await sql<SurveyRow[]>`
     SELECT
       s.at_uri,
+      s.did,
       s.rkey,
       u.handle,
       u.avatar_url,
@@ -219,6 +223,7 @@ export async function getSurveysPageByDid(
   const surveyRows = await sql<SurveyRow[]>`
     SELECT
       s.at_uri,
+      s.did,
       s.rkey,
       u.handle,
       u.avatar_url,

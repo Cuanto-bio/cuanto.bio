@@ -310,6 +310,7 @@ describe('pending-surveys store', () => {
 
 const survey1 = {
   atUri: 'at://did:test:1/bio.lexicons.temp.v0-1.survey/cs1',
+  did: 'did:test:1',
   rkey: 'cs1',
   handle: 'bob',
   protocolHandle: 'alice',

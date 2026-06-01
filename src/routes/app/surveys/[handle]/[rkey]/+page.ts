@@ -1,4 +1,4 @@
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import logger from '$lib/logger';
 import {
   type CachedSurvey,
@@ -12,6 +12,10 @@ const log = logger.child({ component: 'app-survey-detail' });
 
 export const load: PageLoad = async ({ fetch, params, parent, url }) => {
   const { handle: userHandle } = await parent();
+
+  if (userHandle !== params.handle)
+    redirect(302, `/surveys/${params.handle}/${params.rkey}${url.search}`);
+
   async function fetchAndCacheSurvey() {
     try {
       const res = await fetch(`/api/surveys/${params.handle}/${params.rkey}`);
@@ -44,7 +48,5 @@ export const load: PageLoad = async ({ fetch, params, parent, url }) => {
   // TODO get remote protocol if we don't have it in the cache
   if (!protocol) return error(404, 'Procotol not found');
 
-  const isOwner = userHandle === params.handle;
-
-  return { survey, protocol, isOwner };
+  return { survey, protocol, isOwner: true };
 };

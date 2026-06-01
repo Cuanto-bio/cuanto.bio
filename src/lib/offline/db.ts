@@ -44,6 +44,7 @@ export interface Occurrence {
 
 export interface Survey {
   atUri: string;
+  did: string;
   rkey: string;
   handle: string;
   avatarUrl?: string;
