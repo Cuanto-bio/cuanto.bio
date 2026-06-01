@@ -1660,6 +1660,44 @@ test('survey detail shows coordinates and map when survey has geo location', asy
   }
 });
 
+const MISSING_PROTOCOL_DID = 'did:test:survey-spec-missing-protocol';
+const MISSING_PROTOCOL_HANDLE = 'user-survey-spec-missing-protocol';
+
+test('survey detail loads when protocol is not cached in IDB', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: 'did',
+      value: MISSING_PROTOCOL_DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  const { protocolRkey } = await seedProtocol(sql, MISSING_PROTOCOL_DID);
+  const protocolUri = `at://${MISSING_PROTOCOL_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const { surveyRkey } = await seedSurvey(
+    sql,
+    MISSING_PROTOCOL_DID,
+    protocolUri,
+    'Test Park',
+  );
+
+  try {
+    // Navigate directly to the survey without pre-caching the protocol
+    await page.goto(`/app/surveys/${MISSING_PROTOCOL_HANDLE}/${surveyRkey}`);
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText('Test Park')).toBeVisible();
+  } finally {
+    await teardownDid(sql, MISSING_PROTOCOL_DID);
+  }
+});
+
 test('survey detail does not show coordinates or map when survey has no geo location', async ({
   page,
   sql,

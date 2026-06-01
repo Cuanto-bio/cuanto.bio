@@ -2,9 +2,11 @@ import { error, redirect } from '@sveltejs/kit';
 import logger from '$lib/logger';
 import {
   type CachedSurvey,
+  cacheProtocol,
   cacheSurvey,
   getCachedProtocolByRkey,
   getCachedSurveyByRkey,
+  type Protocol,
 } from '$lib/offline/db';
 import type { PageLoad } from './$types';
 
@@ -44,9 +46,24 @@ export const load: PageLoad = async ({ fetch, params, parent, url }) => {
   }
   if (!survey) return error(404, 'Survey not found');
 
-  const protocol = await getCachedProtocolByRkey(survey.protocolRkey);
-  // TODO get remote protocol if we don't have it in the cache
-  if (!protocol) return error(404, 'Procotol not found');
+  let protocol: Protocol | undefined = await getCachedProtocolByRkey(
+    survey.protocolRkey,
+  );
+  if (!protocol) {
+    try {
+      const res = await fetch(
+        `/api/protocols/${survey.protocolHandle}/${survey.protocolRkey}`,
+      );
+      if (res.ok) {
+        const data: { protocol: Protocol } = await res.json();
+        await cacheProtocol(data.protocol);
+        protocol = data.protocol;
+      }
+    } catch (err) {
+      log.error({ err }, 'Failed to fetch missing protocol');
+    }
+  }
+  if (!protocol) return error(404, 'Protocol not found');
 
   return { survey, protocol, isOwner: true };
 };
