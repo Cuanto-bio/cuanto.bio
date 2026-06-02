@@ -291,7 +291,7 @@ const externalLinkProps =
 
   {#if incidentalOccs.length > 0}
     <h2 class="mb-3 mt-6 text-lg font-semibold">Incidentals ({incidentalOccs.length})</h2>
-    <ul class="flex flex-col gap-3">
+    <ul class="flex flex-col gap-0">
       {#each incidentalOccs as occurrence (occurrence.atUri)}
         {@render surveyTargetRow({ occurrence, taxon: occurrence.identification })}
       {/each}
