@@ -67,7 +67,7 @@ onMount(() => {
 </svelte:head>
 <SidebarProvider>
   <AppSidebar did={page.data.did ?? undefined} handle={page.data.handle ?? undefined} avatarUrl={page.data.avatarUrl ?? undefined} />
-  <main class="flex-1 mobile-main">
+  <main class="flex-1 mobile-main flex flex-col">
     <div class="sidebar-trigger-wrapper"><SidebarTrigger /></div>
     <MobileHeader />
     {#if !online.value}
@@ -92,8 +92,8 @@ onMount(() => {
         </Collapsible.Trigger>
       </Collapsible.Root>
     </div>
-    <div class="mobile-scroll">
-      <div class="mx-auto max-w-4xl px-4 pb-8">
+    <div class="mobile-scroll flex-1 overflow-y-auto">
+      <div class="mx-auto max-w-4xl px-4 pb-8 flex flex-col min-h-full">
         {@render children()}
         <InstallFooter />
       </div>

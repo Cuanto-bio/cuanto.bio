@@ -1,8 +1,6 @@
 <script lang="ts">
 import { Button } from '$lib/components/ui/button/index.js';
 import Wordmark from '$lib/components/wordmark.svelte';
-
-let { data } = $props();
 </script>
 
 <section class="hero -mx-4">
@@ -20,7 +18,7 @@ let { data } = $props();
     </p>
 
     <div class="flex flex-col items-center justify-center gap-4 my-6 max-w-3/4 mx-auto">
-      <Button href="/auth/signin" class="w-full">
+      <Button href="/app/protocols/following" class="w-full">
         Start Counting!
       </Button>
       <Button variant="outline" href="/protocols" class="w-full">
@@ -33,7 +31,7 @@ let { data } = $props();
 <style>
   .hero {
     position: relative;
-    min-height: calc(100dvh - 48px);
+    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;

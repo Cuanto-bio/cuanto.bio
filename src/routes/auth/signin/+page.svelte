@@ -44,7 +44,7 @@ $effect(() => {
 });
 </script>
 
-<main class="flex min-h-screen items-center justify-center">
+<div class="flex-1 flex items-center justify-center">
   <Card.Root class="w-96">
     <Card.Header>
       <Card.Title>Sign in</Card.Title>
@@ -90,4 +90,4 @@ $effect(() => {
       </Card.Description>
     </Card.Footer>
   </Card.Root>
-</main>
+</div>
