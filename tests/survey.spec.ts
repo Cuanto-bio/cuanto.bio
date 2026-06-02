@@ -459,6 +459,21 @@ test.describe('finish survey confirmation dialog', () => {
     await expect(page.getByText('Location name is required')).toBeVisible();
     await expect(page).toHaveURL(/\/app\/surveys\/new\//);
   });
+
+  test('scrolls location field into view when location is missing', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 300 });
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    const locationInput = page.getByPlaceholder('e.g. Mission Dolores Park');
+    // Scroll so location is out of view, then confirm it is actually not visible.
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await expect(locationInput).not.toBeInViewport();
+    await confirmFinishSurvey(page);
+    await expect(page.getByText('Location name is required')).toBeVisible();
+    await expect(locationInput).toBeInViewport();
+  });
 });
 
 // ── Protocol link removed ─────────────────────────────────────────────────────

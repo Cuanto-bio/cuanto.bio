@@ -1,6 +1,6 @@
 <script lang="ts">
 import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
-import { onMount } from 'svelte';
+import { onMount, tick } from 'svelte';
 import { toast } from 'svelte-sonner';
 import { beforeNavigate, goto, replaceState } from '$app/navigation';
 import * as Alert from '$lib/components/alert';
@@ -436,8 +436,9 @@ function buildEditPayload() {
 async function finish() {
   if (!locationName.trim()) {
     locationError = 'Location name is required';
-    locationFieldEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     finishDialogOpen = false;
+    await tick();
+    locationFieldEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
   if (mode === 'past') {
