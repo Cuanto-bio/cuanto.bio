@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('$lib/server/pds', () => ({
   createRecord: vi.fn(),
@@ -283,6 +283,68 @@ describe('POST /api/surveys — incidentals', () => {
     expect(resp.status).toBe(200);
     expect(insertOccurrence).not.toHaveBeenCalled();
     expect(insertIdentification).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/surveys — eventDate validation', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-02T12:00:00Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test('returns 422 when eventDate is tomorrow (YYYY-MM-DD)', async () => {
+    const resp = await callPost({
+      request: makeRequest({ ...baseSurveyBody, eventDate: '2026-06-03' }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(422);
+  });
+
+  test('returns 422 when eventDate is a future datetime', async () => {
+    const resp = await callPost({
+      request: makeRequest({
+        ...baseSurveyBody,
+        eventDate: '2026-06-03T10:00:00.000Z',
+      }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(422);
+  });
+
+  test('returns 422 when eventDate is a future month (YYYY-MM)', async () => {
+    const resp = await callPost({
+      request: makeRequest({ ...baseSurveyBody, eventDate: '2026-07' }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(422);
+  });
+
+  test('returns 422 when eventDate is a future year (YYYY)', async () => {
+    const resp = await callPost({
+      request: makeRequest({ ...baseSurveyBody, eventDate: '2027' }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(422);
+  });
+
+  test('returns 200 when eventDate is today', async () => {
+    vi.mocked(createRecord).mockResolvedValue({
+      uri: `at://${DID}/bio.lexicons.temp.v0-1.survey/survey1`,
+      cid: FAKE_CID,
+    });
+    // biome-ignore lint/suspicious/noExplicitAny: sql mock needs any cast
+    vi.mocked(sql as any)
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([{ handle: 'alice' }]);
+    const resp = await callPost({
+      request: makeRequest({ ...baseSurveyBody, eventDate: '2026-06-02' }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
   });
 });
 

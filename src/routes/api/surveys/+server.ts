@@ -25,6 +25,7 @@ import {
 import logger from '$lib/server/logger';
 import { createRecord, PdsSessionExpiredError } from '$lib/server/pds';
 import { attachIdentificationToOccurrence } from '$lib/server/survey-records';
+import { eventDateIsInFuture } from '$lib/server/survey-validation';
 import type { IncidentalInput } from '$lib/surveys';
 import type { RequestHandler } from './$types';
 
@@ -201,6 +202,10 @@ async function postSurvey(request: Request, did: string) {
     if (!Number.isInteger(body.surveyorCount) || body.surveyorCount < 1) {
       throw error(422, 'surveyorCount must be a positive integer');
     }
+  }
+
+  if (eventDateIsInFuture(body.eventDate)) {
+    throw error(422, 'eventDate must not be in the future');
   }
 
   const { protocol, taxonScopeMap } = await fetchProtocolRecords(body);

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('$lib/server/pds', () => ({
   createRecord: vi.fn(),
@@ -471,6 +471,46 @@ describe('PUT /api/surveys/[handle]/[rkey]', () => {
       RKEY,
       expect.objectContaining({ createdAt: FAKE_SURVEY.record.createdAt }),
     );
+  });
+});
+
+describe('PUT /api/surveys/[handle]/[rkey] — eventDate validation', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-02T12:00:00Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test('returns 422 when eventDate is a future date', async () => {
+    const resp = await callPut(DID, {
+      ...basePutBody,
+      eventDate: '2026-06-03',
+    });
+    expect(resp.status).toBe(422);
+  });
+
+  test('returns 422 when eventDate is a future month (YYYY-MM)', async () => {
+    const resp = await callPut(DID, { ...basePutBody, eventDate: '2026-07' });
+    expect(resp.status).toBe(422);
+  });
+
+  test('returns 422 when eventDate is a future year (YYYY)', async () => {
+    const resp = await callPut(DID, { ...basePutBody, eventDate: '2027' });
+    expect(resp.status).toBe(422);
+  });
+
+  test('returns 200 when eventDate is today', async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey)
+      .mockResolvedValueOnce(FAKE_SURVEY as never)
+      .mockResolvedValueOnce(FAKE_SURVEY as never);
+    const resp = await callPut(DID, {
+      ...basePutBody,
+      eventDate: '2026-06-02',
+    });
+    expect(resp.status).toBe(200);
   });
 });
 
