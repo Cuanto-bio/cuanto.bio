@@ -957,7 +957,7 @@ function displayCount(qty: undefined | string | number) {
           {/each}
         </ul>
       {/if}
-      {#if targetFilter.filterQuery.trim() || targetFilter.onlyObserved}
+      {#if targetFilter.filterQuery.trim() || targetFilter.onlyCounted}
         <Button variant="ghost" class="w-full mb-4" onclick={() => targetFilter.reset()}>
           Show all targets
         </Button>

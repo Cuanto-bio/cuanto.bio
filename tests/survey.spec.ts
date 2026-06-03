@@ -318,7 +318,7 @@ test.describe('target sort and filter dropdown', () => {
   // Both scientific and common sorts should put "All birds" first (A < C and A < Q).
 
   async function openDropdown(page: import('@playwright/test').Page) {
-    await page.getByRole('button', { name: 'Sort and filter' }).click();
+    await page.getByRole('button', { name: 'Sort' }).click();
   }
 
   const targetList = (page: import('@playwright/test').Page) =>
@@ -350,16 +350,51 @@ test.describe('target sort and filter dropdown', () => {
     );
   });
 
-  test('"Only observed" hides targets with zero count', async ({
+  test('"Only counted" hides targets with zero count', async ({
     page,
     protocolRkey,
   }) => {
     await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
     await page.locator('[aria-label="Increase count"]').nth(0).click();
-    await openDropdown(page);
-    await page.getByRole('menuitemcheckbox', { name: 'Only observed' }).click();
+    await page.getByRole('button', { name: 'Only counted' }).click();
     await expect(page.getByText('Coast live oak')).toBeVisible();
     await expect(page.getByText('All birds')).not.toBeVisible();
+  });
+
+  test('tapping "Only counted" with nothing counted shows a toast', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page
+      .getByRole('button', { name: /Only counted/ })
+      .click({ force: true });
+    await expect(
+      page.getByText('Count a target to only show counted'),
+    ).toBeVisible();
+  });
+
+  test('activating "Only counted" clears the search query', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.locator('[aria-label="Increase count"]').nth(0).click();
+    await page.getByPlaceholder('Search targets…').fill('coast');
+    await page.getByRole('button', { name: /Only counted/ }).click();
+    await expect(page.getByPlaceholder('Search targets…')).toHaveValue('');
+  });
+
+  test('focusing the search input deactivates "Only counted"', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.locator('[aria-label="Increase count"]').nth(0).click();
+    await page.getByRole('button', { name: /Only counted/ }).click();
+    await expect(page.getByText('All birds')).not.toBeVisible();
+    await page.getByPlaceholder('Search targets…').click();
+    await expect(page.getByText('All birds')).toBeVisible();
   });
 
   test('"Show all targets" clears search query and observed filter', async ({

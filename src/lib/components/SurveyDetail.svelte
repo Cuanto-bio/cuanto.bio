@@ -64,7 +64,7 @@ const targetOccCount = $derived(
 const targetFilter = createTargetFilter(
   () => protocol.targets,
   (t) => survey.occurrences.some((o) => o.record.surveyTargetID === t.atUri),
-  { initialOnlyObserved: true },
+  { initialOnlyCounted: true },
 );
 
 function formatDate(iso: string | null): string {
@@ -264,11 +264,11 @@ const externalLinkProps =
     <p class="text-muted-foreground text-sm">
       {#if targetFilter.filterQuery.trim()}
         No targets match "{targetFilter.filterQuery.trim()}".
-      {:else if targetFilter.onlyObserved}
+      {:else if targetFilter.onlyCounted}
         No occurrences recorded.
         <button
           class="underline"
-          onclick={() => (targetFilter.onlyObserved = false)}
+          onclick={() => (targetFilter.onlyCounted = false)}
         >Show all targets</button>
       {:else}
         No occurrences recorded.

@@ -74,26 +74,28 @@ function sortTargets(targets: Target[], sort: TargetSort): Target[] {
  * `getTargets` is called reactively — pass a getter that reads from `$state`
  * so the filtered list stays in sync when the protocol loads or changes.
  *
- * `isObserved` determines whether a target counts as observed for the
- * "only observed" filter. The implementation differs between the survey form
+ * `isCounted` determines whether a target counts as counted for the
+ * "only counted" filter. The implementation differs between the survey form
  * (checks `organismQuantities`) and survey detail (checks `survey.occurrences`),
  * so it's injected as a predicate.
  *
- * `opts.initialOnlyObserved` sets the starting state of the filter toggle —
+ * `opts.initialOnlyCounted` sets the starting state of the filter toggle —
  * pass `true` on the detail page to hide unrecorded targets by default.
  */
 export function createTargetFilter(
   getTargets: () => Target[],
-  isObserved: (t: Target) => boolean,
-  opts?: { initialOnlyObserved?: boolean },
+  isCounted: (t: Target) => boolean,
+  opts?: { initialOnlyCounted?: boolean },
 ) {
   let filterQuery = $state('');
   let targetSort = $state<TargetSort>('default');
-  let onlyObserved = $state(opts?.initialOnlyObserved ?? false);
+  let onlyCounted = $state(opts?.initialOnlyCounted ?? false);
+
+  const hasCounted = $derived(getTargets().some(isCounted));
 
   const filtered = $derived.by(() => {
     const targets = getTargets().filter((t) => {
-      if (onlyObserved && !isObserved(t)) return false;
+      if (onlyCounted && !isCounted(t)) return false;
       if (!filterQuery.trim()) return true;
       return targetLabel(t.record.scope)
         .toLowerCase()
@@ -105,7 +107,7 @@ export function createTargetFilter(
   function reset() {
     filterQuery = '';
     targetSort = 'default';
-    onlyObserved = opts?.initialOnlyObserved ?? false;
+    onlyCounted = opts?.initialOnlyCounted ?? false;
   }
 
   return {
@@ -121,11 +123,14 @@ export function createTargetFilter(
     set targetSort(v: TargetSort) {
       targetSort = v;
     },
-    get onlyObserved() {
-      return onlyObserved;
+    get onlyCounted() {
+      return onlyCounted;
     },
-    set onlyObserved(v: boolean) {
-      onlyObserved = v;
+    set onlyCounted(v: boolean) {
+      onlyCounted = v;
+    },
+    get hasCounted() {
+      return hasCounted;
     },
     get filtered() {
       return filtered;

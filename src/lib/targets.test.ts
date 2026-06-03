@@ -128,12 +128,28 @@ describe('createTargetFilter', () => {
     expect(tf.filtered).toEqual(targets);
   });
 
-  test('onlyObserved hides targets where isObserved returns false', () => {
+  test('hasCounted is false when no targets pass isCounted', () => {
+    const tf = createTargetFilter(
+      () => targets,
+      () => false,
+    );
+    expect(tf.hasCounted).toBe(false);
+  });
+
+  test('hasCounted is true when at least one target passes isCounted', () => {
+    const tf = createTargetFilter(
+      () => targets,
+      (t) => t.atUri === hawk.atUri,
+    );
+    expect(tf.hasCounted).toBe(true);
+  });
+
+  test('onlyCounted hides targets where isCounted returns false', () => {
     const observed = new Set(['at://t/1', 'at://t/3']);
     const tf = createTargetFilter(
       () => targets,
       (t) => observed.has(t.atUri),
-      { initialOnlyObserved: true },
+      { initialOnlyCounted: true },
     );
     expect(tf.filtered.map((t) => t.atUri)).toEqual(['at://t/1', 'at://t/3']);
   });
@@ -206,28 +222,28 @@ describe('createTargetFilter', () => {
     ]);
   });
 
-  test('reset clears query, sort, and restores initialOnlyObserved=false', () => {
+  test('reset clears query, sort, and restores initialOnlyCounted=false', () => {
     const tf = createTargetFilter(
       () => targets,
       () => true,
     );
     tf.filterQuery = 'hawk';
     tf.targetSort = 'scientific';
-    tf.onlyObserved = true;
+    tf.onlyCounted = true;
     tf.reset();
     expect(tf.filterQuery).toBe('');
     expect(tf.targetSort).toBe('default');
-    expect(tf.onlyObserved).toBe(false);
+    expect(tf.onlyCounted).toBe(false);
   });
 
-  test('reset restores initialOnlyObserved=true', () => {
+  test('reset restores initialOnlyCounted=true', () => {
     const tf = createTargetFilter(
       () => targets,
       () => false,
-      { initialOnlyObserved: true },
+      { initialOnlyCounted: true },
     );
-    tf.onlyObserved = false;
+    tf.onlyCounted = false;
     tf.reset();
-    expect(tf.onlyObserved).toBe(true);
+    expect(tf.onlyCounted).toBe(true);
   });
 });
