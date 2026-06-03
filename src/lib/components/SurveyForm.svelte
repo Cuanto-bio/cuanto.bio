@@ -350,11 +350,13 @@ beforeNavigate(() => {
 // ─── auto-save (new mode only) ───────────────────────────────────────────────
 
 function buildNewSurveyPayload(complete: boolean): PendingSurvey {
-  const occurrences = protocol.targets.map((t) => ({
-    surveyTargetUri: t.atUri,
-    taxonID: targetTaxonID(t.record.scope),
-    organismQuantity: organismQuantities[t.atUri] || '0',
-  }));
+  const occurrences = protocol.targets
+    .filter((t) => Number(organismQuantities[t.atUri]) > 0)
+    .map((t) => ({
+      surveyTargetUri: t.atUri,
+      taxonID: targetTaxonID(t.record.scope),
+      organismQuantity: organismQuantities[t.atUri],
+    }));
   const { eventDate, eventDurationValue } = complete
     ? buildSurveyTiming(
         mode,
