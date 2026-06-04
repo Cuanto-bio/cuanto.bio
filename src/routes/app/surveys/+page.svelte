@@ -9,9 +9,14 @@ import SurveyCard from '$lib/components/SurveyCard.svelte';
 import * as AlertDialog from '$lib/components/ui/alert-dialog';
 import { Badge } from '$lib/components/ui/badge';
 import { Button } from '$lib/components/ui/button';
+import { Checkbox } from '$lib/components/ui/checkbox';
 import { useOnline } from '$lib/composables/online.svelte';
 import type { PendingSurvey } from '$lib/offline/db';
-import { deletePendingSurvey, getPendingSurveys } from '$lib/offline/db';
+import {
+  deletePendingSurvey,
+  getPendingSurveys,
+  updatePendingSurvey,
+} from '$lib/offline/db';
 import { PdsSessionExpiredError, uploadAllPending } from '$lib/offline/upload';
 import { hasUnresolvedIncidentals } from '$lib/surveys';
 
@@ -41,7 +46,7 @@ onMount(() => {
   getPendingSurveys().then(async (pending) => {
     allPendingSurveys = pending;
     if (navigator.onLine && pending.some((s) => s.complete)) {
-      await tryUpload();
+      // await tryUpload();
     }
   });
 });
@@ -66,6 +71,24 @@ async function confirmDelete() {
   await deletePendingSurvey(deleteTargetId);
   allPendingSurveys = allPendingSurveys.filter((s) => s.id !== deleteTargetId);
   deleteTargetId = null;
+}
+
+async function togglePublishField(
+  survey: PendingSurvey,
+  field: 'publishPoint' | 'publishBbox' | 'publishTrack',
+) {
+  if (survey.id == null) return;
+  // $state.snapshot strips Svelte reactive proxies from nested arrays/objects
+  // (gpsTrack, gpsBbox, …) so IDB structured-clone can serialize the record.
+  const updated = {
+    ...$state.snapshot(survey),
+    id: survey.id,
+    [field]: !survey[field],
+  } as PendingSurvey & { id: number };
+  await updatePendingSurvey(updated);
+  allPendingSurveys = allPendingSurveys.map((s) =>
+    s.id === survey.id ? updated : s,
+  );
 }
 </script>
 
@@ -238,7 +261,35 @@ async function confirmDelete() {
                       ? { avatarUrl: data.avatarUrl, handle: data.handle! }
                       : undefined
                     }
-                  />
+                  >
+                    {#if survey.latitude && survey.longitude}
+                      <label class="flex cursor-pointer items-center gap-2 text-xs text-primary-foreground/80">
+                        <Checkbox
+                          checked={survey.publishPoint}
+                          onCheckedChange={() => togglePublishField(survey, 'publishPoint')}
+                        />
+                        Publish point
+                      </label>
+                    {/if}
+                    {#if survey.gpsBbox}
+                      <label class="flex cursor-pointer items-center gap-2 text-xs text-primary-foreground/80">
+                        <Checkbox
+                          checked={survey.publishBbox}
+                          onCheckedChange={() => togglePublishField(survey, 'publishBbox')}
+                        />
+                        Publish bounding box
+                      </label>
+                    {/if}
+                    {#if survey.gpsTrack && survey.gpsTrack.length > 0}
+                      <label class="flex cursor-pointer items-center gap-2 text-xs text-primary-foreground/80">
+                        <Checkbox
+                          checked={survey.publishTrack}
+                          onCheckedChange={() => togglePublishField(survey, 'publishTrack')}
+                        />
+                        Publish GPS track
+                      </label>
+                    {/if}
+                  </SurveyCard>
                 </div>
                 <Button
                   variant="ghost"

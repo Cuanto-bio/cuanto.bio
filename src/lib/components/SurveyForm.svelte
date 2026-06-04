@@ -11,20 +11,25 @@ import TaxonAutocomplete, {
   type TaxonResult,
 } from '$lib/components/TaxonAutocomplete.svelte';
 import * as AlertDialog from '$lib/components/ui/alert-dialog';
+import { Checkbox } from '$lib/components/ui/checkbox';
 import * as Command from '$lib/components/ui/command';
 import * as Dialog from '$lib/components/ui/dialog';
 import * as Field from '$lib/components/ui/field';
 import { Input } from '$lib/components/ui/input';
 import { Label } from '$lib/components/ui/label';
 import * as Popover from '$lib/components/ui/popover';
+import * as RadioGroup from '$lib/components/ui/radio-group';
 import * as Sheet from '$lib/components/ui/sheet';
+import { useGpsTrack } from '$lib/composables/gpsTrack.svelte';
 import { useOnline } from '$lib/composables/online.svelte';
+import { trackToBbox } from '$lib/gpx';
 import type { Main as AtgeoPlaceMain } from '$lib/lexicons/org/atgeo/place.defs';
 import {
   type CachedProtocol,
   deletePendingSurvey,
   type PendingSurvey,
   type Survey,
+  saveGpsTrack,
   savePendingSurvey,
   type Target,
   type TaxonScope,
@@ -242,6 +247,9 @@ let incidentals = $state<IncidentalOccurrence[]>(
 );
 
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
+const track = isEdit ? null : useGpsTrack(initialResumeState?.gpsTrack ?? []);
+
+// svelte-ignore state_referenced_locally -- intentional: initialize from props
 let pendingSurveyId = $state<number | null>(initialPendingSurveyId ?? null);
 let navigatingAway = $state(false);
 let sessionExpired = $state(false);
@@ -254,6 +262,18 @@ let surveyorCountError = $state<string | null>(null);
 let locationError = $state<string | null>(null);
 let locationFieldEl = $state<HTMLElement | null>(null);
 let gpsLoading = $state(false);
+type GpsMode = 'none' | 'point' | 'track';
+// svelte-ignore state_referenced_locally -- intentional: initialize from props
+let gpsMode = $state<GpsMode>(
+  !isEdit
+    ? (initialResumeState?.gpsMode ??
+        ((initialResumeState?.gpsTrack?.length ?? 0) > 0
+          ? 'track'
+          : initialResumeState?.latitude
+            ? 'point'
+            : 'none'))
+    : 'none',
+);
 let locationPickerOpen = $state(false);
 
 let sheetOpen = $state(false);
@@ -265,6 +285,12 @@ let flashingIncidentals = $state<Record<string, number>>({});
 
 let cancelDialogOpen = $state(false);
 let finishDialogOpen = $state(false);
+// svelte-ignore state_referenced_locally -- intentional: initialize from props
+let publishPoint = $state(initialResumeState?.publishPoint ?? true);
+// svelte-ignore state_referenced_locally -- intentional: initialize from props
+let publishBbox = $state(initialResumeState?.publishBbox ?? true);
+// svelte-ignore state_referenced_locally -- intentional: initialize from props
+let publishTrack = $state(initialResumeState?.publishTrack ?? false);
 
 let incidentals_sheetOpen = $state(false);
 let editingIncidentalId = $state<string | null>(null);
@@ -334,6 +360,7 @@ onMount(() => {
     document.removeEventListener('visibilitychange', onVisible);
     window.removeEventListener('beforeunload', onUnload);
     mq.removeEventListener('change', onMqChange);
+    track?.stop();
   };
 });
 
@@ -369,19 +396,39 @@ function buildNewSurveyPayload(complete: boolean): PendingSurvey {
         eventDate: new Date(startedAt).toISOString(),
         eventDurationValue: null,
       };
+  const trackSnapshot = track ? $state.snapshot(track.points) : undefined;
+  const gpsBbox = trackSnapshot?.length
+    ? (trackToBbox(trackSnapshot) ?? undefined)
+    : undefined;
+  let effectiveLat = latitude;
+  let effectiveLon = longitude;
+  if (gpsMode === 'track' && gpsBbox) {
+    effectiveLat = String(
+      (parseFloat(gpsBbox.north) + parseFloat(gpsBbox.south)) / 2,
+    );
+    effectiveLon = String(
+      (parseFloat(gpsBbox.east) + parseFloat(gpsBbox.west)) / 2,
+    );
+  }
   return {
     protocolUri: protocol.atUri,
     protocolRkey: protocol.rkey,
     protocolTitle: protocol.record.title,
     locationName: locationName.trim(),
-    latitude,
-    longitude,
+    latitude: effectiveLat,
+    longitude: effectiveLon,
     eventDate,
     eventDurationValue,
     eventDurationUnit: complete ? 'minutes' : null,
     surveyorCount: surveyorCountStr ? parseInt(surveyorCountStr, 10) : null,
     occurrences,
     incidentals: $state.snapshot(incidentals),
+    gpsTrack: trackSnapshot,
+    gpsBbox,
+    gpsMode,
+    publishPoint,
+    publishBbox,
+    publishTrack,
     createdAt: Date.now(),
     complete,
   };
@@ -509,6 +556,10 @@ async function finish() {
     try {
       const { surveyUri, handle } = await uploadPendingSurvey(payload);
       if (pendingSurveyId != null) await deletePendingSurvey(pendingSurveyId);
+      if (track && track.points.length > 0) {
+        await saveGpsTrack(surveyUri, $state.snapshot(track.points));
+      }
+      track?.stop();
       const rkey = surveyUri.split('/').at(-1) ?? '';
       navigatingAway = true;
       await goto(`/app/surveys/${handle}/${rkey}`);
@@ -531,6 +582,7 @@ function cancel() {
 }
 
 async function confirmCancel() {
+  track?.stop();
   if (isEdit) {
     navigatingAway = true;
     await goto(`/app/surveys/${sv.handle}/${sv.rkey}`);
@@ -560,6 +612,29 @@ function selectLocation(option: AtgeoPlaceMain) {
   if (geo) {
     latitude = geo.latitude;
     longitude = geo.longitude;
+  }
+}
+
+function setGpsMode(mode: GpsMode) {
+  if (mode === gpsMode) return;
+  if (mode !== 'track') {
+    track?.stop();
+  }
+  if (mode !== 'point') {
+    latitude = null;
+    longitude = null;
+  }
+  gpsMode = mode;
+  // Auto-start recording when switching into track mode, but only if no points
+  // have been collected yet — resuming a previous session keeps prior points
+  // and lets the user opt in to continue with the explicit button.
+  if (
+    mode === 'track' &&
+    track &&
+    !track.isRecording &&
+    track.points.length === 0
+  ) {
+    track.start();
   }
 }
 
@@ -901,19 +976,112 @@ function displayCount(qty: undefined | string | number) {
         aria-invalid={locationError ? 'true' : undefined}
         aria-describedby={locationError ? 'location-error' : undefined}
       />
-      <div class="flex items-center gap-2">
-        <Button type="button" variant="outline" size="sm" onclick={requestGps} disabled={gpsLoading}>
-          {gpsLoading ? 'Getting GPS…' : 'Add GPS location'}
-        </Button>
-        {#if latitude && longitude}
-          <span class="text-muted-foreground text-xs">{latitude}, {longitude}</span>
-        {/if}
-      </div>
+      {#if isEdit}
+        <div class="flex items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onclick={requestGps} disabled={gpsLoading}>
+            {gpsLoading ? 'Getting GPS…' : 'Add GPS location'}
+          </Button>
+          {#if latitude && longitude}
+            <span class="text-muted-foreground text-xs">{latitude}, {longitude}</span>
+          {/if}
+        </div>
+      {:else}
+        <Field.Set>
+          <Field.Legend variant="label">Coordinates</Field.Legend>
+          <RadioGroup.Root
+            bind:value={() => gpsMode, (v) => setGpsMode(v as GpsMode)}
+            class="flex flex-row gap-4"
+          >
+            <div class="flex items-center gap-2">
+              <RadioGroup.Item value="none" id="gps-none" />
+              <Label for="gps-none" class="font-normal">None</Label>
+            </div>
+            <div class="flex items-center gap-2">
+              <RadioGroup.Item value="point" id="gps-point" />
+              <Label for="gps-point" class="font-normal">Single point</Label>
+            </div>
+            <div class="flex items-center gap-2">
+              <RadioGroup.Item value="track" id="gps-track" />
+              <Label for="gps-track" class="font-normal">Track</Label>
+            </div>
+          </RadioGroup.Root>
+          {#if gpsMode === 'point'}
+            <div class="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onclick={requestGps} disabled={gpsLoading}>
+                {gpsLoading ? 'Getting GPS…' : 'Get GPS location'}
+              </Button>
+              {#if latitude && longitude}
+                <span class="text-muted-foreground text-xs">{latitude}, {longitude}</span>
+              {/if}
+            </div>
+          {:else if gpsMode === 'track'}
+            <div class="flex items-center gap-3">
+              {#if track?.isRecording}
+                <Button type="button" variant="outline" size="sm" onclick={track.stop}>
+                  Stop recording
+                </Button>
+                <span class="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+                  <span class="size-2 animate-pulse rounded-full bg-green-500"></span>
+                  Recording: {track.points.length}
+                  {track.points.length === 1 ? 'point' : 'points'}
+                </span>
+              {:else}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onclick={track?.start}
+                  disabled={!('geolocation' in navigator)}
+                >
+                  Record GPS track
+                </Button>
+                {#if track && track.points.length > 0}
+                  <span class="text-muted-foreground text-xs">
+                    {track.points.length}
+                    {track.points.length === 1 ? 'point' : 'points'} saved
+                  </span>
+                {/if}
+              {/if}
+            </div>
+          {/if}
+        </Field.Set>
+      {/if}
     {/if}
     {#if locationError}
       <p id="location-error" class="text-destructive text-sm">{locationError}</p>
     {/if}
   </div>
+
+  {#if track && (protocol.record.locationOptions?.length ?? 0) > 0}
+    <div class="mb-6 flex items-center gap-3">
+      {#if track.isRecording}
+        <Button type="button" variant="outline" size="sm" onclick={track.stop}>
+          Stop GPS track
+        </Button>
+        <span class="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+          <span class="size-2 animate-pulse rounded-full bg-green-500"></span>
+          Recording: {track.points.length}
+          {track.points.length === 1 ? 'point' : 'points'}
+        </span>
+      {:else}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onclick={track.start}
+          disabled={!('geolocation' in navigator)}
+        >
+          Record GPS track
+        </Button>
+        {#if track.points.length > 0}
+          <span class="text-muted-foreground text-xs">
+            {track.points.length}
+            {track.points.length === 1 ? 'point' : 'points'} saved
+          </span>
+        {/if}
+      {/if}
+    </div>
+  {/if}
 
   <div>
     {#if protocol.targets.length === 0}
@@ -1164,6 +1332,28 @@ function displayCount(qty: undefined | string | number) {
         <p class="text-sm text-yellow-700 dark:text-yellow-400 mt-1">
           {unresolvedCount} incidental{unresolvedCount === 1 ? '' : 's'} without taxa. You can resolve them before uploading.
         </p>
+      {/if}
+      {#if !isEdit && gpsMode === 'point' && latitude && longitude}
+        <label class="mt-2 flex items-center gap-2 text-sm">
+          <Checkbox bind:checked={publishPoint} />
+          Publish point
+        </label>
+      {/if}
+      {#if !isEdit && gpsMode === 'track' && track && track.points.length > 0}
+        <div class="mt-2 flex flex-col gap-2 text-sm">
+          <label class="flex items-center gap-2">
+            <Checkbox bind:checked={publishPoint} />
+            Publish point (centroid of track)
+          </label>
+          <label class="flex items-center gap-2">
+            <Checkbox bind:checked={publishBbox} />
+            Publish bounding box
+          </label>
+          <label class="flex items-center gap-2">
+            <Checkbox bind:checked={publishTrack} />
+            Publish GPS track (GPX file)
+          </label>
+        </div>
       {/if}
     </AlertDialog.Header>
     <AlertDialog.Footer>

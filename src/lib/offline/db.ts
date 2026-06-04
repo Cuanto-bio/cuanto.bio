@@ -1,5 +1,6 @@
 import type { DBSchema, IDBPDatabase } from 'idb';
 import { openDB } from 'idb';
+import type { GpsBbox, GpsTrackPoint } from '$lib/gpx';
 import type { Main as AtOccurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs.js';
 import type { Main as AtSurvey } from '$lib/lexicons/bio/lexicons/temp/v0-1/survey.defs.js';
 import type { Main as AtSurveyProtocol } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyProtocol.defs.js';
@@ -11,7 +12,7 @@ export type {
   TaxonScope,
   VerbatimScope,
 } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs.js';
-export type { IncidentalOccurrence };
+export type { GpsBbox, GpsTrackPoint, IncidentalOccurrence };
 
 export interface Target {
   atUri: string;
@@ -77,6 +78,12 @@ export interface PendingSurvey {
     organismQuantity?: string;
   }[];
   incidentals?: IncidentalOccurrence[];
+  gpsTrack?: GpsTrackPoint[];
+  gpsBbox?: GpsBbox;
+  gpsMode?: 'none' | 'point' | 'track';
+  publishPoint: boolean;
+  publishBbox: boolean;
+  publishTrack: boolean;
   createdAt: number;
   complete: boolean;
 }
@@ -112,6 +119,10 @@ interface CuantoDB extends DBSchema {
     key: 'current';
     value: IdbUser;
   };
+  'gps-tracks': {
+    key: string;
+    value: { atUri: string; points: GpsTrackPoint[] };
+  };
 }
 
 let _db: IDBPDatabase<CuantoDB> | null = null;
@@ -145,6 +156,9 @@ async function getDB(): Promise<IDBPDatabase<CuantoDB>> {
         tx.objectStore('cached-protocols').clear();
         tx.objectStore('followed-protocols').clear();
         tx.objectStore('cached-surveys').clear();
+      }
+      if (oldVersion < 9) {
+        db.createObjectStore('gps-tracks', { keyPath: 'atUri' });
       }
       // v8: occurrence shape changed from {count: number} to {organismQuantity: string}.
       // Data migration is handled lazily in getPendingSurveys() because the upgrade
@@ -214,16 +228,35 @@ function migratePendingSurvey(survey: PendingSurvey): PendingSurvey {
   const needsIncidentalsMigration =
     (survey as { incidentals?: IncidentalOccurrence[] }).incidentals ===
     undefined;
+  // Lazy migration: publishGeo split into publishPoint/publishBbox/publishTrack.
+  // publishGeo=true expands to point+bbox (track defaults off — most revealing,
+  // opt-in only). publishGeo=false expands to all three off.
+  const legacy = survey as {
+    publishGeo?: boolean;
+    publishPoint?: boolean;
+    publishBbox?: boolean;
+    publishTrack?: boolean;
+  };
+  const needsPublishMigration =
+    legacy.publishPoint === undefined ||
+    legacy.publishBbox === undefined ||
+    legacy.publishTrack === undefined ||
+    legacy.publishGeo !== undefined;
   if (
     !needsOccMigration &&
     !needsCompleteMigration &&
-    !needsIncidentalsMigration
+    !needsIncidentalsMigration &&
+    !needsPublishMigration
   )
     return survey;
-  return {
+  const publishDefault = legacy.publishGeo ?? true;
+  const migrated: PendingSurvey = {
     ...survey,
     complete: needsCompleteMigration ? true : survey.complete,
     incidentals: needsIncidentalsMigration ? [] : survey.incidentals,
+    publishPoint: legacy.publishPoint ?? publishDefault,
+    publishBbox: legacy.publishBbox ?? publishDefault,
+    publishTrack: legacy.publishTrack ?? false,
     occurrences: needsOccMigration
       ? occs.map(({ count, ...rest }) => ({
           ...rest,
@@ -233,6 +266,8 @@ function migratePendingSurvey(survey: PendingSurvey): PendingSurvey {
         }))
       : survey.occurrences,
   };
+  delete (migrated as { publishGeo?: boolean }).publishGeo;
+  return migrated;
 }
 
 export async function getPendingSurveys(): Promise<PendingSurvey[]> {
@@ -329,6 +364,21 @@ export async function getIdbUser(): Promise<IdbUser | undefined> {
   return db.get('user', 'current');
 }
 
+export async function saveGpsTrack(
+  atUri: string,
+  points: GpsTrackPoint[],
+): Promise<void> {
+  const db = await getDB();
+  await db.put('gps-tracks', { atUri, points });
+}
+
+export async function getGpsTrack(
+  atUri: string,
+): Promise<{ atUri: string; points: GpsTrackPoint[] } | undefined> {
+  const db = await getDB();
+  return db.get('gps-tracks', atUri);
+}
+
 export async function clearIdbUser(): Promise<void> {
   const db = await getDB();
   await db.delete('user', 'current');
@@ -343,6 +393,7 @@ export async function clearIdb(): Promise<void> {
       'followed-protocols',
       'cached-surveys',
       'user',
+      'gps-tracks',
     ],
     'readwrite',
   );
@@ -352,6 +403,7 @@ export async function clearIdb(): Promise<void> {
     tx.objectStore('followed-protocols').clear(),
     tx.objectStore('cached-surveys').clear(),
     tx.objectStore('user').clear(),
+    tx.objectStore('gps-tracks').clear(),
     tx.done,
   ]);
 }

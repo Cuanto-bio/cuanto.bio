@@ -1,28 +1,38 @@
 <script lang="ts">
 import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
 import ExternalLink from '@lucide/svelte/icons/external-link';
+import Info from '@lucide/svelte/icons/info';
+import MapPinIcon from '@lucide/svelte/icons/map-pin';
 import PencilIcon from '@lucide/svelte/icons/pencil';
+import RectangleHorizontalIcon from '@lucide/svelte/icons/rectangle-horizontal';
+import RouteIcon from '@lucide/svelte/icons/route';
+import { onMount } from 'svelte';
 import GeoMap from '$lib/components/GeoMap.svelte';
 import TargetFilterControls from '$lib/components/TargetFilterControls.svelte';
 import type { TaxonProp } from '$lib/components/Taxon.svelte';
 import Taxon from '$lib/components/Taxon.svelte';
 import * as Card from '$lib/components/ui/card';
+import * as Dialog from '$lib/components/ui/dialog';
 import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+import { generateGpx, parseGpx } from '$lib/gpx';
+import logger from '$lib/logger';
 import type {
+  GpsTrackPoint,
   Occurrence,
   Protocol,
   Survey,
   TaxonScope,
   VerbatimScope,
 } from '$lib/offline/db';
+import { getGpsTrack } from '$lib/offline/db';
 import { createTargetFilter } from '$lib/targets.svelte';
 import Button from './Button.svelte';
 import * as Table from './ui/table';
 
 function parseAtUri(atUri: string): { did: string; rkey: string } {
-  // atUri format: at://{did}/{collection}/{rkey}
-  const [, , did, , rkey] = atUri.split('/');
-  return { did, rkey };
+  const match = /^at:\/\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(atUri);
+  if (!match) throw new Error(`Invalid AT-URI: ${atUri}`);
+  return { did: match[1], rkey: match[3] };
 }
 
 interface Props {
@@ -45,6 +55,63 @@ function extractGeo(s: Survey): { lat: string | null; lon: string | null } {
 
 const geo = $derived(extractGeo(survey));
 
+let localTrack = $state<GpsTrackPoint[] | null>(null);
+let publishedTrack = $state<GpsTrackPoint[] | null>(null);
+
+const displayTrack = $derived(localTrack ?? publishedTrack);
+
+onMount(async () => {
+  // Get the local GPS track if available
+  const stored = await getGpsTrack(survey.atUri);
+  if (stored && stored.points.length > 0) {
+    localTrack = stored.points;
+    return;
+  }
+
+  // Get the published GPS track if available
+  const published = survey.record.track;
+  if (!published) return;
+  const { did } = parseAtUri(survey.atUri);
+  const gpxCid = (published.gpx as { ref?: { $link?: string } }).ref?.$link;
+  if (!gpxCid) return;
+  let gpxText: string;
+  try {
+    const resp = await fetch(
+      `/api/blobs/gpx?did=${encodeURIComponent(did)}&cid=${encodeURIComponent(gpxCid)}`,
+    );
+    if (!resp.ok) {
+      logger.error(
+        { status: resp.status },
+        'Failed to fetch published GPS track',
+      );
+      return;
+    }
+    gpxText = await resp.text();
+  } catch (err) {
+    logger.error({ err }, 'Failed to fetch published GPS track');
+    return;
+  }
+
+  try {
+    const points = parseGpx(gpxText);
+    if (points.length > 0) publishedTrack = points;
+  } catch (err) {
+    logger.error({ err }, 'Failed to parse published GPS track');
+  }
+});
+
+function downloadGpx() {
+  if (!displayTrack) return;
+  const gpx = generateGpx(survey.protocolTitle, displayTrack);
+  const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `survey-${survey.rkey}.gpx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 const targetUris = $derived(new Set(protocol.targets.map((t) => t.atUri)));
 
 const incidentalOccs = $derived(
@@ -65,6 +132,14 @@ const targetFilter = createTargetFilter(
   () => protocol.targets,
   (t) => survey.occurrences.some((o) => o.record.surveyTargetID === t.atUri),
   { initialOnlyCounted: true },
+);
+
+type LocationEntry = { $type?: string } & Record<string, unknown>;
+
+const surveyBbox = $derived(
+  survey.record.location?.locations?.find(
+    (l) => (l as LocationEntry).$type === 'community.lexicon.location.bbox',
+  ) as { north: string; south: string; east: string; west: string } | undefined,
 );
 
 function formatDate(iso: string | null): string {
@@ -176,15 +251,22 @@ const externalLinkProps =
 <main>
   <div class="mb-4 flex items-center justify-between text-xs">
     <span class="text-muted-foreground">SURVEY</span>
-    {#if editable}
-      <Button
-        href="/app/surveys/{survey.handle}/{survey.rkey}/edit"
-        variant="outline"
-      >
-        <PencilIcon />
-        Edit
-      </Button>
-    {/if}
+    <div class="flex items-center gap-2">
+      {#if editable && displayTrack}
+        <Button type="button" variant="outline" onclick={downloadGpx}>
+          Export GPX
+        </Button>
+      {/if}
+      {#if editable}
+        <Button
+          href="/app/surveys/{survey.handle}/{survey.rkey}/edit"
+          variant="outline"
+        >
+          <PencilIcon />
+          Edit
+        </Button>
+      {/if}
+    </div>
   </div>
   <Card.Root class="mb-6 p-0">
     <div class="flex flex-col md:flex-row">
@@ -247,9 +329,77 @@ const externalLinkProps =
           </div>
         </Card.Content>
       </div>
-      {#if geo.lat && geo.lon}
-        <div class="min-w-1/3 h-[200px] md:h-auto">
-          <GeoMap latitude={geo.lat} longitude={geo.lon} class="rounded-t-none h-full" />
+      {#if (geo.lat && geo.lon) || surveyBbox || displayTrack}
+        <div class="min-w-1/3 h-[200px] md:h-auto flex flex-col">
+          <GeoMap
+            latitude={geo.lat ?? undefined}
+            longitude={geo.lon ?? undefined}
+            bbox={surveyBbox}
+            track={displayTrack ?? undefined}
+            class="rounded-t-none h-full flex-1"
+          />
+          {#if editable}
+            <div class="px-4 py-2">
+              <Dialog.Root>
+                <Dialog.Trigger>
+                  {#snippet child({ props })}
+                    <button
+                      class="flex gap-2 items-center text-muted-foreground text-xs"
+                      {...props}
+                    >
+                      <Info size={18} />
+                      About location visibility
+                    </button>
+                  {/snippet}
+                </Dialog.Trigger>
+                <Dialog.Content>
+                  <Dialog.Header>
+                    <Dialog.Title>Location visibility</Dialog.Title>
+                  </Dialog.Header>
+                  <ul class="space-y-3 text-sm">
+                    {#if geo.lat && geo.lon}
+                      <li class="flex gap-3">
+                        <MapPinIcon
+                          size={18}
+                          class="text-muted-foreground mt-0.5 shrink-0"
+                        />
+                        <span>Lat/lng point is public.</span>
+                      </li>
+                    {/if}
+                    {#if surveyBbox}
+                      <li class="flex gap-3">
+                        <RectangleHorizontalIcon
+                          size={18}
+                          class="text-muted-foreground mt-0.5 shrink-0"
+                        />
+                        <span>Bounding box is public.</span>
+                      </li>
+                    {/if}
+                    {#if publishedTrack}
+                      <li class="flex gap-3">
+                        <RouteIcon
+                          size={18}
+                          class="text-muted-foreground mt-0.5 shrink-0"
+                        />
+                        <span>GPS track is public.</span>
+                      </li>
+                    {:else if localTrack}
+                      <li class="flex gap-3">
+                        <RouteIcon
+                          size={18}
+                          class="text-muted-foreground mt-0.5 shrink-0"
+                        />
+                        <span>
+                          GPS track is not public. It is only stored on this device and will be
+                          deleted when you sign out.
+                        </span>
+                      </li>
+                    {/if}
+                  </ul>
+                </Dialog.Content>
+              </Dialog.Root>
+            </div>
+          {/if}
         </div>
       {/if}
     </div>

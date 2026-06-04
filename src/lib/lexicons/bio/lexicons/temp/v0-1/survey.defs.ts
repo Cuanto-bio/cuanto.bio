@@ -53,6 +53,11 @@ type Main = {
    * Geographic location where the survey was conducted.
    */
   location: AtgeoPlace.Main
+
+  /**
+   * A spatial path recorded during the survey.
+   */
+  track?: Track
 }
 
 export type { Main }
@@ -70,6 +75,7 @@ const main = l.record<'tid', Main>(
     eventDurationUnit: l.optional(l.string()),
     eventDurationValue: l.optional(l.integer()),
     location: l.ref<AtgeoPlace.Main>((() => AtgeoPlace.main) as any),
+    track: l.optional(l.ref<Track>((() => track) as any)),
   }),
 )
 
@@ -87,3 +93,32 @@ export const $assert = /*#__PURE__*/ main.assert.bind(main),
   $safeParse = /*#__PURE__*/ main.safeParse.bind(main),
   $validate = /*#__PURE__*/ main.validate.bind(main),
   $safeValidate = /*#__PURE__*/ main.safeValidate.bind(main)
+
+/** A spatial path recorded during a survey. */
+type Track = {
+  $type?: 'bio.lexicons.temp.v0-1.survey#track'
+
+  /**
+   * GPX 1.1 file recording the survey path.
+   */
+  gpx: l.BlobRef
+
+  /**
+   * Origin of the GPX file.
+   */
+  source: 'device' | 'uploaded' | l.UnknownString
+}
+
+export type { Track }
+
+/** A spatial path recorded during a survey. */
+const track = l.typedObject<Track>(
+  $nsid,
+  'track',
+  l.object({
+    gpx: l.blob({ accept: ['application/gpx+xml'], maxSize: 10000000 }),
+    source: l.string<{ knownValues: ['device', 'uploaded'] }>(),
+  }),
+)
+
+export { track }

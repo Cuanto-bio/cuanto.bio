@@ -31,7 +31,12 @@ type Main = {
   /**
    * List of fields required to complete the survey.
    */
-  requiredFields?: string[]
+  requiredFields?: (
+    | 'eventDate'
+    | 'eventDuration'
+    | 'surveyorCount'
+    | l.UnknownString
+  )[]
 
   /**
    * Controlled list of locations where surveys may occur. When present, surveyors must choose from this list rather than entering a free-form location name.
@@ -49,7 +54,13 @@ const main = l.record<'tid', Main>(
     title: l.string(),
     description: l.string(),
     createdAt: l.string({ format: 'datetime' }),
-    requiredFields: l.optional(l.array(l.string())),
+    requiredFields: l.optional(
+      l.array(
+        l.string<{
+          knownValues: ['eventDate', 'eventDuration', 'surveyorCount']
+        }>(),
+      ),
+    ),
     locationOptions: l.optional(
       l.array(l.ref<AtgeoPlace.Main>((() => AtgeoPlace.main) as any)),
     ),

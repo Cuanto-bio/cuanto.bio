@@ -48,7 +48,30 @@
             "type": "ref",
             "ref": "org.atgeo.place",
             "description": "Geographic location where the survey was conducted."
+          },
+          "track": {
+            "type": "ref",
+            "ref": "#track",
+            "description": "A spatial path recorded during the survey."
           }
+        }
+      }
+    },
+    "track": {
+      "type": "object",
+      "description": "A spatial path recorded during a survey.",
+      "required": ["gpx", "source"],
+      "properties": {
+        "gpx": {
+          "type": "blob",
+          "accept": ["application/gpx+xml"],
+          "maxSize": 10000000,
+          "description": "GPX 1.1 file recording the survey path."
+        },
+        "source": {
+          "type": "string",
+          "description": "Origin of the GPX file.",
+          "knownValues": ["device", "uploaded"]
         }
       }
     }

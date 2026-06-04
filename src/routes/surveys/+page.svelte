@@ -1,19 +1,7 @@
 <script lang="ts">
-import Handle from '$lib/components/handle.svelte';
 import SurveyCard from '$lib/components/SurveyCard.svelte';
-import * as Card from '$lib/components/ui/card';
 
 let { data } = $props();
-
-function formatDate(iso: string | null): string {
-  if (!iso) return 'Unknown date';
-  return new Date(iso).toLocaleString();
-}
-
-function formatDuration(value: number | null, unit: string | null): string {
-  if (value == null) return '';
-  return `${value} ${unit ?? 'min'}`;
-}
 </script>
 
 <main>

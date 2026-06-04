@@ -1,3 +1,4 @@
+import { generateGpx } from '$lib/gpx';
 import { hasUnresolvedIncidentals } from '$lib/surveys';
 import type { PendingSurvey } from './db';
 import { deletePendingSurvey, getPendingSurveys } from './db';
@@ -8,13 +9,54 @@ export class PdsSessionExpiredError extends Error {
   }
 }
 
+type GpxBlobRef = {
+  $type: 'blob';
+  ref: { $link: string };
+  mimeType: string;
+  size: number;
+};
+
+async function uploadGpxBlob(gpxText: string): Promise<GpxBlobRef> {
+  const resp = await fetch('/api/blobs/gpx', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/gpx+xml' },
+    body: new TextEncoder().encode(gpxText),
+  });
+  if (!resp.ok) {
+    if (resp.status === 401) {
+      const body = (await resp.json()) as { error?: string };
+      if (body.error === 'pds_session_expired')
+        throw new PdsSessionExpiredError();
+    }
+    throw new Error(`GPX upload failed: ${resp.status}`);
+  }
+  const body = (await resp.json()) as { blob: GpxBlobRef };
+  return body.blob;
+}
+
 export async function uploadPendingSurvey(
   survey: PendingSurvey,
 ): Promise<{ surveyUri: string; handle: string }> {
+  const { gpsTrack, publishPoint, publishBbox, publishTrack, ...rest } = survey;
+
+  let track: { gpx: GpxBlobRef; source: 'device' } | undefined;
+  if (publishTrack && gpsTrack && gpsTrack.length > 0) {
+    const gpxText = generateGpx(rest.locationName || 'Survey track', gpsTrack);
+    const blob = await uploadGpxBlob(gpxText);
+    track = { gpx: blob, source: 'device' };
+  }
+
+  const payload = {
+    ...rest,
+    latitude: publishPoint ? rest.latitude : null,
+    longitude: publishPoint ? rest.longitude : null,
+    gpsBbox: publishBbox ? rest.gpsBbox : undefined,
+    track,
+  };
   const resp = await fetch('/api/surveys', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(survey),
+    body: JSON.stringify(payload),
   });
   if (!resp.ok) {
     if (resp.status === 401) {

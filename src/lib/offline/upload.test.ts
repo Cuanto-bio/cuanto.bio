@@ -22,11 +22,137 @@ const baseSurvey: Omit<import('./db').PendingSurvey, 'id'> = {
   eventDurationValue: 60,
   eventDurationUnit: 'minutes',
   occurrences: [],
+  publishPoint: true,
+  publishBbox: true,
+  publishTrack: false,
   createdAt: Date.now(),
   complete: true,
 };
 
 const baseSurveyRaw = { ...baseSurvey, id: 1 } as import('./db').PendingSurvey;
+
+describe('uploadPendingSurvey — track publishing', () => {
+  test('does not POST /api/blobs/gpx when publishTrack is false', async () => {
+    const urls: string[] = [];
+    const fetchMock = vi.fn((url: string | URL | Request) => {
+      urls.push(typeof url === 'string' ? url : url.toString());
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ surveyUri: 'at://x/y/z', handle: 'a' }),
+      });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await uploadPendingSurvey({
+      ...baseSurveyRaw,
+      publishTrack: false,
+      gpsTrack: [{ lat: 1, lng: 2, timestamp: 0 }],
+    });
+    expect(urls).not.toContain('/api/blobs/gpx');
+    expect(urls).toContain('/api/surveys');
+  });
+
+  test('uploads GPX before survey POST when publishTrack && track has points', async () => {
+    const calls: { url: string; body: string | undefined }[] = [];
+    const fetchMock = vi.fn(
+      (url: string | URL | Request, init?: RequestInit) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        calls.push({ url: urlStr, body: init?.body as string | undefined });
+        if (urlStr === '/api/blobs/gpx') {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                blob: {
+                  $type: 'blob',
+                  ref: { $link: 'bafyfake' },
+                  mimeType: 'application/gpx+xml',
+                  size: 42,
+                },
+              }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ surveyUri: 'at://x/y/z', handle: 'a' }),
+        });
+      },
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await uploadPendingSurvey({
+      ...baseSurveyRaw,
+      publishTrack: true,
+      gpsTrack: [
+        { lat: 1, lng: 2, timestamp: 0 },
+        { lat: 3, lng: 4, timestamp: 1000 },
+      ],
+    });
+    expect(calls[0].url).toBe('/api/blobs/gpx');
+    expect(calls[1].url).toBe('/api/surveys');
+    const surveyBody = JSON.parse(calls[1].body ?? '') as {
+      track?: { gpx: { ref: { $link: string } }; source: string };
+    };
+    expect(surveyBody.track?.gpx.ref.$link).toBe('bafyfake');
+    expect(surveyBody.track?.source).toBe('device');
+  });
+
+  test('clears latitude/longitude when publishPoint is false', async () => {
+    let body: string | undefined;
+    const fetchMock = vi.fn(
+      (_url: string | URL | Request, init?: RequestInit) => {
+        body = init?.body as string | undefined;
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ surveyUri: 'at://x/y/z', handle: 'a' }),
+        });
+      },
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await uploadPendingSurvey({ ...baseSurveyRaw, publishPoint: false });
+    const surveyBody = JSON.parse(body ?? '') as {
+      latitude: string | null;
+      longitude: string | null;
+    };
+    expect(surveyBody.latitude).toBeNull();
+    expect(surveyBody.longitude).toBeNull();
+  });
+
+  test('clears gpsBbox when publishBbox is false', async () => {
+    let body: string | undefined;
+    const fetchMock = vi.fn(
+      (_url: string | URL | Request, init?: RequestInit) => {
+        body = init?.body as string | undefined;
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ surveyUri: 'at://x/y/z', handle: 'a' }),
+        });
+      },
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await uploadPendingSurvey({
+      ...baseSurveyRaw,
+      publishBbox: false,
+      gpsBbox: { north: '1', south: '0', east: '1', west: '0' },
+    });
+    const surveyBody = JSON.parse(body ?? '') as { gpsBbox?: unknown };
+    expect(surveyBody.gpsBbox).toBeUndefined();
+  });
+
+  test('throws PdsSessionExpiredError when /api/blobs/gpx returns it', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: () => Promise.resolve({ error: 'pds_session_expired' }),
+    });
+    global.fetch = fetchMock;
+    await expect(
+      uploadPendingSurvey({
+        ...baseSurveyRaw,
+        publishTrack: true,
+        gpsTrack: [{ lat: 1, lng: 2, timestamp: 0 }],
+      }),
+    ).rejects.toBeInstanceOf(PdsSessionExpiredError);
+  });
+});
 
 describe('uploadPendingSurvey — PdsSessionExpiredError', () => {
   test('throws PdsSessionExpiredError when server returns 401 with pds_session_expired', async () => {

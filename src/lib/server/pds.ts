@@ -206,6 +206,66 @@ export async function createRecord(
   });
 }
 
+export interface BlobRefResponse {
+  $type: 'blob';
+  ref: { $link: string };
+  mimeType: string;
+  size: number;
+}
+
+/**
+ * Uploads a blob to the PDS.
+ *
+ * When PDS_MOCK=true, returns a fake BlobRef without making any HTTP call.
+ */
+export async function uploadBlob(
+  did: string,
+  bytes: Uint8Array,
+  mimeType: string,
+): Promise<BlobRefResponse> {
+  if (process.env.PDS_MOCK === 'true') {
+    return {
+      $type: 'blob',
+      ref: { $link: FAKE_CID },
+      mimeType,
+      size: bytes.byteLength,
+    };
+  }
+
+  return withSessionErrorHandling(did, async () => {
+    const session = await (await getClient()).restore(did);
+    const resp = await session.fetchHandler(
+      '/xrpc/com.atproto.repo.uploadBlob',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': mimeType },
+        body: new Blob([bytes as BlobPart], { type: mimeType }),
+      },
+    );
+    if (!resp.ok) throw new Error(await resp.text());
+    const body = (await resp.json()) as { blob: BlobRefResponse };
+    return body.blob;
+  });
+}
+
+/**
+ * Fetches a blob from the user's PDS by CID.
+ *
+ * Returns the raw fetch Response so callers can stream the body or inspect headers.
+ * When PDS_MOCK=true, returns a fake response with no body.
+ */
+export async function fetchBlob(did: string, cid: string): Promise<Response> {
+  if (process.env.PDS_MOCK === 'true') {
+    return new Response('', { status: 200 });
+  }
+  const data = await idResolver.did.resolveAtprotoData(did);
+  const pdsUrl = data.pds;
+  const url = new URL(`${pdsUrl}/xrpc/com.atproto.sync.getBlob`);
+  url.searchParams.set('did', did);
+  url.searchParams.set('cid', cid);
+  return fetchWithRetry(url, {});
+}
+
 /**
  * Updates (or creates) a record on the PDS at a specific rkey.
  *

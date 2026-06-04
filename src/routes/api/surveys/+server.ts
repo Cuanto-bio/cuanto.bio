@@ -6,7 +6,7 @@ import {
   type TaxonScope,
   taxonScope as taxonScopeType,
 } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs';
-import { geo } from '$lib/lexicons/community/lexicon/location';
+import { bbox, geo } from '$lib/lexicons/community/lexicon/location';
 import * as Place from '$lib/lexicons/org/atgeo/place';
 import type { Main as AtgeoPlace } from '$lib/lexicons/org/atgeo/place.defs';
 import sql from '$lib/server/db';
@@ -58,12 +58,19 @@ type OccurrenceInput = {
   organismQuantity?: string;
 };
 
+type TrackInput = {
+  gpx: l.BlobRef;
+  source: string;
+};
+
 type SurveyInput = {
   protocolUri: string;
   protocolRkey: string;
   locationName: string;
   latitude: string | null;
   longitude: string | null;
+  gpsBbox?: { north: string; south: string; east: string; west: string };
+  track?: TrackInput;
   eventDate: string;
   eventDurationValue: number;
   surveyorCount?: number | null;
@@ -117,6 +124,14 @@ async function createSurvey(
       ? { surveyorCount: body.surveyorCount }
       : {}),
     location,
+    ...(body.track
+      ? {
+          track: {
+            gpx: body.track.gpx,
+            source: body.track.source as 'device' | 'uploaded',
+          },
+        }
+      : {}),
   });
 
   let surveyUri: string;
@@ -208,22 +223,54 @@ async function postSurvey(request: Request, did: string) {
     throw error(422, 'eventDate must not be in the future');
   }
 
+  if (body.track) {
+    if (typeof body.track.source !== 'string' || !body.track.source) {
+      throw error(422, 'track.source must be a non-empty string');
+    }
+    const ref = body.track.gpx as unknown as { ref?: { $link?: string } };
+    if (!ref?.ref?.$link) {
+      throw error(422, 'track.gpx must be a blob ref');
+    }
+  }
+
+  if (body.gpsBbox) {
+    const n = parseFloat(body.gpsBbox.north);
+    const s = parseFloat(body.gpsBbox.south);
+    const e = parseFloat(body.gpsBbox.east);
+    const w = parseFloat(body.gpsBbox.west);
+    if ([n, s, e, w].some((v) => !Number.isFinite(v))) {
+      throw error(422, 'gpsBbox edges must be finite numbers');
+    }
+    if (n < -90 || n > 90 || s < -90 || s > 90) {
+      throw error(422, 'gpsBbox latitude must be between -90 and 90');
+    }
+    if (e < -180 || e > 180 || w < -180 || w > 180) {
+      throw error(422, 'gpsBbox longitude must be between -180 and 180');
+    }
+    if (n < s) {
+      throw error(422, 'gpsBbox north must be >= south');
+    }
+    // east < west is valid for boxes crossing the antimeridian
+  }
+
   const { protocol, taxonScopeMap } = await fetchProtocolRecords(body);
 
+  const locationEntries = [
+    ...(body.latitude && body.longitude
+      ? [
+          {
+            $type: geo.$type,
+            latitude: body.latitude,
+            longitude: body.longitude,
+          },
+        ]
+      : []),
+    ...(body.gpsBbox ? [{ $type: bbox.$type, ...body.gpsBbox }] : []),
+  ];
   const location: AtgeoPlace = {
     $type: Place.$type,
     name: body.locationName,
-    ...(body.latitude && body.longitude
-      ? {
-          locations: [
-            {
-              $type: geo.$type,
-              latitude: body.latitude,
-              longitude: body.longitude,
-            },
-          ],
-        }
-      : {}),
+    ...(locationEntries.length > 0 ? { locations: locationEntries } : {}),
   };
 
   const surveyUri = await createSurvey(protocol, body, location, did);

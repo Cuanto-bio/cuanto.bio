@@ -217,6 +217,9 @@ const pendingSurvey1: Omit<import('./db').PendingSurvey, 'id'> = {
       organismQuantity: '3',
     },
   ],
+  publishPoint: true,
+  publishBbox: true,
+  publishTrack: false,
   createdAt: Date.now(),
   complete: true,
 };
@@ -302,6 +305,42 @@ describe('pending-surveys store', () => {
     const all = await getPendingSurveys();
     const migrated = all.find((s) => s.id === id);
     expect(migrated?.incidentals).toEqual([]);
+    await deletePendingSurvey(id);
+  });
+
+  test('getPendingSurveys migrates legacy publishGeo=true into publishPoint+Bbox=true, publishTrack=false', async () => {
+    const legacy = { ...pendingSurvey1 } as Record<string, unknown>;
+    delete legacy.publishPoint;
+    delete legacy.publishBbox;
+    delete legacy.publishTrack;
+    legacy.publishGeo = true;
+    const id = await savePendingSurvey(
+      legacy as Omit<import('./db').PendingSurvey, 'id'>,
+    );
+    const all = await getPendingSurveys();
+    const migrated = all.find((s) => s.id === id);
+    expect(migrated?.publishPoint).toBe(true);
+    expect(migrated?.publishBbox).toBe(true);
+    expect(migrated?.publishTrack).toBe(false);
+    expect((migrated as { publishGeo?: boolean }).publishGeo).toBeUndefined();
+    await deletePendingSurvey(id);
+  });
+
+  test('getPendingSurveys migrates legacy publishGeo=false into all three flags false', async () => {
+    const legacy = { ...pendingSurvey1 } as Record<string, unknown>;
+    delete legacy.publishPoint;
+    delete legacy.publishBbox;
+    delete legacy.publishTrack;
+    legacy.publishGeo = false;
+    const id = await savePendingSurvey(
+      legacy as Omit<import('./db').PendingSurvey, 'id'>,
+    );
+    const all = await getPendingSurveys();
+    const migrated = all.find((s) => s.id === id);
+    expect(migrated?.publishPoint).toBe(false);
+    expect(migrated?.publishBbox).toBe(false);
+    expect(migrated?.publishTrack).toBe(false);
+    expect((migrated as { publishGeo?: boolean }).publishGeo).toBeUndefined();
     await deletePendingSurvey(id);
   });
 });
