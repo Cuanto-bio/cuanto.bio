@@ -40,6 +40,9 @@
 * ALWAYS look for an appropriate shadcn component, even if not installed
 * ALWAYS try to use appropriate theme colors in layout.css; if tempted to add custom colors, ask the user
 
+# Logging
+* Use the pino-based logger in src/lib/logger.ts
+
 # Reference
 - shadcn-svelte: https://www.shadcn-svelte.com/llms.txt
 - playwright-cli: `playwright-cli --help`

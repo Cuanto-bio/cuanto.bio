@@ -1,8 +1,12 @@
 <script lang="ts">
+import type { SubmitFunction } from '@sveltejs/kit';
 import Autocomplete from '$lib/components/Autocomplete.svelte';
 import Button from '$lib/components/Button.svelte';
 import Form from '$lib/components/Form.svelte';
+import * as Alert from '$lib/components/ui/alert';
 import * as Card from '$lib/components/ui/card';
+import { isLikelyIdentifier, sanitizeHandleInput } from '$lib/handle';
+import type { ActionData } from './$types';
 
 interface Actor {
   did: string;
@@ -11,8 +15,35 @@ interface Actor {
   avatar?: string;
 }
 
-let handle = $state('');
+let { form }: { form: ActionData } = $props();
+
+// Repopulate the field with what the user submitted so a failed attempt
+// doesn't wipe their input. We deliberately seed from `form` only on first
+// render (it matters for the no-JS fallback, where the page re-renders fresh;
+// with JS, enhance preserves the typed value).
+// svelte-ignore state_referenced_locally -- intentional: seed from server action for no-JS fallback
+let handle = $state(form?.handle ?? '');
 let suggestions = $state<Actor[]>([]);
+
+// Error shown beneath the field: either a client-side catch (before we waste a
+// round trip) or the server's response. clientError is reset at the start of
+// each submit; the server message is replaced on the next attempt.
+let clientError = $state('');
+const error = $derived(clientError || form?.message);
+
+const onEnhance: SubmitFunction = ({ formData, cancel }) => {
+  const normalized = sanitizeHandleInput(String(formData.get('handle') ?? ''));
+  if (!isLikelyIdentifier(normalized)) {
+    clientError =
+      "That doesn't look like an Atmosphere handle. Use your full handle, " +
+      'e.g. you.bsky.social.';
+    cancel();
+    return;
+  }
+  clientError = '';
+  // Send the cleaned handle so the server resolves the same thing we validated.
+  formData.set('handle', normalized);
+};
 
 // Could also use public.api.bsky.app, but this replacement includes handles
 // that might be excluded from the bsky index for reasons other than bad
@@ -51,7 +82,12 @@ $effect(() => {
       <Card.Description>Enter your Atmosphere handle to continue.</Card.Description>
     </Card.Header>
     <Card.Content>
-      <Form method="POST" class="flex flex-col gap-4">
+      <Form method="POST" {onEnhance} class="flex flex-col gap-4">
+        {#if error}
+          <Alert.Root variant="destructive">
+            <Alert.Description>{error}</Alert.Description>
+          </Alert.Root>
+        {/if}
         <Autocomplete
           type="text"
           name="handle"

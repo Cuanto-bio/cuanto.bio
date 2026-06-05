@@ -21,9 +21,21 @@ setContext(SUBMITTING_CTX, {
 
 <form
   {...rest}
-  use:enhance={async (input) => {
+  use:enhance={async ({ cancel, ...input }) => {
+    // Wrap cancel so we can tell whether onEnhance aborted the submission.
+    // SvelteKit skips the after-submit callback on cancel, so without this the
+    // submitting flag (and any spinner) would stay stuck on.
+    let cancelled = false;
+    const wrappedCancel = () => {
+      cancelled = true;
+      cancel();
+    };
     submitting = true;
-    const userCallback = await onEnhance?.(input);
+    const userCallback = await onEnhance?.({ ...input, cancel: wrappedCancel });
+    if (cancelled) {
+      submitting = false;
+      return;
+    }
     return async (opts) => {
       if (typeof userCallback === 'function') {
         await userCallback(opts);

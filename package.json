@@ -80,6 +80,7 @@
     "@atproto/identity": "^0.4.12",
     "@atproto/lexicon": "^0.6.2",
     "@atproto/oauth-client-node": "^0.3.17",
+    "@atproto/syntax": "^0.5.4",
     "@atproto/tap": "^0.2.12",
     "@fontsource-variable/dynapuff": "^5.2.8",
     "@fontsource-variable/nunito": "^5.2.7",
