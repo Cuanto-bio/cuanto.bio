@@ -16,6 +16,8 @@ interface Props {
 
 let { filter, class: className }: Props = $props();
 
+let searchInput: HTMLInputElement | null = null;
+
 function toggleOnlyCounted() {
   if (!filter.hasCounted) {
     toast.info('Count a target to only show counted');
@@ -35,6 +37,7 @@ function onSearchFocus() {
     <InputGroup.Input
       type="search"
       placeholder="Search targets…"
+      bind:ref={searchInput}
       bind:value={filter.filterQuery}
       class="[&::-webkit-search-cancel-button]:hidden"
       onfocus={onSearchFocus}
@@ -44,7 +47,10 @@ function onSearchFocus() {
         <InputGroup.Button
           size="icon-sm"
           aria-label="Clear search"
-          onclick={() => (filter.filterQuery = '')}
+          onclick={() => {
+            filter.filterQuery = '';
+            searchInput?.focus();
+          }}
         >
           <X class="size-4" />
         </InputGroup.Button>
