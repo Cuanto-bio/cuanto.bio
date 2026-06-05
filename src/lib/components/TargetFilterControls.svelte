@@ -16,7 +16,7 @@ interface Props {
 
 let { filter, class: className }: Props = $props();
 
-let searchInput: HTMLInputElement | null = null;
+let searchInput = $state<HTMLInputElement | null>(null);
 
 function toggleOnlyCounted() {
   if (!filter.hasCounted) {

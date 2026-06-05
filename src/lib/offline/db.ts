@@ -80,7 +80,9 @@ export interface PendingSurvey {
   incidentals?: IncidentalOccurrence[];
   gpsTrack?: GpsTrackPoint[];
   gpsBbox?: GpsBbox;
-  gpsMode?: 'none' | 'point' | 'track';
+  gpsMode?: 'none' | 'point' | 'bbox' | 'track';
+  // 'device' for a live-recorded track, 'uploaded' for a track from a GPX file
+  trackSource?: 'device' | 'uploaded';
   publishPoint: boolean;
   publishBbox: boolean;
   publishTrack: boolean;

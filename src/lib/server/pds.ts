@@ -4,8 +4,11 @@ import {
   TokenRefreshError,
   TokenRevokedError,
 } from '@atproto/oauth-client-node';
+import { parseAtUri } from '$lib/atUri';
 import sql from '$lib/server/db';
 import { getClient } from './auth.js';
+
+export { parseAtUri };
 
 export class PdsSessionExpiredError extends Error {
   constructor() {
@@ -70,16 +73,6 @@ export interface AtRecord {
   uri: string;
   cid: string;
   value: unknown;
-}
-
-export function parseAtUri(uri: string): {
-  did: string;
-  collection: string;
-  rkey: string;
-} {
-  const match = /^at:\/\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(uri);
-  if (!match) throw new Error(`Invalid AT-URI: ${uri}`);
-  return { did: match[1], collection: match[2], rkey: match[3] };
 }
 
 /** Returns the ATProto handle for a DID, or null if none is found or on error. */

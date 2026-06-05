@@ -302,6 +302,64 @@ test('recording a GPS track accumulates points from watchPosition fixes', async 
   await expect(page.getByText(/\d+\s+points?\s+saved/)).toBeVisible();
 });
 
+test('past survey shows the map picker, not live GPS recording', async ({
+  page,
+  protocolRkey,
+}) => {
+  await page.goto(`/app/protocols/user-survey-spec/${protocolRkey}`);
+  await page.waitForLoadState('networkidle');
+  await page.goto(`/app/surveys/new/${protocolRkey}?past=1`);
+  await page.waitForSelector('text=Finish Survey', { state: 'visible' });
+
+  // The live-recording controls must be gone for a past survey...
+  await expect(page.getByRole('radio', { name: 'Single point' })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole('button', { name: /record gps track/i }),
+  ).toHaveCount(0);
+  // ...replaced by the map-based picker modes.
+  await expect(page.getByRole('radio', { name: 'Point' })).toBeVisible();
+  await expect(page.getByRole('radio', { name: 'Bounding box' })).toBeVisible();
+  await expect(
+    page.getByRole('radio', { name: /track \(gpx\)/i }),
+  ).toBeVisible();
+});
+
+test('past survey can load a track from an uploaded GPX file', async ({
+  page,
+  protocolRkey,
+}) => {
+  await page.goto(`/app/protocols/user-survey-spec/${protocolRkey}`);
+  await page.waitForLoadState('networkidle');
+  await page.goto(`/app/surveys/new/${protocolRkey}?past=1`);
+  await page.waitForSelector('text=Finish Survey', { state: 'visible' });
+
+  await page.getByRole('radio', { name: /track \(gpx\)/i }).click();
+
+  const gpx = `<?xml version="1.0"?>
+<gpx version="1.1"><trk><trkseg>
+<trkpt lat="37.0" lon="-122.0"><time>2026-05-01T10:00:00Z</time></trkpt>
+<trkpt lat="37.1" lon="-122.1"><time>2026-05-01T10:01:00Z</time></trkpt>
+</trkseg></trk></gpx>`;
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'track.gpx',
+    mimeType: 'application/gpx+xml',
+    buffer: Buffer.from(gpx),
+  });
+
+  // Uploaded state: filename + point count shown, file chooser replaced.
+  await expect(page.getByText('track.gpx')).toBeVisible();
+  await expect(page.getByText('(2 points)')).toBeVisible();
+  await expect(page.locator('input[type="file"]')).toHaveCount(0);
+
+  // Clearing restores the chooser and hides the count.
+  await page.getByRole('button', { name: 'Clear' }).click();
+  await expect(page.getByText('track.gpx')).toHaveCount(0);
+  await expect(page.getByText('(2 points)')).toHaveCount(0);
+  await expect(page.locator('input[type="file"]')).toHaveCount(1);
+});
+
 // ── Target search filter ──────────────────────────────────────────────────────
 
 test.describe('target search filter', () => {
@@ -1689,6 +1747,312 @@ test('edit page saves updated location name', async ({
     await expect(page.getByText('Updated Name')).toBeVisible();
   } finally {
     await teardownDid(sql, EDIT_DID);
+  }
+});
+
+const LOC_DID = 'did:test:survey-loc-edit';
+const LOC_HANDLE = 'user-survey-loc-edit';
+
+test('edit form shows coexisting point + bbox and persists removing the bbox', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: 'did',
+      value: LOC_DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  const { protocolRkey } = await seedProtocol(sql, LOC_DID);
+  const protocolUri = `at://${LOC_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const rkey = `locedit${Date.now()}`;
+  const atUri = `at://${LOC_DID}/bio.lexicons.temp.v0-1.survey/${rkey}`;
+  // A survey holding a point AND a bounding box at once (e.g. a track-recorded
+  // survey: centroid point + derived bbox). The old exclusive picker collapsed
+  // this to one representation; the editor must show both.
+  const record = {
+    $type: 'bio.lexicons.temp.v0-1.survey',
+    protocol: {
+      uri: protocolUri,
+      cid: 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34',
+    },
+    createdAt: new Date().toISOString(),
+    eventDate: '2026-05-01T10:00:00.000Z',
+    eventDurationValue: 30,
+    eventDurationUnit: 'minutes',
+    location: {
+      $type: 'org.atgeo.place',
+      name: 'Loc Edit Park',
+      locations: [
+        {
+          $type: 'community.lexicon.location.geo',
+          latitude: '37.77',
+          longitude: '-122.41',
+        },
+        {
+          $type: 'community.lexicon.location.bbox',
+          north: '37.8',
+          south: '37.7',
+          east: '-122.3',
+          west: '-122.5',
+        },
+      ],
+    },
+  };
+  await sql`
+    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, created_at, record, indexed_at)
+    VALUES (${atUri}, ${LOC_DID}, ${rkey}, ${protocolUri}, now(), ${sql.json(record)}, now())
+  `;
+
+  try {
+    await page.goto(`/app/protocols/${LOC_HANDLE}/${protocolRkey}`);
+    await page.waitForLoadState('networkidle');
+    await page.goto(`/app/surveys/${LOC_HANDLE}/${rkey}/edit`);
+    await page.waitForSelector('[placeholder="e.g. Mission Dolores Park"]', {
+      state: 'visible',
+    });
+
+    // Both representations show at once.
+    await expect(page.getByText('37.77, -122.41')).toBeVisible();
+    await expect(
+      page.getByText('N 37.8, S 37.7, E -122.3, W -122.5'),
+    ).toBeVisible();
+
+    // Remove only the bounding box; the point stays.
+    await page.getByTestId('loc-remove-bbox').click();
+    // Confirm via the AlertDialog
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: 'Remove' })
+      .click();
+    await expect(
+      page.getByText('N 37.8, S 37.7, E -122.3, W -122.5'),
+    ).toHaveCount(0);
+    await expect(page.getByText('37.77, -122.41')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Save Survey' }).click();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    // Wait for the redirect to the detail page (not the /edit URL, which shares a
+    // prefix) so the PUT has committed before we read the DB.
+    await page.waitForURL(
+      new RegExp(`/app/surveys/${LOC_HANDLE}/${rkey}\\?updated=1`),
+    );
+
+    // Persisted: geo entry kept, bbox entry dropped.
+    const [row] = await sql<
+      { record: { location: { locations?: Array<{ $type: string }> } } }[]
+    >`SELECT record FROM surveys WHERE at_uri = ${atUri}`;
+    const locs = row.record.location.locations ?? [];
+    expect(locs.some((l) => l.$type === 'community.lexicon.location.geo')).toBe(
+      true,
+    );
+    expect(
+      locs.some((l) => l.$type === 'community.lexicon.location.bbox'),
+    ).toBe(false);
+  } finally {
+    await teardownDid(sql, LOC_DID);
+  }
+});
+
+const LOC2_DID = 'did:test:survey-loc-edit2';
+const LOC2_HANDLE = 'user-survey-loc-edit2';
+
+test('editing a point coordinate via the input persists the new value', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: 'did',
+      value: LOC2_DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  const { protocolRkey } = await seedProtocol(sql, LOC2_DID);
+  const protocolUri = `at://${LOC2_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const surveyRkey = `ptedit${Date.now()}`;
+  const atUri = `at://${LOC2_DID}/bio.lexicons.temp.v0-1.survey/${surveyRkey}`;
+  const record = {
+    $type: 'bio.lexicons.temp.v0-1.survey',
+    protocol: {
+      uri: protocolUri,
+      cid: 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34',
+    },
+    createdAt: new Date().toISOString(),
+    eventDate: '2026-05-01T10:00:00.000Z',
+    eventDurationValue: 30,
+    eventDurationUnit: 'minutes',
+    location: {
+      $type: 'org.atgeo.place',
+      name: 'Point Edit Park',
+      locations: [
+        {
+          $type: 'community.lexicon.location.geo',
+          latitude: '37.7749',
+          longitude: '-122.4194',
+        },
+      ],
+    },
+  };
+  await sql`
+    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, created_at, record, indexed_at)
+    VALUES (${atUri}, ${LOC2_DID}, ${surveyRkey}, ${protocolUri}, now(), ${sql.json(record)}, now())
+  `;
+
+  try {
+    await page.goto(`/app/protocols/${LOC2_HANDLE}/${protocolRkey}`);
+    await page.waitForLoadState('networkidle');
+    await page.goto(`/app/surveys/${LOC2_HANDLE}/${surveyRkey}/edit`);
+    await page.waitForSelector('[placeholder="e.g. Mission Dolores Park"]', {
+      state: 'visible',
+    });
+
+    // Enter edit mode for the point, then change the latitude via the input.
+    await page.getByText('37.7749, -122.4194').waitFor();
+    await page.getByTestId('loc-edit-point').click();
+    await page.getByLabel('Latitude').fill('40');
+    await page.getByLabel('Longitude').fill('-73');
+
+    await page.getByRole('button', { name: 'Save Survey' }).click();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await page.waitForURL(
+      new RegExp(`/app/surveys/${LOC2_HANDLE}/${surveyRkey}\\?updated=1`),
+    );
+
+    const [row] = await sql<
+      {
+        record: {
+          location: {
+            locations?: Array<{
+              $type: string;
+              latitude?: string;
+              longitude?: string;
+            }>;
+          };
+        };
+      }[]
+    >`SELECT record FROM surveys WHERE at_uri = ${atUri}`;
+    const geo = (row.record.location.locations ?? []).find(
+      (l) => l.$type === 'community.lexicon.location.geo',
+    );
+    expect(geo?.latitude).toBe('40');
+    expect(geo?.longitude).toBe('-73');
+  } finally {
+    await teardownDid(sql, LOC2_DID);
+  }
+});
+
+const LOC3_DID = 'did:test:survey-loc-edit3';
+const LOC3_HANDLE = 'user-survey-loc-edit3';
+
+test('edit form removes an existing track and persists its absence', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: 'did',
+      value: LOC3_DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  const { protocolRkey } = await seedProtocol(sql, LOC3_DID);
+  const protocolUri = `at://${LOC3_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const surveyRkey = `trkedit${Date.now()}`;
+  const atUri = `at://${LOC3_DID}/bio.lexicons.temp.v0-1.survey/${surveyRkey}`;
+  // A survey carrying a point plus a published GPX track blob. The editor must
+  // let the user drop the track while keeping the point.
+  const record = {
+    $type: 'bio.lexicons.temp.v0-1.survey',
+    protocol: {
+      uri: protocolUri,
+      cid: 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34',
+    },
+    createdAt: new Date().toISOString(),
+    eventDate: '2026-05-01T10:00:00.000Z',
+    eventDurationValue: 30,
+    eventDurationUnit: 'minutes',
+    location: {
+      $type: 'org.atgeo.place',
+      name: 'Track Edit Park',
+      locations: [
+        {
+          $type: 'community.lexicon.location.geo',
+          latitude: '37.77',
+          longitude: '-122.41',
+        },
+      ],
+    },
+    track: {
+      gpx: {
+        $type: 'blob',
+        ref: { $link: 'bafkreigpxfaketrackcidfortestingremovalflowxxxxx' },
+        mimeType: 'application/gpx+xml',
+        size: 128,
+      },
+      source: 'device',
+    },
+  };
+  await sql`
+    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, created_at, record, indexed_at)
+    VALUES (${atUri}, ${LOC3_DID}, ${surveyRkey}, ${protocolUri}, now(), ${sql.json(record)}, now())
+  `;
+
+  try {
+    await page.goto(`/app/protocols/${LOC3_HANDLE}/${protocolRkey}`);
+    await page.waitForLoadState('networkidle');
+    await page.goto(`/app/surveys/${LOC3_HANDLE}/${surveyRkey}/edit`);
+    await page.waitForSelector('[placeholder="e.g. Mission Dolores Park"]', {
+      state: 'visible',
+    });
+
+    // The track row is shown with a Remove control because the survey has a track.
+    await page.getByTestId('loc-remove-track').click();
+    // Confirm via the AlertDialog.
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: 'Remove' })
+      .click();
+    await expect(page.getByTestId('loc-remove-track')).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Save Survey' }).click();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await page.waitForURL(
+      new RegExp(`/app/surveys/${LOC3_HANDLE}/${surveyRkey}\\?updated=1`),
+    );
+
+    // Persisted: the point is kept, the track key is gone from the record.
+    const [row] = await sql<
+      {
+        record: {
+          track?: unknown;
+          location: { locations?: Array<{ $type: string }> };
+        };
+      }[]
+    >`SELECT record FROM surveys WHERE at_uri = ${atUri}`;
+    expect(row.record.track).toBeUndefined();
+    const locs = row.record.location.locations ?? [];
+    expect(locs.some((l) => l.$type === 'community.lexicon.location.geo')).toBe(
+      true,
+    );
+  } finally {
+    await teardownDid(sql, LOC3_DID);
   }
 });
 

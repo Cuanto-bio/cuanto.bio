@@ -474,6 +474,100 @@ describe('PUT /api/surveys/[handle]/[rkey]', () => {
   });
 });
 
+describe('PUT /api/surveys/[handle]/[rkey] — location geometry', () => {
+  const GPS_BBOX = {
+    north: '37.8',
+    south: '37.7',
+    east: '-122.3',
+    west: '-122.5',
+  };
+  const GPX_BLOB = {
+    $type: 'blob',
+    ref: { $link: FAKE_CID },
+    mimeType: 'application/gpx+xml',
+    size: 100,
+  };
+
+  test('persists a drawn bounding box as a bbox location entry', async () => {
+    const resp = await callPut(DID, { ...basePutBody, gpsBbox: GPS_BBOX });
+    expect(resp.status).toBe(200);
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      'bio.lexicons.temp.v0-1.survey',
+      RKEY,
+      expect.objectContaining({
+        location: expect.objectContaining({
+          locations: expect.arrayContaining([
+            expect.objectContaining({
+              $type: 'community.lexicon.location.bbox',
+              north: '37.8',
+              south: '37.7',
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
+  test('returns 422 for an invalid bounding box (north < south)', async () => {
+    const resp = await callPut(DID, {
+      ...basePutBody,
+      gpsBbox: { north: '37.7', south: '37.8', east: '-122.3', west: '-122.5' },
+    });
+    expect(resp.status).toBe(422);
+  });
+
+  test('persists an uploaded track on the survey record', async () => {
+    const resp = await callPut(DID, {
+      ...basePutBody,
+      track: { gpx: GPX_BLOB, source: 'uploaded' },
+    });
+    expect(resp.status).toBe(200);
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      'bio.lexicons.temp.v0-1.survey',
+      RKEY,
+      expect.objectContaining({
+        track: expect.objectContaining({ source: 'uploaded' }),
+      }),
+    );
+  });
+
+  test('preserves an existing track when track is omitted', async () => {
+    const existingTrack = { gpx: GPX_BLOB, source: 'device' };
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue({
+      ...FAKE_SURVEY,
+      record: { ...FAKE_SURVEY.record, track: existingTrack },
+    } as never);
+    const resp = await callPut(DID, basePutBody);
+    expect(resp.status).toBe(200);
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      'bio.lexicons.temp.v0-1.survey',
+      RKEY,
+      expect.objectContaining({
+        track: expect.objectContaining({ source: 'device' }),
+      }),
+    );
+  });
+
+  test('removes the track when track is null', async () => {
+    const existingTrack = { gpx: GPX_BLOB, source: 'device' };
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue({
+      ...FAKE_SURVEY,
+      record: { ...FAKE_SURVEY.record, track: existingTrack },
+    } as never);
+    const resp = await callPut(DID, { ...basePutBody, track: null });
+    expect(resp.status).toBe(200);
+    const recordArg = vi
+      .mocked(putRecord)
+      .mock.calls.find(
+        (c) => c[1] === 'bio.lexicons.temp.v0-1.survey',
+      )?.[3] as { track?: unknown };
+    expect(recordArg.track).toBeUndefined();
+  });
+});
+
 describe('PUT /api/surveys/[handle]/[rkey] — eventDate validation', () => {
   beforeEach(() => {
     vi.useFakeTimers();

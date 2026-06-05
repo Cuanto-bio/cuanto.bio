@@ -95,6 +95,45 @@ describe('uploadPendingSurvey — track publishing', () => {
     expect(surveyBody.track?.source).toBe('device');
   });
 
+  test('passes through trackSource "uploaded" to the survey POST', async () => {
+    const calls: { url: string; body: string | undefined }[] = [];
+    const fetchMock = vi.fn(
+      (url: string | URL | Request, init?: RequestInit) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        calls.push({ url: urlStr, body: init?.body as string | undefined });
+        if (urlStr === '/api/blobs/gpx') {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                blob: {
+                  $type: 'blob',
+                  ref: { $link: 'bafyfake' },
+                  mimeType: 'application/gpx+xml',
+                  size: 42,
+                },
+              }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ surveyUri: 'at://x/y/z', handle: 'a' }),
+        });
+      },
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await uploadPendingSurvey({
+      ...baseSurveyRaw,
+      publishTrack: true,
+      trackSource: 'uploaded',
+      gpsTrack: [{ lat: 1, lng: 2, timestamp: 0 }],
+    });
+    const surveyBody = JSON.parse(calls[1].body ?? '') as {
+      track?: { source: string };
+    };
+    expect(surveyBody.track?.source).toBe('uploaded');
+  });
+
   test('clears latitude/longitude when publishPoint is false', async () => {
     let body: string | undefined;
     const fetchMock = vi.fn(

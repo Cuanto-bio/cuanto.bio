@@ -3,6 +3,11 @@ import type { GeoJSONSource, Map as MaplibreMap, Marker } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { onDestroy, onMount } from 'svelte';
 import { trackToBbox } from '$lib/gpx';
+import {
+  DEFAULT_ZOOM,
+  DEFAULT_ZOOM_WITH_COORDS,
+  osmStyle,
+} from '$lib/map/osmStyle';
 
 type BboxProp = { north: string; south: string; east: string; west: string };
 type TrackPoint = { lat: number; lng: number };
@@ -16,9 +21,6 @@ type Props = {
   class?: string;
   zoom?: number;
 };
-
-const DEFAULT_ZOOM = 1;
-const DEFAULT_ZOOM_WITH_COORDS = 8;
 
 let {
   latitude,
@@ -81,20 +83,7 @@ onMount(async () => {
   map = new ml.Map({
     container,
     cooperativeGestures: true,
-    style: {
-      version: 8,
-      sources: {
-        osm: {
-          type: 'raster',
-          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-          tileSize: 256,
-          attribution:
-            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-          maxzoom: 19,
-        },
-      },
-      layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
-    },
+    style: osmStyle(),
     center,
     zoom,
     attributionControl: false,

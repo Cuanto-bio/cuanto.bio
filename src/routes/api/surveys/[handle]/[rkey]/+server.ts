@@ -6,7 +6,7 @@ import {
   type TaxonScope,
   taxonScope as taxonScopeType,
 } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs';
-import { geo } from '$lib/lexicons/community/lexicon/location';
+import { bbox, geo } from '$lib/lexicons/community/lexicon/location';
 import * as Place from '$lib/lexicons/org/atgeo/place';
 import type { Main as AtgeoPlace } from '$lib/lexicons/org/atgeo/place.defs';
 import { deleteIdentificationsByOccurrenceUris } from '$lib/server/db/identifications';
@@ -120,6 +120,10 @@ type SurveyEditInput = {
   locationName: string;
   latitude: string | null;
   longitude: string | null;
+  gpsBbox?: { north: string; south: string; east: string; west: string } | null;
+  // undefined: preserve the survey's existing track; null: remove it;
+  // object: replace it.
+  track?: { gpx: l.BlobRef; source: string } | null;
   occurrences: OccurrenceEditInput[];
   incidentals: IncidentalEditInput[];
 };
@@ -156,21 +160,67 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
     }
   }
 
+  if (body.gpsBbox) {
+    const n = parseFloat(body.gpsBbox.north);
+    const s = parseFloat(body.gpsBbox.south);
+    const e = parseFloat(body.gpsBbox.east);
+    const w = parseFloat(body.gpsBbox.west);
+    if ([n, s, e, w].some((v) => !Number.isFinite(v))) {
+      error(422, 'gpsBbox edges must be finite numbers');
+    }
+    if (n < -90 || n > 90 || s < -90 || s > 90) {
+      error(422, 'gpsBbox latitude must be between -90 and 90');
+    }
+    if (e < -180 || e > 180 || w < -180 || w > 180) {
+      error(422, 'gpsBbox longitude must be between -180 and 180');
+    }
+    if (n < s) {
+      error(422, 'gpsBbox north must be >= south');
+    }
+  }
+
+  if (body.track) {
+    if (typeof body.track.source !== 'string' || !body.track.source) {
+      error(422, 'track.source must be a non-empty string');
+    }
+    const ref = body.track.gpx as unknown as { ref?: { $link?: string } };
+    if (!ref?.ref?.$link) {
+      error(422, 'track.gpx must be a blob ref');
+    }
+  }
+
+  // The point and bbox have no preserve semantics: `locations` is rebuilt in full
+  // from the payload every time, so the client must always send the current point
+  // and bbox state (a missing value means "removed"). This is intentionally
+  // unlike `track` below, which is a tri-state (undefined preserves, null removes).
+  const locationEntries = [
+    ...(body.latitude && body.longitude
+      ? [
+          {
+            $type: geo.$type,
+            latitude: body.latitude,
+            longitude: body.longitude,
+          },
+        ]
+      : []),
+    ...(body.gpsBbox ? [{ $type: bbox.$type, ...body.gpsBbox }] : []),
+  ];
   const location: AtgeoPlace = {
     $type: Place.$type,
     name: body.locationName,
-    ...(body.latitude && body.longitude
-      ? {
-          locations: [
-            {
-              $type: geo.$type,
-              latitude: body.latitude,
-              longitude: body.longitude,
-            },
-          ],
-        }
-      : {}),
+    ...(locationEntries.length > 0 ? { locations: locationEntries } : {}),
   };
+
+  // track: undefined preserves the existing one, null removes it, object replaces
+  const track =
+    body.track === undefined
+      ? survey.record.track
+      : body.track === null
+        ? undefined
+        : {
+            gpx: body.track.gpx,
+            source: body.track.source as 'device' | 'uploaded',
+          };
 
   // Update the survey record (preserve original createdAt and protocol ref)
   const surveyRecord = Survey.$build({
@@ -185,6 +235,7 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
       ? { surveyorCount: body.surveyorCount }
       : {}),
     location,
+    ...(track ? { track } : {}),
   });
   const surveyRkey = survey.rkey;
   await putRecord(did, Survey.$type, surveyRkey, surveyRecord);

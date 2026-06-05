@@ -7,6 +7,7 @@ import PencilIcon from '@lucide/svelte/icons/pencil';
 import RectangleHorizontalIcon from '@lucide/svelte/icons/rectangle-horizontal';
 import RouteIcon from '@lucide/svelte/icons/route';
 import { onMount } from 'svelte';
+import { parseAtUri } from '$lib/atUri';
 import GeoMap from '$lib/components/GeoMap.svelte';
 import TargetFilterControls from '$lib/components/TargetFilterControls.svelte';
 import type { TaxonProp } from '$lib/components/Taxon.svelte';
@@ -14,26 +15,18 @@ import Taxon from '$lib/components/Taxon.svelte';
 import * as Card from '$lib/components/ui/card';
 import * as Dialog from '$lib/components/ui/dialog';
 import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-import { generateGpx, parseGpx } from '$lib/gpx';
-import logger from '$lib/logger';
+import { generateGpx } from '$lib/gpx';
 import type {
-  GpsTrackPoint,
   Occurrence,
   Protocol,
   Survey,
   TaxonScope,
   VerbatimScope,
 } from '$lib/offline/db';
-import { getGpsTrack } from '$lib/offline/db';
+import { type LoadedTrack, loadSurveyTrack } from '$lib/offline/track';
 import { createTargetFilter } from '$lib/targets.svelte';
 import Button from './Button.svelte';
 import * as Table from './ui/table';
-
-function parseAtUri(atUri: string): { did: string; rkey: string } {
-  const match = /^at:\/\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(atUri);
-  if (!match) throw new Error(`Invalid AT-URI: ${atUri}`);
-  return { did: match[1], rkey: match[3] };
-}
 
 interface Props {
   protocol: Protocol;
@@ -55,49 +48,12 @@ function extractGeo(s: Survey): { lat: string | null; lon: string | null } {
 
 const geo = $derived(extractGeo(survey));
 
-let localTrack = $state<GpsTrackPoint[] | null>(null);
-let publishedTrack = $state<GpsTrackPoint[] | null>(null);
+let track = $state<LoadedTrack | null>(null);
 
-const displayTrack = $derived(localTrack ?? publishedTrack);
+const displayTrack = $derived(track?.points ?? null);
 
 onMount(async () => {
-  // Get the local GPS track if available
-  const stored = await getGpsTrack(survey.atUri);
-  if (stored && stored.points.length > 0) {
-    localTrack = stored.points;
-    return;
-  }
-
-  // Get the published GPS track if available
-  const published = survey.record.track;
-  if (!published) return;
-  const { did } = parseAtUri(survey.atUri);
-  const gpxCid = (published.gpx as { ref?: { $link?: string } }).ref?.$link;
-  if (!gpxCid) return;
-  let gpxText: string;
-  try {
-    const resp = await fetch(
-      `/api/blobs/gpx?did=${encodeURIComponent(did)}&cid=${encodeURIComponent(gpxCid)}`,
-    );
-    if (!resp.ok) {
-      logger.error(
-        { status: resp.status },
-        'Failed to fetch published GPS track',
-      );
-      return;
-    }
-    gpxText = await resp.text();
-  } catch (err) {
-    logger.error({ err }, 'Failed to fetch published GPS track');
-    return;
-  }
-
-  try {
-    const points = parseGpx(gpxText);
-    if (points.length > 0) publishedTrack = points;
-  } catch (err) {
-    logger.error({ err }, 'Failed to parse published GPS track');
-  }
+  track = await loadSurveyTrack(survey);
 });
 
 function downloadGpx() {
@@ -339,7 +295,7 @@ const externalLinkProps =
             class="rounded-t-none h-full flex-1"
           />
           {#if editable}
-            <div class="px-4 py-2">
+            <div class="px-4 py-2 flex justify-center">
               <Dialog.Root>
                 <Dialog.Trigger>
                   {#snippet child({ props })}
@@ -375,7 +331,7 @@ const externalLinkProps =
                         <span>Bounding box is public.</span>
                       </li>
                     {/if}
-                    {#if publishedTrack}
+                    {#if track?.source === 'published'}
                       <li class="flex gap-3">
                         <RouteIcon
                           size={18}
@@ -383,7 +339,7 @@ const externalLinkProps =
                         />
                         <span>GPS track is public.</span>
                       </li>
-                    {:else if localTrack}
+                    {:else if track?.source === 'local'}
                       <li class="flex gap-3">
                         <RouteIcon
                           size={18}

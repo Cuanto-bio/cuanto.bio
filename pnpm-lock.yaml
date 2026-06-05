@@ -44,6 +44,12 @@ importers:
       tar-stream:
         specifier: ^3.2.0
         version: 3.2.0
+      terra-draw:
+        specifier: ^1.31.0
+        version: 1.31.0
+      terra-draw-maplibre-gl-adapter:
+        specifier: ^1.4.1
+        version: 1.4.1(maplibre-gl@5.24.0)(terra-draw@1.31.0)
     devDependencies:
       '@atproto/jwk-jose':
         specifier: ^0.1.11
@@ -1963,6 +1969,15 @@ packages:
 
   teex@1.0.1:
     resolution: {integrity: sha512-eYE6iEI62Ni1H8oIa7KlDU6uQBtqr4Eajni3wX7rpfXD8ysFx8z0+dri+KWEPWpBsxXfxu58x/0jvTVT1ekOSg==}
+
+  terra-draw-maplibre-gl-adapter@1.4.1:
+    resolution: {integrity: sha512-qZ/bc9bVPnyt0keLVTofV8xiTPkdkbO6RzqrfNLe9zH/edW5PsjvJw97m1EksPZeXNJtFxsVbhi12cPaoNiWfg==}
+    peerDependencies:
+      maplibre-gl: '>=4'
+      terra-draw: ^1.0.0
+
+  terra-draw@1.31.0:
+    resolution: {integrity: sha512-4tNhOHL+Oj749Ih2dRvjq8L/JvutBo+tgj8alLs002YiGIgXc57XoiC+zfzRQn/r1+N2BqU18FgC9DQXJiZADw==}
 
   text-decoder@1.2.7:
     resolution: {integrity: sha512-vlLytXkeP4xvEq2otHeJfSQIRyWxo/oZGEbXrtEEF9Hnmrdly59sUbzZ/QgyWuLYHctCHxFF4tRQZNQ9k60ExQ==}
@@ -3955,6 +3970,13 @@ snapshots:
     transitivePeerDependencies:
       - bare-abort-controller
       - react-native-b4a
+
+  terra-draw-maplibre-gl-adapter@1.4.1(maplibre-gl@5.24.0)(terra-draw@1.31.0):
+    dependencies:
+      maplibre-gl: 5.24.0
+      terra-draw: 1.31.0
+
+  terra-draw@1.31.0: {}
 
   text-decoder@1.2.7:
     dependencies:

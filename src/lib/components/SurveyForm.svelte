@@ -5,6 +5,11 @@ import { toast } from 'svelte-sonner';
 import { beforeNavigate, goto, replaceState } from '$app/navigation';
 import * as Alert from '$lib/components/alert';
 import Button from '$lib/components/Button.svelte';
+import LocationPicker from '$lib/components/LocationPicker.svelte';
+import SurveyLocationEditor, {
+  type LocationEditPayload,
+  type TrackChange,
+} from '$lib/components/SurveyLocationEditor.svelte';
 import TargetFilterControls from '$lib/components/TargetFilterControls.svelte';
 import Taxon from '$lib/components/Taxon.svelte';
 import TaxonAutocomplete, {
@@ -22,7 +27,12 @@ import * as RadioGroup from '$lib/components/ui/radio-group';
 import * as Sheet from '$lib/components/ui/sheet';
 import { useGpsTrack } from '$lib/composables/gpsTrack.svelte';
 import { useOnline } from '$lib/composables/online.svelte';
-import { trackToBbox } from '$lib/gpx';
+import {
+  type GpsBbox,
+  type GpsTrackPoint,
+  generateGpx,
+  trackToBbox,
+} from '$lib/gpx';
 import type { Main as AtgeoPlaceMain } from '$lib/lexicons/org/atgeo/place.defs';
 import {
   type CachedProtocol,
@@ -36,8 +46,10 @@ import {
   updatePendingSurvey,
   type VerbatimScope,
 } from '$lib/offline/db';
+import { loadSurveyTrack } from '$lib/offline/track';
 import {
   PdsSessionExpiredError,
+  uploadGpxBlob,
   uploadPendingSurvey,
 } from '$lib/offline/upload';
 import { LOCATION_COMBOBOX_THRESHOLD } from '$lib/places';
@@ -211,6 +223,22 @@ function extractGeoFromSurvey(s: Survey): {
   };
 }
 
+function extractBboxFromSurvey(s: Survey): GpsBbox | null {
+  const entry = s.record.location?.locations?.find(
+    (l) =>
+      (l as { $type?: string }).$type === 'community.lexicon.location.bbox',
+  ) as
+    | { north?: string; south?: string; east?: string; west?: string }
+    | undefined;
+  if (!entry?.north || !entry.south || !entry.east || !entry.west) return null;
+  return {
+    north: String(entry.north),
+    south: String(entry.south),
+    east: String(entry.east),
+    west: String(entry.west),
+  };
+}
+
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
 let latitude = $state<string | null>(
   isEdit
@@ -262,18 +290,50 @@ let surveyorCountError = $state<string | null>(null);
 let locationError = $state<string | null>(null);
 let locationFieldEl = $state<HTMLElement | null>(null);
 let gpsLoading = $state(false);
-type GpsMode = 'none' | 'point' | 'track';
+type GpsMode = 'none' | 'point' | 'bbox' | 'track';
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
 let gpsMode = $state<GpsMode>(
   !isEdit
     ? (initialResumeState?.gpsMode ??
         ((initialResumeState?.gpsTrack?.length ?? 0) > 0
           ? 'track'
-          : initialResumeState?.latitude
-            ? 'point'
-            : 'none'))
-    : 'none',
+          : initialResumeState?.gpsBbox
+            ? 'bbox'
+            : initialResumeState?.latitude
+              ? 'point'
+              : 'none'))
+    : extractBboxFromSurvey(sv)
+      ? 'bbox'
+      : extractGeoFromSurvey(sv).lat
+        ? 'point'
+        : 'none',
 );
+// Map-drawn bounding box and uploaded GPX track (past/edit modes). The live
+// `track` composable above is only used for "now" mode recording.
+// svelte-ignore state_referenced_locally -- intentional: initialize from props
+let gpsBbox = $state<GpsBbox | null>(
+  !isEdit ? (initialResumeState?.gpsBbox ?? null) : extractBboxFromSurvey(sv),
+);
+// svelte-ignore state_referenced_locally -- intentional: initialize from props
+let pickerTrack = $state<GpsTrackPoint[] | null>(
+  !isEdit ? (initialResumeState?.gpsTrack ?? null) : null,
+);
+// svelte-ignore state_referenced_locally -- intentional: initialize from props
+let trackSource = $state<'device' | 'uploaded' | null>(
+  !isEdit ? (initialResumeState?.trackSource ?? null) : null,
+);
+
+// Edit mode only: independent point/bbox/track via SurveyLocationEditor. The
+// editor's point + bbox flow back into latitude/longitude/gpsBbox; the track is a
+// preserve/remove/replace change applied at save time.
+let editTrack = $state<TrackChange>({ action: 'preserve' });
+// Existing track points loaded for display in the editor (edit mode).
+let editTrackPoints = $state<GpsTrackPoint[] | null>(null);
+// Defer rendering the editor until any existing track has loaded, so its initial
+// props are complete (the editor reads them once at mount).
+// svelte-ignore state_referenced_locally -- intentional: initialize from props
+let editTrackLoaded = $state(!isEdit || !sv.record.track);
+
 let locationPickerOpen = $state(false);
 
 let sheetOpen = $state(false);
@@ -329,6 +389,13 @@ onMount(() => {
   mq.addEventListener('change', onMqChange);
 
   if (isEdit) {
+    // Load any existing track so the editor can show it; then allow it to render.
+    if (sv.record.track) {
+      loadSurveyTrack(sv).then((t) => {
+        editTrackPoints = t?.points ?? null;
+        editTrackLoaded = true;
+      });
+    }
     return () => {
       mq.removeEventListener('change', onMqChange);
     };
@@ -396,18 +463,40 @@ function buildNewSurveyPayload(complete: boolean): PendingSurvey {
         eventDate: new Date(startedAt).toISOString(),
         eventDurationValue: null,
       };
-  const trackSnapshot = track ? $state.snapshot(track.points) : undefined;
-  const gpsBbox = trackSnapshot?.length
-    ? (trackToBbox(trackSnapshot) ?? undefined)
-    : undefined;
-  let effectiveLat = latitude;
-  let effectiveLon = longitude;
-  if (gpsMode === 'track' && gpsBbox) {
+  // "now" mode records into the live GPS composable; "past" mode draws/uploads
+  // geometry through the map picker (pickerTrack / gpsBbox).
+  const isLive = mode === 'now';
+  let trackSnapshot: GpsTrackPoint[] | undefined;
+  let derivedBbox: GpsBbox | undefined;
+  let effectiveLat: string | null;
+  let effectiveLon: string | null;
+  if (isLive) {
+    trackSnapshot = track ? $state.snapshot(track.points) : undefined;
+    derivedBbox = trackSnapshot?.length
+      ? (trackToBbox(trackSnapshot) ?? undefined)
+      : undefined;
+    effectiveLat = latitude;
+    effectiveLon = longitude;
+  } else {
+    trackSnapshot =
+      gpsMode === 'track' && pickerTrack?.length
+        ? $state.snapshot(pickerTrack)
+        : undefined;
+    derivedBbox =
+      gpsMode === 'bbox'
+        ? (gpsBbox ?? undefined)
+        : gpsMode === 'track' && trackSnapshot?.length
+          ? (trackToBbox(trackSnapshot) ?? undefined)
+          : undefined;
+    effectiveLat = gpsMode === 'point' ? latitude : null;
+    effectiveLon = gpsMode === 'point' ? longitude : null;
+  }
+  if (gpsMode === 'track' && derivedBbox) {
     effectiveLat = String(
-      (parseFloat(gpsBbox.north) + parseFloat(gpsBbox.south)) / 2,
+      (parseFloat(derivedBbox.north) + parseFloat(derivedBbox.south)) / 2,
     );
     effectiveLon = String(
-      (parseFloat(gpsBbox.east) + parseFloat(gpsBbox.west)) / 2,
+      (parseFloat(derivedBbox.east) + parseFloat(derivedBbox.west)) / 2,
     );
   }
   return {
@@ -424,8 +513,13 @@ function buildNewSurveyPayload(complete: boolean): PendingSurvey {
     occurrences,
     incidentals: $state.snapshot(incidentals),
     gpsTrack: trackSnapshot,
-    gpsBbox,
+    gpsBbox: derivedBbox,
     gpsMode,
+    trackSource: trackSnapshot?.length
+      ? isLive
+        ? 'device'
+        : (trackSource ?? 'uploaded')
+      : undefined,
     publishPoint,
     publishBbox,
     publishTrack,
@@ -452,7 +546,7 @@ async function autoSave() {
 
 // ─── edit payload builder ────────────────────────────────────────────────────
 
-function buildEditPayload() {
+async function buildEditPayload() {
   const { eventDate, eventDurationValue } = buildSurveyTiming(
     'past',
     startedAt,
@@ -460,13 +554,35 @@ function buildEditPayload() {
     pastDate,
     pastDurationMinutes,
   );
+
+  // Point and bbox come straight from the editor (each independent and optional).
+  const latOut = latitude;
+  const lonOut = longitude;
+  const bboxOut = gpsBbox ?? null;
+
+  // Track is a tri-state: omit the key to preserve the existing track, send null
+  // to remove it, or upload a replacement and send the blob ref.
+  let track: { gpx: unknown; source: 'uploaded' } | null | undefined;
+  if (editTrack.action === 'remove') {
+    track = null;
+  } else if (editTrack.action === 'replace') {
+    const gpxText = generateGpx(
+      locationName.trim() || 'Survey track',
+      editTrack.points,
+    );
+    const blob = await uploadGpxBlob(gpxText);
+    track = { gpx: blob, source: 'uploaded' };
+  }
+
   return {
     eventDate,
     eventDurationValue,
     surveyorCount: surveyorCountStr ? parseInt(surveyorCountStr, 10) : null,
     locationName: locationName.trim(),
-    latitude,
-    longitude,
+    latitude: latOut,
+    longitude: lonOut,
+    gpsBbox: bboxOut,
+    ...(track !== undefined ? { track } : {}),
     occurrences: protocol.targets.map((t) => ({
       atUri: existingOccurrenceUris[t.atUri],
       surveyTargetUri: t.atUri,
@@ -520,8 +636,8 @@ async function finish() {
   surveyorCountError = null;
 
   if (isEdit) {
-    const payload = buildEditPayload();
     try {
+      const payload = await buildEditPayload();
       const res = await fetch(`/api/surveys/${sv.handle}/${sv.rkey}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -534,6 +650,11 @@ async function finish() {
       navigatingAway = true;
       await goto(`/app/surveys/${sv.handle}/${sv.rkey}?updated=1`);
     } catch (err) {
+      if (err instanceof PdsSessionExpiredError) {
+        sessionExpired = true;
+        submitting = false;
+        return;
+      }
       toast.error(String(err));
       submitting = false;
     }
@@ -613,6 +734,12 @@ function selectLocation(option: AtgeoPlaceMain) {
     latitude = geo.latitude;
     longitude = geo.longitude;
   }
+  // A selected location option carries (at most) a point; reflect that in
+  // gpsMode and clear any picker-drawn bbox/track so the payload stays coherent.
+  gpsMode = geo ? 'point' : 'none';
+  gpsBbox = null;
+  pickerTrack = null;
+  trackSource = null;
 }
 
 function setGpsMode(mode: GpsMode) {
@@ -651,6 +778,31 @@ function requestGps() {
       gpsLoading = false;
     },
   );
+}
+
+// Map-based location entry for past surveys and editing (LocationPicker).
+function onLocationChange(p: {
+  mode: GpsMode;
+  latitude: string | null;
+  longitude: string | null;
+  bbox: GpsBbox | null;
+  track: GpsTrackPoint[] | null;
+  trackSource: 'uploaded' | null;
+}) {
+  gpsMode = p.mode;
+  latitude = p.latitude;
+  longitude = p.longitude;
+  gpsBbox = p.bbox;
+  pickerTrack = p.track;
+  trackSource = p.trackSource;
+}
+
+// Edit mode: independent point/bbox/track from SurveyLocationEditor.
+function onLocationEditChange(p: LocationEditPayload) {
+  latitude = p.latitude;
+  longitude = p.longitude;
+  gpsBbox = p.bbox;
+  editTrack = p.track;
 }
 
 // ─── target sheet helpers ────────────────────────────────────────────────────
@@ -977,14 +1129,25 @@ function displayCount(qty: undefined | string | number) {
         aria-describedby={locationError ? 'location-error' : undefined}
       />
       {#if isEdit}
-        <div class="flex items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onclick={requestGps} disabled={gpsLoading}>
-            {gpsLoading ? 'Getting GPS…' : 'Add GPS location'}
-          </Button>
-          {#if latitude && longitude}
-            <span class="text-muted-foreground text-xs">{latitude}, {longitude}</span>
-          {/if}
-        </div>
+        {#if editTrackLoaded}
+          <SurveyLocationEditor
+            latitude={latitude}
+            longitude={longitude}
+            bbox={gpsBbox}
+            track={editTrackPoints}
+            trackPresent={!!sv.record.track}
+            onchange={onLocationEditChange}
+          />
+        {/if}
+      {:else if mode === 'past'}
+        <LocationPicker
+          mode={gpsMode}
+          latitude={latitude}
+          longitude={longitude}
+          bbox={gpsBbox}
+          track={pickerTrack}
+          onchange={onLocationChange}
+        />
       {:else}
         <Field.Set>
           <Field.Legend variant="label">Coordinates</Field.Legend>
@@ -1339,7 +1502,13 @@ function displayCount(qty: undefined | string | number) {
           Publish point
         </label>
       {/if}
-      {#if !isEdit && gpsMode === 'track' && track && track.points.length > 0}
+      {#if !isEdit && gpsMode === 'bbox' && gpsBbox}
+        <label class="mt-2 flex items-center gap-2 text-sm">
+          <Checkbox bind:checked={publishBbox} />
+          Publish bounding box
+        </label>
+      {/if}
+      {#if !isEdit && gpsMode === 'track' && (mode === 'now' ? (track?.points.length ?? 0) > 0 : (pickerTrack?.length ?? 0) > 0)}
         <div class="mt-2 flex flex-col gap-2 text-sm">
           <label class="flex items-center gap-2">
             <Checkbox bind:checked={publishPoint} />
