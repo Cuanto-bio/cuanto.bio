@@ -2471,3 +2471,31 @@ test('pending surveys list shows publish point/bbox/track checkboxes and togglin
     await teardownDid(sql, TRACK_DID);
   }
 });
+
+// ── Target flash on search clear ──────────────────────────────────────────────
+
+test('clearing a search does not flash counted targets', async ({
+  page,
+  protocolRkey,
+}) => {
+  await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+
+  // Increment "All birds" once
+  const allBirdsItem = page.locator('li').filter({ hasText: 'All birds' });
+  await allBirdsItem.getByRole('button', { name: 'Increase count' }).click();
+
+  // Search for "oak" to hide "All birds" from the list
+  const searchInput = page.getByPlaceholder('Search targets…');
+  await searchInput.fill('oak');
+  await expect(allBirdsItem).not.toBeVisible();
+
+  // Clear the search — "All birds" remounts
+  await page.getByRole('button', { name: 'Clear search' }).click();
+  await expect(allBirdsItem).toBeVisible();
+
+  // The remounted li should NOT have the flash class
+  const hasFlash = await allBirdsItem.evaluate((el) =>
+    el.classList.contains('li-flash'),
+  );
+  expect(hasFlash).toBe(false);
+});

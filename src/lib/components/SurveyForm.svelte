@@ -814,7 +814,6 @@ function liFlash(node: HTMLElement, count: number) {
     void node.offsetWidth;
     node.classList.add('li-flash');
   }
-  restart();
   return {
     update(newCount: number) {
       count = newCount;
