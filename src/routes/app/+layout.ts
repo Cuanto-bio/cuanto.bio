@@ -24,7 +24,7 @@ export const load: LayoutLoad = async ({ fetch }) => {
       syncOfflineData(fetch); // intentionally not awaited
       return user;
     }
-    if (res.status === 401 && navigator.onLine) {
+    if (res.status === 401) {
       // Server does *not* think we're signed in, clear local auth data
       await clearIdbUser();
       redirect(302, '/auth/signin');

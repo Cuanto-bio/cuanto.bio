@@ -45,7 +45,7 @@ const readyToUpload = $derived(
 onMount(() => {
   getPendingSurveys().then(async (pending) => {
     allPendingSurveys = pending;
-    if (navigator.onLine && pending.some((s) => s.complete)) {
+    if (online.value && pending.some((s) => s.complete)) {
       // await tryUpload();
     }
   });

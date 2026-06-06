@@ -1,6 +1,7 @@
 <script lang="ts">
 import { untrack } from 'svelte';
 import Autocomplete from '$lib/components/Autocomplete.svelte';
+import { recheckConnectivity, useOnline } from '$lib/composables/online.svelte';
 import Taxon from './Taxon.svelte';
 
 export type TaxonResult = {
@@ -15,16 +16,35 @@ export type TaxonResult = {
 interface Props {
   placeholder?: string;
   onSelectTaxon: (result: TaxonResult) => void;
+  onQueryChange?: (query: string) => void;
   portalTarget?: HTMLElement;
   initialValue?: string;
 }
 
-let { placeholder, onSelectTaxon, portalTarget, initialValue }: Props =
-  $props();
+let {
+  placeholder,
+  onSelectTaxon,
+  onQueryChange,
+  portalTarget,
+  initialValue,
+}: Props = $props();
+
+const online = useOnline();
 
 let query = $state(untrack(() => initialValue ?? ''));
 let results = $state<TaxonResult[]>([]);
 let searching = $state(false);
+
+$effect(() => {
+  onQueryChange?.(query);
+});
+
+$effect(() => {
+  if (!online.value) {
+    searching = false;
+    results = [];
+  }
+});
 
 $effect(() => {
   if (query.trim().length < 2) {
@@ -38,6 +58,8 @@ $effect(() => {
       const resp = await fetch(`/api/taxa?q=${encodeURIComponent(q)}`);
       const data = await resp.json();
       results = data.results ?? [];
+    } catch {
+      recheckConnectivity();
     } finally {
       searching = false;
     }

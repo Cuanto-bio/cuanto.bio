@@ -26,7 +26,11 @@ import * as Popover from '$lib/components/ui/popover';
 import * as RadioGroup from '$lib/components/ui/radio-group';
 import * as Sheet from '$lib/components/ui/sheet';
 import { useGpsTrack } from '$lib/composables/gpsTrack.svelte';
-import { useOnline } from '$lib/composables/online.svelte';
+import {
+  checkConnectivity,
+  recheckConnectivity,
+  useOnline,
+} from '$lib/composables/online.svelte';
 import {
   type GpsBbox,
   type GpsTrackPoint,
@@ -670,10 +674,10 @@ async function finish() {
     pendingSurveyId = await savePendingSurvey(payload);
   }
 
-  if (
-    navigator.onLine &&
-    !hasUnresolvedIncidentals(payload.incidentals ?? [])
-  ) {
+  // Refresh connectivity state before deciding whether to upload, so a stale
+  // offline reading from the poll doesn't prevent an immediate upload.
+  const canUpload = await checkConnectivity();
+  if (canUpload && !hasUnresolvedIncidentals(payload.incidentals ?? [])) {
     try {
       const { surveyUri, handle } = await uploadPendingSurvey(payload);
       if (pendingSurveyId != null) await deletePendingSurvey(pendingSurveyId);
@@ -690,6 +694,8 @@ async function finish() {
         sessionExpired = true;
         return;
       }
+      // Upload failed — recheck connectivity so UI reflects offline state quickly.
+      recheckConnectivity();
       // fall through — survey is saved in IDB as complete
     }
   }
@@ -1420,6 +1426,7 @@ function displayCount(qty: undefined | string | number) {
         <TaxonAutocomplete
           placeholder="Search taxa…"
           onSelectTaxon={(r) => (selectedTaxon = r)}
+          onQueryChange={(q) => (incidentalPlaceholder = q)}
           portalTarget={incidentalPortalTarget}
           initialValue={incidentalPlaceholder || undefined}
         />
