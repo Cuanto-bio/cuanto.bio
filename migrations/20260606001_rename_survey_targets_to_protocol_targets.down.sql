@@ -1,0 +1,4 @@
+ALTER TABLE protocol_targets RENAME CONSTRAINT fk_protocol_target_protocol TO fk_protocol;
+ALTER INDEX protocol_targets_did_idx RENAME TO survey_targets_did_idx;
+ALTER INDEX protocol_targets_protocol_uri_idx RENAME TO survey_targets_protocol_uri_idx;
+ALTER TABLE protocol_targets RENAME TO survey_targets;

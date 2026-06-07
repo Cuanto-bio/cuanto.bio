@@ -1,10 +1,10 @@
 {
   "lexicon": 1,
-  "id": "bio.lexicons.temp.v0-1.surveyTarget",
+  "id": "bio.cuanto.protocolTarget",
   "defs": {
     "main": {
       "type": "record",
-      "description": "A potential subject for a Survey. Belongs to a single Protocol.",
+      "description": "A protocol author's canonical target: a potential subject for surveys following this Protocol. Belongs to a single Protocol.",
       "key": "tid",
       "record": {
         "type": "object",

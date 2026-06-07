@@ -12,7 +12,7 @@ import {
 } from './upload';
 
 const baseSurvey: Omit<import('./db').PendingSurvey, 'id'> = {
-  protocolUri: 'at://did:test:1/bio.lexicons.temp.v0-1.surveyProtocol/p1',
+  protocolUri: 'at://did:test:1/bio.cuanto.surveyProtocol/p1',
   protocolRkey: 'p1',
   protocolTitle: 'Test Protocol',
   locationName: 'Test Field',
@@ -255,7 +255,7 @@ describe('uploadAllPending', () => {
       ok: true,
       json: () =>
         Promise.resolve({
-          surveyUri: 'at://did:test:1/bio.lexicons.temp.v0-1.survey/s1',
+          surveyUri: 'at://did:test:1/bio.cuanto.survey/s1',
           handle: 'alice',
         }),
     });

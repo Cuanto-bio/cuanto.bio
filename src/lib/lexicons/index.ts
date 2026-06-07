@@ -3,6 +3,6 @@
  */
 
 export * as bio from './bio.js'
+export * as com from './com.js'
 export * as community from './community.js'
 export * as org from './org.js'
-export * as com from './com.js'

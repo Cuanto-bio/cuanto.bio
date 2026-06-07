@@ -28,7 +28,7 @@ const mockProtocol: Protocol = {
   rkey: 'rkey123',
   handle: 'testuser',
   record: {
-    $type: 'bio.lexicons.temp.v0-1.surveyProtocol',
+    $type: 'bio.cuanto.surveyProtocol',
     title: 'Test Protocol',
     description: 'A test protocol',
     createdAt: '2026-01-01T00:00:00Z',
@@ -122,12 +122,12 @@ describe('csvEscape', () => {
 
 describe('surveyRowToEventCsvLine', () => {
   const baseRow: SurveyExportRow = {
-    at_uri: 'at://did:plc:abc/bio.lexicons.temp.v0-1.survey/survey1',
+    at_uri: 'at://did:plc:abc/bio.cuanto.survey/survey1',
     did: 'did:plc:abc',
     handle: 'testuser',
     protocol_title: 'Test Protocol',
     record: {
-      $type: 'bio.lexicons.temp.v0-1.survey',
+      $type: 'bio.cuanto.survey',
       protocol: {
         uri: 'at://did:plc:abc/bio.cuanto.surveyProtocol/rkey123',
         cid: 'cid123',
@@ -200,12 +200,12 @@ describe('surveyRowToEventCsvLine', () => {
 
 describe('surveyRowToSurveyCsvLine', () => {
   const baseRow: SurveyExportRow = {
-    at_uri: 'at://did:plc:abc/bio.lexicons.temp.v0-1.survey/survey1',
+    at_uri: 'at://did:plc:abc/bio.cuanto.survey/survey1',
     did: 'did:plc:abc',
     handle: 'testuser',
     protocol_title: 'Test Protocol',
     record: {
-      $type: 'bio.lexicons.temp.v0-1.survey',
+      $type: 'bio.cuanto.survey',
       protocol: {
         uri: 'at://did:plc:abc/bio.cuanto.surveyProtocol/rkey123',
         cid: 'cid123',
@@ -343,13 +343,13 @@ describe('buildSurveyProtocolCsvLine', () => {
   it('produces a line with the expected number of columns', () => {
     const line = buildSurveyProtocolCsvLine(
       mockProtocol.atUri,
-      'at://did:plc:abc/bio.lexicons.temp.v0-1.survey/survey1',
+      'at://did:plc:abc/bio.cuanto.survey/survey1',
     );
     expect(parseCsvLine(line)).toHaveLength(SURVEY_PROTOCOL_COLUMNS.length);
   });
 
   it('sets protocolID and surveyID correctly', () => {
-    const surveyUri = 'at://did:plc:abc/bio.lexicons.temp.v0-1.survey/survey1';
+    const surveyUri = 'at://did:plc:abc/bio.cuanto.survey/survey1';
     const line = buildSurveyProtocolCsvLine(mockProtocol.atUri, surveyUri);
     const fields = line.trimEnd().split(',');
     expect(fields[SURVEY_PROTOCOL_COLUMNS.indexOf('protocolID')]).toBe(
@@ -361,18 +361,16 @@ describe('buildSurveyProtocolCsvLine', () => {
 
 describe('surveyTargetRowToCsvLine', () => {
   const taxonRow = {
-    survey_at_uri: 'at://did:plc:abc/bio.lexicons.temp.v0-1.survey/survey1',
-    survey_target_at_uri:
-      'at://did:plc:abc/bio.lexicons.temp.v0-1.surveyTarget/target1',
+    survey_at_uri: 'at://did:plc:abc/bio.cuanto.survey/survey1',
+    survey_target_at_uri: 'at://did:plc:abc/bio.cuanto.protocolTarget/target1',
     scientific_name: 'Quercus agrifolia',
     taxon_id: 'https://www.gbif.org/species/2878688',
     verbatim_scope: null,
   };
 
   const verbatimRow = {
-    survey_at_uri: 'at://did:plc:abc/bio.lexicons.temp.v0-1.survey/survey1',
-    survey_target_at_uri:
-      'at://did:plc:abc/bio.lexicons.temp.v0-1.surveyTarget/target2',
+    survey_at_uri: 'at://did:plc:abc/bio.cuanto.survey/survey1',
+    survey_target_at_uri: 'at://did:plc:abc/bio.cuanto.protocolTarget/target2',
     scientific_name: null,
     taxon_id: null,
     verbatim_scope: 'Trees > 10cm DBH',
@@ -445,20 +443,19 @@ describe('occurrenceRowToCsvLine', () => {
   const presenceRow: OccurrenceExportRow = {
     occurrence_at_uri:
       'at://did:plc:abc/bio.lexicons.temp.v0-1.occurrence/occ1',
-    survey_at_uri: 'at://did:plc:abc/bio.lexicons.temp.v0-1.survey/survey1',
-    survey_target_at_uri:
-      'at://did:plc:abc/bio.lexicons.temp.v0-1.surveyTarget/target1',
+    survey_at_uri: 'at://did:plc:abc/bio.cuanto.survey/survey1',
+    survey_target_at_uri: 'at://did:plc:abc/bio.cuanto.protocolTarget/target1',
     occurrence_did: 'did:plc:abc',
     survey_did: 'did:plc:abc',
     occurrence_record: {
       $type: 'bio.lexicons.temp.v0-1.occurrence',
-      eventID: 'at://did:plc:abc/bio.lexicons.temp.v0-1.survey/survey1',
+      eventID: 'at://did:plc:abc/bio.cuanto.survey/survey1',
       decimalLatitude: '37.7749',
       decimalLongitude: '-122.4194',
       coordinateUncertaintyInMeters: 10,
       eventDate: '2026-05-01T00:00:00Z',
       organismQuantity: '3',
-      organismQuantityType: 'individual-count',
+      organismQuantityType: 'individuals',
     },
     scientific_name: 'Quercus agrifolia',
     taxon_rank: 'species',

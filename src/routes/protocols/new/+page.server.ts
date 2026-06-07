@@ -1,8 +1,8 @@
 import type { l } from '@atproto/lex';
 import { fail, redirect } from '@sveltejs/kit';
-import * as SurveyProtocol from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyProtocol';
-import * as SurveyTarget from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget';
-import type { Main as SurveyTargetMain } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs';
+import * as ProtocolTarget from '$lib/lexicons/bio/cuanto/protocolTarget';
+import type { Main as ProtocolTargetMain } from '$lib/lexicons/bio/cuanto/protocolTarget.defs';
+import * as SurveyProtocol from '$lib/lexicons/bio/cuanto/surveyProtocol';
 import sql from '$lib/server/db';
 import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
 import { parseLocationOptions } from '$lib/server/locationOptions';
@@ -58,7 +58,7 @@ export const actions: Actions = {
     try {
       ({ uri: protocolUri, cid: protocolCid } = await createRecord(
         did,
-        'bio.lexicons.temp.v0-1.surveyProtocol',
+        'bio.cuanto.surveyProtocol',
         protocolRecord,
       ));
     } catch (err) {
@@ -75,15 +75,15 @@ export const actions: Actions = {
     );
 
     for (const target of targets) {
-      const targetRecord = SurveyTarget.$build({
+      const targetRecord = ProtocolTarget.$build({
         protocol: protocolUri as l.AtUriString,
-        scope: target.scope as unknown as SurveyTargetMain['scope'],
+        scope: target.scope as unknown as ProtocolTargetMain['scope'],
       });
 
       try {
         const { uri: targetUri } = await createRecord(
           did,
-          'bio.lexicons.temp.v0-1.surveyTarget',
+          'bio.cuanto.protocolTarget',
           targetRecord,
         );
         const targetRkey = targetUri.split('/').at(-1) ?? '';

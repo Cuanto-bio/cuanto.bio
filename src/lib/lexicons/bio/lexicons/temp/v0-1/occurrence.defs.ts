@@ -66,7 +66,7 @@ type Main = {
   /**
    * The type of quantification system used for the quantity of organisms (sensu DarwinCore dwc:organismQuantityType).
    */
-  organismQuantityType?: 'individual-count' | 'percent-cover' | l.UnknownString
+  organismQuantityType?: 'individuals' | 'percent-cover' | l.UnknownString
 }
 
 export type { Main }
@@ -93,10 +93,7 @@ const main = l.record<'tid', Main>(
     eventID: l.optional(l.string({ format: 'at-uri' })),
     organismQuantity: l.optional(l.string()),
     organismQuantityType: l.optional(
-      l.withDefault(
-        l.string<{ knownValues: ['individual-count', 'percent-cover'] }>(),
-        'individual-count',
-      ),
+      l.string<{ knownValues: ['individuals', 'percent-cover'] }>(),
     ),
   }),
 )

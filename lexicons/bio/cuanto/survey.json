@@ -1,6 +1,6 @@
 {
   "lexicon": 1,
-  "id": "bio.lexicons.temp.v0-1.survey",
+  "id": "bio.cuanto.survey",
   "defs": {
     "main": {
       "type": "record",

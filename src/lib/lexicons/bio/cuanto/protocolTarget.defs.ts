@@ -4,13 +4,13 @@
 
 import { l } from '@atproto/lex'
 
-const $nsid = 'bio.lexicons.temp.v0-1.surveyTarget'
+const $nsid = 'bio.cuanto.protocolTarget'
 
 export { $nsid }
 
-/** A potential subject for a Survey. Belongs to a single Protocol. */
+/** A protocol author's canonical target: a potential subject for surveys following this Protocol. Belongs to a single Protocol. */
 type Main = {
-  $type: 'bio.lexicons.temp.v0-1.surveyTarget'
+  $type: 'bio.cuanto.protocolTarget'
 
   /**
    * Protocol this target belongs to.
@@ -29,7 +29,7 @@ type Main = {
 
 export type { Main }
 
-/** A potential subject for a Survey. Belongs to a single Protocol. */
+/** A protocol author's canonical target: a potential subject for surveys following this Protocol. Belongs to a single Protocol. */
 const main = l.record<'tid', Main>(
   'tid',
   $nsid,
@@ -65,7 +65,7 @@ export const $assert = /*#__PURE__*/ main.assert.bind(main),
 
 /** A taxonomic criterion for a survey target. */
 type TaxonScope = {
-  $type?: 'bio.lexicons.temp.v0-1.surveyTarget#taxonScope'
+  $type?: 'bio.cuanto.protocolTarget#taxonScope'
 
   /**
    * Identifier for the target taxon, preferably a stable URI, e.g. https://www.gbif.org/species/102151594.
@@ -112,7 +112,7 @@ export { taxonScope }
 
 /** A free-text criterion for cases not covered by structured types (sensu Humboldt eco:verbatimTargetScope). */
 type VerbatimScope = {
-  $type?: 'bio.lexicons.temp.v0-1.surveyTarget#verbatimScope'
+  $type?: 'bio.cuanto.protocolTarget#verbatimScope'
 
   /**
    * Free-text description of what is being targeted, e.g. 'trees > 10 cm DBH'.

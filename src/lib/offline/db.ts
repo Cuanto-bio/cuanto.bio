@@ -1,22 +1,22 @@
 import type { DBSchema, IDBPDatabase } from 'idb';
 import { openDB } from 'idb';
 import type { GpsBbox, GpsTrackPoint } from '$lib/gpx';
+import type { Main as AtProtocolTarget } from '$lib/lexicons/bio/cuanto/protocolTarget.defs.js';
+import type { Main as AtSurvey } from '$lib/lexicons/bio/cuanto/survey.defs.js';
+import type { Main as AtSurveyProtocol } from '$lib/lexicons/bio/cuanto/surveyProtocol.defs.js';
 import type { Main as AtOccurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs.js';
-import type { Main as AtSurvey } from '$lib/lexicons/bio/lexicons/temp/v0-1/survey.defs.js';
-import type { Main as AtSurveyProtocol } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyProtocol.defs.js';
-import type { Main as AtSurveyTarget } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs.js';
 import type { IncidentalOccurrence } from '$lib/surveys';
 import { CUANTO_IDB_VERSION } from './constants';
 
 export type {
   TaxonScope,
   VerbatimScope,
-} from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs.js';
+} from '$lib/lexicons/bio/cuanto/protocolTarget.defs.js';
 export type { GpsBbox, GpsTrackPoint, IncidentalOccurrence };
 
 export interface Target {
   atUri: string;
-  record: AtSurveyTarget;
+  record: AtProtocolTarget;
 }
 
 export interface Protocol {

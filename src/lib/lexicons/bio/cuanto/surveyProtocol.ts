@@ -3,3 +3,5 @@
  */
 
 export * as follow from './surveyProtocol/follow.js'
+export * from './surveyProtocol.defs.js'
+export * as $defs from './surveyProtocol.defs.js'

@@ -29,7 +29,7 @@ test('survey detail page shows Edit link for owner', async ({
   ]);
 
   const { protocolRkey } = await seedProtocol(sql, EDIT_DID);
-  const protocolUri = `at://${EDIT_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${EDIT_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
   const { surveyRkey } = await seedSurvey(
     sql,
     EDIT_DID,
@@ -66,7 +66,7 @@ test('edit page saves updated location name', async ({
   ]);
 
   const { protocolRkey } = await seedProtocol(sql, EDIT_DID);
-  const protocolUri = `at://${EDIT_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${EDIT_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
   const { surveyRkey } = await seedSurvey(
     sql,
     EDIT_DID,
@@ -119,14 +119,14 @@ test('edit form shows coexisting point + bbox and persists removing the bbox', a
   ]);
 
   const { protocolRkey } = await seedProtocol(sql, LOC_DID);
-  const protocolUri = `at://${LOC_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${LOC_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
   const rkey = `locedit${Date.now()}`;
-  const atUri = `at://${LOC_DID}/bio.lexicons.temp.v0-1.survey/${rkey}`;
+  const atUri = `at://${LOC_DID}/bio.cuanto.survey/${rkey}`;
   // A survey holding a point AND a bounding box at once (e.g. a track-recorded
   // survey: centroid point + derived bbox). The old exclusive picker collapsed
   // this to one representation; the editor must show both.
   const record = {
-    $type: 'bio.lexicons.temp.v0-1.survey',
+    $type: 'bio.cuanto.survey',
     protocol: {
       uri: protocolUri,
       cid: 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34',
@@ -229,11 +229,11 @@ test('editing a point coordinate via the input persists the new value', async ({
   ]);
 
   const { protocolRkey } = await seedProtocol(sql, LOC2_DID);
-  const protocolUri = `at://${LOC2_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${LOC2_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
   const surveyRkey = `ptedit${Date.now()}`;
-  const atUri = `at://${LOC2_DID}/bio.lexicons.temp.v0-1.survey/${surveyRkey}`;
+  const atUri = `at://${LOC2_DID}/bio.cuanto.survey/${surveyRkey}`;
   const record = {
-    $type: 'bio.lexicons.temp.v0-1.survey',
+    $type: 'bio.cuanto.survey',
     protocol: {
       uri: protocolUri,
       cid: 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34',
@@ -322,13 +322,13 @@ test('edit form removes an existing track and persists its absence', async ({
   ]);
 
   const { protocolRkey } = await seedProtocol(sql, LOC3_DID);
-  const protocolUri = `at://${LOC3_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${LOC3_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
   const surveyRkey = `trkedit${Date.now()}`;
-  const atUri = `at://${LOC3_DID}/bio.lexicons.temp.v0-1.survey/${surveyRkey}`;
+  const atUri = `at://${LOC3_DID}/bio.cuanto.survey/${surveyRkey}`;
   // A survey carrying a point plus a published GPX track blob. The editor must
   // let the user drop the track while keeping the point.
   const record = {
-    $type: 'bio.lexicons.temp.v0-1.survey',
+    $type: 'bio.cuanto.survey',
     protocol: {
       uri: protocolUri,
       cid: 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34',
@@ -427,7 +427,7 @@ test('survey detail shows coordinates and map when survey has geo location', asy
   ]);
 
   const { protocolRkey } = await seedProtocol(sql, COORDS_DID);
-  const protocolUri = `at://${COORDS_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${COORDS_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
   const { surveyRkey } = await seedSurveyWithCoordinates(
     sql,
     COORDS_DID,
@@ -470,7 +470,7 @@ test('survey detail loads when protocol is not cached in IDB', async ({
   ]);
 
   const { protocolRkey } = await seedProtocol(sql, MISSING_PROTOCOL_DID);
-  const protocolUri = `at://${MISSING_PROTOCOL_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${MISSING_PROTOCOL_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
   const { surveyRkey } = await seedSurvey(
     sql,
     MISSING_PROTOCOL_DID,
@@ -505,7 +505,7 @@ test('survey detail does not show coordinates or map when survey has no geo loca
   ]);
 
   const { protocolRkey } = await seedProtocol(sql, COORDS_DID);
-  const protocolUri = `at://${COORDS_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${COORDS_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
   const { surveyRkey } = await seedSurvey(
     sql,
     COORDS_DID,

@@ -1,6 +1,6 @@
+import type { Main as AtProtocolTarget } from '$lib/lexicons/bio/cuanto/protocolTarget.defs.js';
+import type { Main as AtSurvey } from '$lib/lexicons/bio/cuanto/survey.defs.js';
 import type { Main as AtOccurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs.js';
-import type { Main as AtSurvey } from '$lib/lexicons/bio/lexicons/temp/v0-1/survey.defs.js';
-import type { Main as AtSurveyTarget } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs.js';
 import type { Occurrence, Survey } from '$lib/offline/db';
 import { getIdentificationsForOccurrences } from './identifications.js';
 import sql from './index.js';
@@ -23,9 +23,9 @@ interface OccurrenceRowForSurvey {
   record: AtOccurrence;
 }
 
-interface SurveyTargetRow {
+interface ProtocolTargetRow {
   at_uri: string;
-  record: AtSurveyTarget;
+  record: AtProtocolTarget;
 }
 
 const surveysFromJoin = sql`
@@ -351,7 +351,7 @@ export function streamSurveyTargetsByProtocolUri(protocolUri: string) {
       st.record->'scope'->0->>'taxonID'              AS taxon_id,
       st.record->'scope'->0->>'verbatimTargetScope'  AS verbatim_scope
     FROM surveys s
-    JOIN survey_targets st ON st.protocol_uri = s.protocol_uri
+    JOIN protocol_targets st ON st.protocol_uri = s.protocol_uri
     WHERE s.protocol_uri = ${protocolUri}
     ORDER BY s.at_uri, st.at_uri
   `.cursor(100);
@@ -382,7 +382,7 @@ export function streamTargetedOccurrencesByProtocolUri(protocolUri: string) {
       )                  AS taxon_id,
       true               AS is_presence
     FROM surveys s
-    JOIN survey_targets st ON st.protocol_uri = s.protocol_uri
+    JOIN protocol_targets st ON st.protocol_uri = s.protocol_uri
     JOIN occurrences o
       ON o.survey_uri = s.at_uri
       AND o.record->>'surveyTargetID' = st.at_uri
@@ -409,7 +409,7 @@ export function streamAbsencesByProtocolUri(protocolUri: string) {
       st.record->'scope'->0->>'taxonID'        AS taxon_id,
       false              AS is_presence
     FROM surveys s
-    JOIN survey_targets st ON st.protocol_uri = s.protocol_uri
+    JOIN protocol_targets st ON st.protocol_uri = s.protocol_uri
     LEFT JOIN occurrences o
       ON o.survey_uri = s.at_uri
       AND o.record->>'surveyTargetID' = st.at_uri
@@ -510,8 +510,8 @@ export async function insertOccurrence(
   `;
 }
 
-export async function getSurveyTargetsByUri(uris: string[]) {
-  return sql<SurveyTargetRow[]>`
-    SELECT at_uri, record FROM survey_targets WHERE at_uri = ANY(${sql.array(uris)})
+export async function getProtocolTargetsByUri(uris: string[]) {
+  return sql<ProtocolTargetRow[]>`
+    SELECT at_uri, record FROM protocol_targets WHERE at_uri = ANY(${sql.array(uris)})
   `;
 }

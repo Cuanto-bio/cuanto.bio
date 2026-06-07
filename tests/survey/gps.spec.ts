@@ -210,14 +210,14 @@ test('survey detail shows Export GPX button and downloads GPX when local track e
   ]);
 
   const { protocolRkey } = await seedProtocol(sql, TRACK_DID);
-  const protocolUri = `at://${TRACK_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${TRACK_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
   const { surveyRkey } = await seedSurvey(
     sql,
     TRACK_DID,
     protocolUri,
     'Track Test Park',
   );
-  const surveyAtUri = `at://${TRACK_DID}/bio.lexicons.temp.v0-1.survey/${surveyRkey}`;
+  const surveyAtUri = `at://${TRACK_DID}/bio.cuanto.survey/${surveyRkey}`;
 
   try {
     // Visit the app once so IndexedDB exists, then seed a local GPS track.
@@ -280,7 +280,7 @@ test('survey detail does not show Export GPX button when no track is available',
   ]);
 
   const { protocolRkey } = await seedProtocol(sql, TRACK_DID);
-  const protocolUri = `at://${TRACK_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${TRACK_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
   const { surveyRkey } = await seedSurvey(
     sql,
     TRACK_DID,
@@ -319,7 +319,7 @@ test('pending surveys list shows publish point/bbox/track checkboxes and togglin
   ]);
 
   const { protocolRkey } = await seedProtocol(sql, TRACK_DID);
-  const protocolUri = `at://${TRACK_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${TRACK_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
 
   try {
     // Block uploadAllPending so the seeded survey stays in the list (its

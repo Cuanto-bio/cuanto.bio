@@ -20,7 +20,7 @@ test('/surveys shows location name from JSONB record', async ({
     ON CONFLICT (did) DO NOTHING
   `;
   const { protocolRkey } = await seedProtocol(sql, PUBLIC_DID);
-  const protocolUri = `at://${PUBLIC_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${PUBLIC_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
   await seedSurvey(sql, PUBLIC_DID, protocolUri, 'Public Test Meadow');
 
   try {
@@ -41,7 +41,7 @@ test('/surveys/[handle] shows surveys for that user from JSONB record', async ({
     ON CONFLICT (did) DO NOTHING
   `;
   const { protocolRkey } = await seedProtocol(sql, PUBLIC_DID);
-  const protocolUri = `at://${PUBLIC_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${PUBLIC_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
   await seedSurvey(sql, PUBLIC_DID, protocolUri, 'Handle Route Meadow');
 
   try {
@@ -75,7 +75,7 @@ test('GET /api/surveys returns surveys ordered by createdAt DESC', async ({
 
   await teardownDid(sql, ORDER_DID);
   const { protocolRkey } = await seedProtocol(sql, ORDER_DID);
-  const protocolUri = `at://${ORDER_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${ORDER_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
 
   const older = '2026-01-01T00:00:00.000Z';
   const newer = '2026-06-01T00:00:00.000Z';
@@ -115,7 +115,7 @@ test('/app/surveys renders surveys in createdAt DESC order', async ({
 
   await teardownDid(sql, ORDER_DID);
   const { protocolRkey } = await seedProtocol(sql, ORDER_DID);
-  const protocolUri = `at://${ORDER_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${ORDER_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
 
   // Seed older first to confirm insertion order doesn't determine display order.
   await seedSurvey(

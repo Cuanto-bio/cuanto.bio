@@ -1,11 +1,11 @@
 import type { l } from '@atproto/lex';
 import { error, json } from '@sveltejs/kit';
-import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
-import * as Survey from '$lib/lexicons/bio/lexicons/temp/v0-1/survey';
 import {
   type TaxonScope,
   taxonScope as taxonScopeType,
-} from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs';
+} from '$lib/lexicons/bio/cuanto/protocolTarget.defs';
+import * as Survey from '$lib/lexicons/bio/cuanto/survey';
+import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
 import { bbox, geo } from '$lib/lexicons/community/lexicon/location';
 import * as Place from '$lib/lexicons/org/atgeo/place';
 import type { Main as AtgeoPlace } from '$lib/lexicons/org/atgeo/place.defs';
@@ -15,9 +15,9 @@ import {
   deleteOccurrencesBySurveyUri,
   deleteSurveyByAtUri,
   getOccurrencesForSurveys,
+  getProtocolTargetsByUri,
   getSurveyDetailByHandleAndRkey,
   getSurveyOwnerDid,
-  getSurveyTargetsByUri,
   insertOccurrence,
   insertSurvey,
 } from '$lib/server/db/surveys';
@@ -249,7 +249,7 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
     .map((o) => o.surveyTargetUri);
   const taxonScopeMap = new Map<string, TaxonScope>();
   if (newTargetUris.length > 0) {
-    const targetRows = await getSurveyTargetsByUri(newTargetUris);
+    const targetRows = await getProtocolTargetsByUri(newTargetUris);
     for (const row of targetRows) {
       const entry = row.record.scope?.find((s) =>
         taxonScopeType.isTypeOf(s as Record<string, unknown>),
@@ -271,7 +271,7 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
           surveyTargetID: occ.surveyTargetUri as l.AtUriString,
           ...(occ.taxonID ? { taxonID: occ.taxonID as l.UriString } : {}),
           organismQuantity: occ.organismQuantity,
-          organismQuantityType: 'individual-count',
+          organismQuantityType: 'individuals',
         });
         // Preserve acceptedIdentificationID if it exists on the existing record
         const existingOcc = survey.occurrences.find(
@@ -313,7 +313,7 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
         surveyTargetID: occ.surveyTargetUri as l.AtUriString,
         ...(occ.taxonID ? { taxonID: occ.taxonID as l.UriString } : {}),
         organismQuantity: occ.organismQuantity,
-        organismQuantityType: 'individual-count',
+        organismQuantityType: 'individuals',
       });
       const { uri: occUri, cid: occCid } = await createRecord(
         did,
@@ -349,7 +349,7 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
           eventID: survey.atUri as l.AtUriString,
           taxonID: inc.taxonID as l.UriString,
           organismQuantity: inc.organismQuantity,
-          organismQuantityType: 'individual-count',
+          organismQuantityType: 'individuals',
         });
         const existingOcc = survey.occurrences.find(
           (o) => o.atUri === inc.atUri,
@@ -389,7 +389,7 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
         eventID: survey.atUri as l.AtUriString,
         taxonID: inc.taxonID as l.UriString,
         organismQuantity: inc.organismQuantity,
-        organismQuantityType: 'individual-count',
+        organismQuantityType: 'individuals',
       });
       const { uri: occUri, cid: occCid } = await createRecord(
         did,

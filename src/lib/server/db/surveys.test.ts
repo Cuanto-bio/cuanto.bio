@@ -61,9 +61,9 @@ describe('parseCoords', () => {
 // ── insertSurvey ─────────────────────────────────────────────────────────────
 
 const baseSurveyRecord = {
-  $type: 'bio.lexicons.temp.v0-1.survey' as const,
+  $type: 'bio.cuanto.survey' as const,
   protocol: {
-    uri: 'at://did:plc:abc/bio.lexicons.temp.v0-1.surveyProtocol/3abc' as l.AtUriString,
+    uri: 'at://did:plc:abc/bio.cuanto.surveyProtocol/3abc' as l.AtUriString,
     cid: 'bafycid' as l.CidString,
   },
   createdAt: '2026-04-13T10:00:00.000Z' as l.DatetimeString,
@@ -79,7 +79,7 @@ describe('insertSurvey', () => {
       'did:plc:abc',
       '3xyz',
       baseSurveyRecord,
-      'at://did:plc:abc/bio.lexicons.temp.v0-1.survey/3xyz',
+      'at://did:plc:abc/bio.cuanto.survey/3xyz',
     );
     expect(mockSql).toHaveBeenCalledOnce();
   });
@@ -91,7 +91,7 @@ describe('insertSurvey', () => {
         'did:plc:abc',
         '3xyz',
         record,
-        'at://did:plc:abc/bio.lexicons.temp.v0-1.survey/3xyz',
+        'at://did:plc:abc/bio.cuanto.survey/3xyz',
       ),
     ).resolves.toBeUndefined();
     expect(mockSql).toHaveBeenCalledOnce();
@@ -104,7 +104,7 @@ describe('insertSurvey', () => {
         'did:plc:abc',
         '3xyz',
         record,
-        'at://did:plc:abc/bio.lexicons.temp.v0-1.survey/3xyz',
+        'at://did:plc:abc/bio.cuanto.survey/3xyz',
       ),
     ).resolves.toBeUndefined();
     expect(mockSql).toHaveBeenCalledOnce();
@@ -115,13 +115,12 @@ describe('insertSurvey', () => {
 
 const baseOccurrenceRecord = {
   $type: 'bio.lexicons.temp.v0-1.occurrence' as const,
-  eventID:
-    'at://did:plc:abc/bio.lexicons.temp.v0-1.survey/3xyz' as l.AtUriString,
+  eventID: 'at://did:plc:abc/bio.cuanto.survey/3xyz' as l.AtUriString,
   surveyTargetID:
-    'at://did:plc:abc/bio.lexicons.temp.v0-1.surveyTarget/3tgt' as l.AtUriString,
+    'at://did:plc:abc/bio.cuanto.protocolTarget/3tgt' as l.AtUriString,
   taxonID: 'https://www.gbif.org/species/123' as l.UriString,
   organismQuantity: '5',
-  organismQuantityType: 'individual-count',
+  organismQuantityType: 'individuals',
 };
 
 describe('insertOccurrence', () => {
@@ -204,7 +203,7 @@ describe('getLastSurveyByTargetUris', () => {
 
   test('calls sql once for a non-empty array', async () => {
     await getLastSurveyByTargetUris([
-      'at://did:plc:abc/bio.lexicons.temp.v0-1.surveyTarget/3tgt',
+      'at://did:plc:abc/bio.cuanto.protocolTarget/3tgt',
     ]);
     expect(mockSql).toHaveBeenCalledOnce();
   });
@@ -216,14 +215,14 @@ describe('toLastSurveyMap', () => {
   test('keys rows by target URI with an ISO date string', () => {
     const rows: LastSurveyRow[] = [
       {
-        target_uri: 'at://did:plc:abc/bio.lexicons.temp.v0-1.surveyTarget/3tgt',
+        target_uri: 'at://did:plc:abc/bio.cuanto.protocolTarget/3tgt',
         survey_date: new Date('2026-04-13T10:00:00.000Z'),
         survey_handle: 'alice.test',
         survey_rkey: '3xyz',
       },
     ];
     expect(toLastSurveyMap(rows)).toEqual({
-      'at://did:plc:abc/bio.lexicons.temp.v0-1.surveyTarget/3tgt': {
+      'at://did:plc:abc/bio.cuanto.protocolTarget/3tgt': {
         date: '2026-04-13T10:00:00.000Z',
         handle: 'alice.test',
         rkey: '3xyz',

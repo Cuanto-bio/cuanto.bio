@@ -1,5 +1,5 @@
-import type { Main as AtSurveyProtocol } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyProtocol.defs.js';
-import type { Main as AtSurveyTarget } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs.js';
+import type { Main as AtProtocolTarget } from '$lib/lexicons/bio/cuanto/protocolTarget.defs.js';
+import type { Main as AtSurveyProtocol } from '$lib/lexicons/bio/cuanto/surveyProtocol.defs.js';
 import type { Protocol, Target } from '$lib/offline/db.js';
 import sql from './index.js';
 
@@ -29,11 +29,11 @@ export async function insertProtocol(
 export async function insertTarget(
   did: string,
   rkey: string,
-  record: AtSurveyTarget,
+  record: AtProtocolTarget,
   atUri: string,
 ): Promise<void> {
   await sql`
-    INSERT INTO survey_targets (at_uri, did, rkey, protocol_uri, record, indexed_at)
+    INSERT INTO protocol_targets (at_uri, did, rkey, protocol_uri, record, indexed_at)
     VALUES (
       ${atUri},
       ${did},
@@ -50,7 +50,7 @@ export async function insertTarget(
 
 export async function deleteTargetsByUris(uris: string[]): Promise<void> {
   if (uris.length === 0) return;
-  await sql`DELETE FROM survey_targets WHERE at_uri = ANY(${sql.array(uris)})`;
+  await sql`DELETE FROM protocol_targets WHERE at_uri = ANY(${sql.array(uris)})`;
 }
 
 export interface ProtocolRow {
@@ -66,7 +66,7 @@ export interface ProtocolRow {
 interface TargetRow {
   protocol_uri: string;
   at_uri: string;
-  record: AtSurveyTarget;
+  record: AtProtocolTarget;
 }
 
 export async function getTargetsForProtocols(
@@ -75,7 +75,7 @@ export async function getTargetsForProtocols(
   if (protocolUris.length === 0) return [];
   return sql<TargetRow[]>`
     SELECT protocol_uri, at_uri, record
-    FROM survey_targets
+    FROM protocol_targets
     WHERE protocol_uri = ANY(${sql.array(protocolUris)})
   `;
 }

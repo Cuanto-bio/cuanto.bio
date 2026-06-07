@@ -101,7 +101,7 @@ test('unfollow flow', async ({ page, sql, context }) => {
     },
   ]);
   const { protocolRkey } = await seedProtocol(sql, DID);
-  const protocolUri = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
   await seedFollow(sql, DID, protocolUri);
 
   try {
@@ -134,7 +134,7 @@ test('unauthenticated view shows follower count but no follow button', async ({
   sql,
 }) => {
   const { protocolRkey } = await seedProtocol(sql, DID);
-  const protocolUri = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
   await seedFollow(sql, DID, protocolUri);
 
   try {
@@ -201,8 +201,8 @@ test('/app/protocols/following renders protocols in follow date DESC order', asy
 
   const { protocolRkey: rKeyA } = await seedProtocol(sql, DID_A);
   const { protocolRkey: rKeyB } = await seedProtocol(sql, DID_B);
-  const uriA = `at://${DID_A}/bio.lexicons.temp.v0-1.surveyProtocol/${rKeyA}`;
-  const uriB = `at://${DID_B}/bio.lexicons.temp.v0-1.surveyProtocol/${rKeyB}`;
+  const uriA = `at://${DID_A}/bio.cuanto.surveyProtocol/${rKeyA}`;
+  const uriB = `at://${DID_B}/bio.cuanto.surveyProtocol/${rKeyB}`;
 
   const handleA = `user-${DID_A.split(':').pop()}`;
   const handleB = `user-${DID_B.split(':').pop()}`;

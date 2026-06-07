@@ -64,11 +64,11 @@ const protocolEvent = {
   record: {
     did: 'did:plc:abc123',
     rev: 'abc',
-    collection: 'bio.lexicons.temp.v0-1.surveyProtocol',
+    collection: 'bio.cuanto.surveyProtocol',
     rkey: '3abc',
     action: 'create',
     record: {
-      $type: 'bio.lexicons.temp.v0-1.surveyProtocol',
+      $type: 'bio.cuanto.surveyProtocol',
       title: 'Test Protocol',
       description: 'A test',
       createdAt: '2026-01-01T00:00:00.000Z',
@@ -84,16 +84,15 @@ const targetEvent = {
   record: {
     did: 'did:plc:abc123',
     rev: 'abc',
-    collection: 'bio.lexicons.temp.v0-1.surveyTarget',
+    collection: 'bio.cuanto.protocolTarget',
     rkey: '3def',
     action: 'create',
     record: {
-      $type: 'bio.lexicons.temp.v0-1.surveyTarget',
-      protocol:
-        'at://did:plc:abc123/bio.lexicons.temp.v0-1.surveyProtocol/3abc',
+      $type: 'bio.cuanto.protocolTarget',
+      protocol: 'at://did:plc:abc123/bio.cuanto.surveyProtocol/3abc',
       scope: [
         {
-          $type: 'bio.lexicons.temp.v0-1.surveyTarget#verbatimScope',
+          $type: 'bio.cuanto.protocolTarget#verbatimScope',
           verbatimTargetScope: 'trees',
         },
       ],
@@ -109,13 +108,13 @@ const surveyEvent = {
   record: {
     did: 'did:plc:abc123',
     rev: 'abc',
-    collection: 'bio.lexicons.temp.v0-1.survey',
+    collection: 'bio.cuanto.survey',
     rkey: '3svy',
     action: 'create',
     record: {
-      $type: 'bio.lexicons.temp.v0-1.survey',
+      $type: 'bio.cuanto.survey',
       protocol: {
-        uri: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.surveyProtocol/3abc',
+        uri: 'at://did:plc:abc123/bio.cuanto.surveyProtocol/3abc',
         cid: TEST_CID,
       },
       createdAt: '2026-04-13T10:00:00.000Z',
@@ -140,11 +139,10 @@ const occurrenceEvent = {
     action: 'create',
     record: {
       $type: 'bio.lexicons.temp.v0-1.occurrence',
-      eventID: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.survey/3svy',
-      surveyTargetID:
-        'at://did:plc:abc123/bio.lexicons.temp.v0-1.surveyTarget/3def',
+      eventID: 'at://did:plc:abc123/bio.cuanto.survey/3svy',
+      surveyTargetID: 'at://did:plc:abc123/bio.cuanto.protocolTarget/3def',
       organismQuantity: '3',
-      organismQuantityType: 'individual-count',
+      organismQuantityType: 'individuals',
     },
     cid: TEST_CID,
     live: true,
@@ -162,7 +160,7 @@ const followCreateEvent = {
     action: 'create',
     record: {
       $type: 'bio.cuanto.surveyProtocol.follow',
-      subject: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.surveyProtocol/3abc',
+      subject: 'at://did:plc:abc123/bio.cuanto.surveyProtocol/3abc',
       createdAt: '2026-04-15T00:00:00.000Z',
     },
     cid: TEST_CID,
@@ -262,7 +260,7 @@ describe('POST /api/tap/webhook', () => {
       'did:plc:abc123',
       '3abc',
       protocolEvent.record.record,
-      'at://did:plc:abc123/bio.lexicons.temp.v0-1.surveyProtocol/3abc',
+      'at://did:plc:abc123/bio.cuanto.surveyProtocol/3abc',
       TEST_CID,
     );
     expect(insertTarget).not.toHaveBeenCalled();
@@ -289,7 +287,7 @@ describe('POST /api/tap/webhook', () => {
       'did:plc:abc123',
       '3def',
       targetEvent.record.record,
-      'at://did:plc:abc123/bio.lexicons.temp.v0-1.surveyTarget/3def',
+      'at://did:plc:abc123/bio.cuanto.protocolTarget/3def',
     );
     expect(insertProtocol).not.toHaveBeenCalled();
   });
@@ -315,7 +313,7 @@ describe('POST /api/tap/webhook', () => {
       'did:plc:abc123',
       '3svy',
       surveyEvent.record.record,
-      'at://did:plc:abc123/bio.lexicons.temp.v0-1.survey/3svy',
+      'at://did:plc:abc123/bio.cuanto.survey/3svy',
     );
   });
 
@@ -326,9 +324,9 @@ describe('POST /api/tap/webhook', () => {
         cid: TEST_CID,
         value: {
           $type: 'bio.lexicons.temp.v0-1.occurrence',
-          eventID: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.survey/3svy',
+          eventID: 'at://did:plc:abc123/bio.cuanto.survey/3svy',
           organismQuantity: '1',
-          organismQuantityType: 'individual-count',
+          organismQuantityType: 'individuals',
         },
       },
     ]);
@@ -411,8 +409,7 @@ describe('POST /api/tap/webhook', () => {
       atUri: 'at://did:plc:follower/bio.cuanto.surveyProtocol.follow/3flw',
       did: 'did:plc:follower',
       rkey: '3flw',
-      protocolUri:
-        'at://did:plc:abc123/bio.lexicons.temp.v0-1.surveyProtocol/3abc',
+      protocolUri: 'at://did:plc:abc123/bio.cuanto.surveyProtocol/3abc',
       createdAt: '2026-04-15T00:00:00.000Z',
     });
     expect(deleteFollow).not.toHaveBeenCalled();
@@ -496,10 +493,10 @@ describe('POST /api/tap/webhook', () => {
   });
 
   const fetchedProtocolRecord = {
-    uri: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.surveyProtocol/3abc',
+    uri: 'at://did:plc:abc123/bio.cuanto.surveyProtocol/3abc',
     cid: TEST_CID,
     value: {
-      $type: 'bio.lexicons.temp.v0-1.surveyProtocol',
+      $type: 'bio.cuanto.surveyProtocol',
       title: 'Test Protocol',
       description: 'A test',
       createdAt: '2026-01-01T00:00:00.000Z',
@@ -507,12 +504,12 @@ describe('POST /api/tap/webhook', () => {
   };
 
   const fetchedSurveyRecord = {
-    uri: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.survey/3svy',
+    uri: 'at://did:plc:abc123/bio.cuanto.survey/3svy',
     cid: TEST_CID,
     value: {
-      $type: 'bio.lexicons.temp.v0-1.survey',
+      $type: 'bio.cuanto.survey',
       protocol: {
-        uri: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.surveyProtocol/3abc',
+        uri: 'at://did:plc:abc123/bio.cuanto.surveyProtocol/3abc',
         cid: TEST_CID,
       },
       createdAt: '2026-04-13T10:00:00.000Z',
@@ -531,7 +528,7 @@ describe('POST /api/tap/webhook', () => {
     } as Parameters<typeof POST>[0]);
     expect(resp.status).toBe(200);
     expect(fetchAtRecord).toHaveBeenCalledWith(
-      'at://did:plc:abc123/bio.lexicons.temp.v0-1.surveyProtocol/3abc',
+      'at://did:plc:abc123/bio.cuanto.surveyProtocol/3abc',
     );
     expect(insertProtocol).toHaveBeenCalledWith(
       'did:plc:abc123',
@@ -551,7 +548,7 @@ describe('POST /api/tap/webhook', () => {
     } as Parameters<typeof POST>[0]);
     expect(resp.status).toBe(200);
     expect(fetchAtRecord).toHaveBeenCalledWith(
-      'at://did:plc:abc123/bio.lexicons.temp.v0-1.surveyProtocol/3abc',
+      'at://did:plc:abc123/bio.cuanto.surveyProtocol/3abc',
     );
     expect(insertProtocol).toHaveBeenCalledOnce();
     expect(insertSurvey).toHaveBeenCalledTimes(2);
@@ -565,19 +562,18 @@ describe('POST /api/tap/webhook', () => {
     } as Parameters<typeof POST>[0]);
     expect(resp.status).toBe(200);
     expect(fetchAtRecord).toHaveBeenCalledWith(
-      'at://did:plc:abc123/bio.lexicons.temp.v0-1.survey/3svy',
+      'at://did:plc:abc123/bio.cuanto.survey/3svy',
     );
     expect(insertSurvey).toHaveBeenCalledOnce();
     expect(insertOccurrence).toHaveBeenCalledTimes(2);
   });
 
   const fetchedTargetRecord = {
-    uri: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.surveyTarget/3def',
+    uri: 'at://did:plc:abc123/bio.cuanto.protocolTarget/3def',
     cid: TEST_CID,
     value: {
-      $type: 'bio.lexicons.temp.v0-1.surveyTarget',
-      protocol:
-        'at://did:plc:abc123/bio.lexicons.temp.v0-1.surveyProtocol/3abc',
+      $type: 'bio.cuanto.protocolTarget',
+      protocol: 'at://did:plc:abc123/bio.cuanto.surveyProtocol/3abc',
       scope: [],
     },
   };
@@ -587,11 +583,10 @@ describe('POST /api/tap/webhook', () => {
     cid: TEST_CID,
     value: {
       $type: 'bio.lexicons.temp.v0-1.occurrence',
-      eventID: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.survey/3svy',
-      surveyTargetID:
-        'at://did:plc:abc123/bio.lexicons.temp.v0-1.surveyTarget/3def',
+      eventID: 'at://did:plc:abc123/bio.cuanto.survey/3svy',
+      surveyTargetID: 'at://did:plc:abc123/bio.cuanto.protocolTarget/3def',
       organismQuantity: '3',
-      organismQuantityType: 'individual-count',
+      organismQuantityType: 'individuals',
     },
   };
 
@@ -605,7 +600,7 @@ describe('POST /api/tap/webhook', () => {
     expect(resp.status).toBe(200);
     expect(listAtRecords).toHaveBeenCalledWith(
       'did:plc:abc123',
-      'bio.lexicons.temp.v0-1.surveyTarget',
+      'bio.cuanto.protocolTarget',
     );
     expect(insertTarget).toHaveBeenCalledTimes(3); // 1 fail + 1 backfill + 1 retry
   });
@@ -637,11 +632,11 @@ describe('POST /api/tap/webhook', () => {
     expect(resp.status).toBe(200);
     expect(fetchAtRecord).toHaveBeenNthCalledWith(
       1,
-      'at://did:plc:abc123/bio.lexicons.temp.v0-1.survey/3svy',
+      'at://did:plc:abc123/bio.cuanto.survey/3svy',
     );
     expect(fetchAtRecord).toHaveBeenNthCalledWith(
       2,
-      'at://did:plc:abc123/bio.lexicons.temp.v0-1.surveyProtocol/3abc',
+      'at://did:plc:abc123/bio.cuanto.surveyProtocol/3abc',
     );
     expect(insertProtocol).toHaveBeenCalledOnce();
     expect(insertSurvey).toHaveBeenCalledTimes(2);
@@ -672,7 +667,7 @@ describe('POST /api/tap/webhook', () => {
       cid: TEST_CID,
       value: {
         $type: 'bio.lexicons.temp.v0-1.occurrence',
-        eventID: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.survey/3svy',
+        eventID: 'at://did:plc:abc123/bio.cuanto.survey/3svy',
       },
     });
 
@@ -754,7 +749,7 @@ describe('POST /api/tap/webhook', () => {
         cid: TEST_CID,
         value: {
           $type: 'bio.lexicons.temp.v0-1.occurrence',
-          eventID: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.survey/3svy',
+          eventID: 'at://did:plc:abc123/bio.cuanto.survey/3svy',
         },
       })
       .mockResolvedValueOnce(null);
@@ -780,7 +775,7 @@ describe('POST /api/tap/webhook', () => {
         cid: TEST_CID,
         value: {
           $type: 'bio.lexicons.temp.v0-1.occurrence',
-          eventID: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.survey/3svy',
+          eventID: 'at://did:plc:abc123/bio.cuanto.survey/3svy',
         },
       })
       .mockResolvedValueOnce(fetchedSurveyRecord);

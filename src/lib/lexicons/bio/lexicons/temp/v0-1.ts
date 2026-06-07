@@ -5,6 +5,3 @@
 export * as identification from './v0-1/identification.js'
 export * as media from './v0-1/media.js'
 export * as occurrence from './v0-1/occurrence.js'
-export * as survey from './v0-1/survey.js'
-export * as surveyProtocol from './v0-1/surveyProtocol.js'
-export * as surveyTarget from './v0-1/surveyTarget.js'

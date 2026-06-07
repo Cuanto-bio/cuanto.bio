@@ -17,7 +17,7 @@ import {
   taxonScope as taxonScopeType,
   type VerbatimScope,
   verbatimScope as verbatimScopeType,
-} from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs';
+} from '$lib/lexicons/bio/cuanto/protocolTarget.defs';
 import type { Main as AtAddress } from '$lib/lexicons/community/lexicon/location/address.defs';
 import type { Main as AtGeo } from '$lib/lexicons/community/lexicon/location/geo.defs';
 import type { Protocol } from '$lib/offline/db';
@@ -31,7 +31,7 @@ let { protocol }: Props = $props();
 
 const onlineState = useOnline();
 
-// Not AtSurveyTarget: atUri is optional (new targets have none yet) and we don't
+// Not AtProtocolTarget: atUri is optional (new targets have none yet) and we don't
 // track protocol or $type here — those are only needed when writing to the PDS.
 type Target = {
   atUri?: string;
@@ -106,7 +106,7 @@ function addTaxon(result: TaxonResult) {
     {
       scope: [
         {
-          $type: 'bio.lexicons.temp.v0-1.surveyTarget#taxonScope' as const,
+          $type: 'bio.cuanto.protocolTarget#taxonScope' as const,
           scientificName: result.scientificName,
           taxonRank: result.taxonRank,
           ...(result.taxonID ? { taxonID: result.taxonID as l.UriString } : {}),
@@ -124,7 +124,7 @@ function addVerbatim() {
     {
       scope: [
         {
-          $type: 'bio.lexicons.temp.v0-1.surveyTarget#verbatimScope' as const,
+          $type: 'bio.cuanto.protocolTarget#verbatimScope' as const,
           verbatimTargetScope: '',
         },
       ],

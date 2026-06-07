@@ -3,16 +3,16 @@
  */
 
 import { l } from '@atproto/lex'
-import * as RepoStrongRef from '../../../../com/atproto/repo/strongRef.defs.js'
-import * as AtgeoPlace from '../../../../org/atgeo/place.defs.js'
+import * as RepoStrongRef from '../../com/atproto/repo/strongRef.defs.js'
+import * as AtgeoPlace from '../../org/atgeo/place.defs.js'
 
-const $nsid = 'bio.lexicons.temp.v0-1.survey'
+const $nsid = 'bio.cuanto.survey'
 
 export { $nsid }
 
 /** An event where participants collect data required by a Protocol. Absence of an Occurrence for a SurveyTarget implies the target was not found. */
 type Main = {
-  $type: 'bio.lexicons.temp.v0-1.survey'
+  $type: 'bio.cuanto.survey'
 
   /**
    * Protocol followed when conducting this survey.
@@ -96,7 +96,7 @@ export const $assert = /*#__PURE__*/ main.assert.bind(main),
 
 /** A spatial path recorded during a survey. */
 type Track = {
-  $type?: 'bio.lexicons.temp.v0-1.survey#track'
+  $type?: 'bio.cuanto.survey#track'
 
   /**
    * GPX 1.1 file recording the survey path.

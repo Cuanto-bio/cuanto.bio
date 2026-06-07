@@ -3,11 +3,9 @@ import { didFromAtUri, parseAtUri } from './atUri';
 
 describe('parseAtUri', () => {
   test('splits a well-formed AT-URI into did, collection, and rkey', () => {
-    expect(
-      parseAtUri('at://did:plc:abc123/bio.lexicons.temp.v0-1.survey/rkey99'),
-    ).toEqual({
+    expect(parseAtUri('at://did:plc:abc123/bio.cuanto.survey/rkey99')).toEqual({
       did: 'did:plc:abc123',
-      collection: 'bio.lexicons.temp.v0-1.survey',
+      collection: 'bio.cuanto.survey',
       rkey: 'rkey99',
     });
   });
@@ -22,9 +20,9 @@ describe('parseAtUri', () => {
 
 describe('didFromAtUri', () => {
   test('returns the DID from a well-formed AT-URI', () => {
-    expect(
-      didFromAtUri('at://did:plc:abc123/bio.lexicons.temp.v0-1.survey/rkey99'),
-    ).toBe('did:plc:abc123');
+    expect(didFromAtUri('at://did:plc:abc123/bio.cuanto.survey/rkey99')).toBe(
+      'did:plc:abc123',
+    );
   });
 
   test('returns null when the URI is malformed', () => {

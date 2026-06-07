@@ -54,10 +54,10 @@ test.describe('protocol detail Last Survey column', () => {
   test('links to the most recent survey per target', async ({ page, sql }) => {
     await sql`INSERT INTO users (did, handle) VALUES (${LAST_DID}, ${LAST_HANDLE}) ON CONFLICT (did) DO NOTHING`;
     const { protocolRkey } = await seedProtocol(sql, LAST_DID);
-    const protocolUri = `at://${LAST_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+    const protocolUri = `at://${LAST_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
 
     const targets = await sql<{ at_uri: string; record: { scope: unknown } }[]>`
-      SELECT at_uri, record FROM survey_targets
+      SELECT at_uri, record FROM protocol_targets
       WHERE protocol_uri = ${protocolUri}
       ORDER BY indexed_at ASC
     `;
@@ -78,8 +78,8 @@ test.describe('protocol detail Last Survey column', () => {
       'Newer Location',
       '2026-05-01T10:00:00.000Z',
     );
-    const olderUri = `at://${LAST_DID}/bio.lexicons.temp.v0-1.survey/${olderRkey}`;
-    const newerUri = `at://${LAST_DID}/bio.lexicons.temp.v0-1.survey/${newerRkey}`;
+    const olderUri = `at://${LAST_DID}/bio.cuanto.survey/${olderRkey}`;
+    const newerUri = `at://${LAST_DID}/bio.cuanto.survey/${newerRkey}`;
     await seedOccurrence(sql, LAST_DID, olderUri, taxonTargetUri);
     await seedOccurrence(sql, LAST_DID, newerUri, taxonTargetUri);
 

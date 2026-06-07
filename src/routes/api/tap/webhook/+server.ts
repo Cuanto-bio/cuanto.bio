@@ -1,12 +1,12 @@
 import { assureAdminAuth, parseTapEvent } from '@atproto/tap';
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
+import type { Main as ProtocolTarget } from '$lib/lexicons/bio/cuanto/protocolTarget.defs';
+import type { Main as Survey } from '$lib/lexicons/bio/cuanto/survey.defs';
 import type { Main as Follow } from '$lib/lexicons/bio/cuanto/surveyProtocol/follow.defs';
+import type { Main as SurveyProtocol } from '$lib/lexicons/bio/cuanto/surveyProtocol.defs';
 import type { Main as Identification } from '$lib/lexicons/bio/lexicons/temp/v0-1/identification.defs';
 import type { Main as Occurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs';
-import type { Main as Survey } from '$lib/lexicons/bio/lexicons/temp/v0-1/survey.defs';
-import type { Main as SurveyProtocol } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyProtocol.defs';
-import type { Main as SurveyTarget } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs';
 import { insertIdentification } from '$lib/server/db/identifications';
 import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
 import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
@@ -22,9 +22,9 @@ import {
 } from '$lib/server/pds';
 import type { RequestHandler } from './$types';
 
-const PROTOCOL_NSID = 'bio.lexicons.temp.v0-1.surveyProtocol';
-const TARGET_NSID = 'bio.lexicons.temp.v0-1.surveyTarget';
-const SURVEY_NSID = 'bio.lexicons.temp.v0-1.survey';
+const PROTOCOL_NSID = 'bio.cuanto.surveyProtocol';
+const TARGET_NSID = 'bio.cuanto.protocolTarget';
+const SURVEY_NSID = 'bio.cuanto.survey';
 const OCCURRENCE_NSID = 'bio.lexicons.temp.v0-1.occurrence';
 const IDENTIFICATION_NSID = 'bio.lexicons.temp.v0-1.identification';
 const FOLLOW_NSID = 'bio.cuanto.surveyProtocol.follow';
@@ -67,7 +67,7 @@ async function backfillProtocol(protocolUri: string): Promise<boolean> {
   // the DID and filter client-side.
   const targets = (await listAtRecords(did, TARGET_NSID)) ?? [];
   for (const t of targets) {
-    const target = t.value as SurveyTarget;
+    const target = t.value as ProtocolTarget;
     if (target.protocol === protocolUri) {
       const { rkey: tRkey } = parseAtUri(t.uri);
       await insertTarget(did, tRkey, target, t.uri);
@@ -201,7 +201,7 @@ export const POST: RequestHandler = async ({ request }) => {
     );
     log.info({ atUri }, 'ingested survey protocol');
   } else if (evt.collection === TARGET_NSID) {
-    const target = evt.record as unknown as SurveyTarget;
+    const target = evt.record as unknown as ProtocolTarget;
     try {
       await insertTarget(evt.did, evt.rkey, target, atUri);
     } catch (e) {

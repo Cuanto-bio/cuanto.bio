@@ -1,11 +1,11 @@
 import type { l } from '@atproto/lex';
 import { error, json } from '@sveltejs/kit';
-import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
-import * as Survey from '$lib/lexicons/bio/lexicons/temp/v0-1/survey';
 import {
   type TaxonScope,
   taxonScope as taxonScopeType,
-} from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs';
+} from '$lib/lexicons/bio/cuanto/protocolTarget.defs';
+import * as Survey from '$lib/lexicons/bio/cuanto/survey';
+import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
 import { bbox, geo } from '$lib/lexicons/community/lexicon/location';
 import * as Place from '$lib/lexicons/org/atgeo/place';
 import type { Main as AtgeoPlace } from '$lib/lexicons/org/atgeo/place.defs';
@@ -15,8 +15,8 @@ import type { ProtocolRow } from '$lib/server/db/survey-protocols';
 import { getProtocolByUri } from '$lib/server/db/survey-protocols';
 import {
   getOccurrencesForSurveys,
+  getProtocolTargetsByUri,
   getSurveysByDid,
-  getSurveyTargetsByUri,
   groupOccurrencesBySurvey,
   insertOccurrence,
   insertSurvey,
@@ -91,7 +91,7 @@ async function fetchProtocolRecords(body: SurveyInput) {
 
   // Pre-fetch targets for all occurrences in one query; build taxon-scope map.
   const targetUris = body.occurrences.map((o) => o.surveyTargetUri);
-  const targetRows = await getSurveyTargetsByUri(targetUris);
+  const targetRows = await getProtocolTargetsByUri(targetUris);
   const taxonScopeMap = new Map<string, TaxonScope>();
   for (const row of targetRows) {
     const taxonScopeEntry = row.record.scope?.find((s) =>
@@ -159,7 +159,7 @@ async function createOccurrence(
     surveyTargetID: inputOcc.surveyTargetUri as l.AtUriString,
     ...(inputOcc.taxonID ? { taxonID: inputOcc.taxonID as l.UriString } : {}),
     organismQuantity: inputOcc.organismQuantity,
-    organismQuantityType: 'individual-count',
+    organismQuantityType: 'individuals',
   });
   const { uri: occUri, cid: occCid } = await createRecord(
     did,
@@ -181,7 +181,7 @@ async function createIncidentalOccurrence(
     eventID: surveyUri as l.AtUriString,
     taxonID: input.taxonID as l.UriString,
     organismQuantity: input.organismQuantity,
-    organismQuantityType: 'individual-count',
+    organismQuantityType: 'individuals',
   });
   const { uri: occUri, cid: occCid } = await createRecord(
     did,

@@ -7,9 +7,8 @@ import {
   targetTaxonID,
 } from './targets.svelte';
 
-const TAXON_TYPE = 'bio.lexicons.temp.v0-1.surveyTarget#taxonScope' as const;
-const VERBATIM_TYPE =
-  'bio.lexicons.temp.v0-1.surveyTarget#verbatimScope' as const;
+const TAXON_TYPE = 'bio.cuanto.protocolTarget#taxonScope' as const;
+const VERBATIM_TYPE = 'bio.cuanto.protocolTarget#verbatimScope' as const;
 
 function taxonTarget(
   atUri: string,
@@ -20,7 +19,7 @@ function taxonTarget(
   return {
     atUri,
     record: {
-      $type: 'bio.lexicons.temp.v0-1.surveyTarget',
+      $type: 'bio.cuanto.protocolTarget',
       protocol: 'at://example.com/protocol/1',
       scope: [
         // biome-ignore lint/suspicious/noExplicitAny: test fixture, taxonID is UriString in production
@@ -34,7 +33,7 @@ function verbatimTarget(atUri: string, verbatimTargetScope: string): Target {
   return {
     atUri,
     record: {
-      $type: 'bio.lexicons.temp.v0-1.surveyTarget',
+      $type: 'bio.cuanto.protocolTarget',
       protocol: 'at://example.com/protocol/1',
       scope: [{ $type: VERBATIM_TYPE, verbatimTargetScope }],
     },

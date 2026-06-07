@@ -46,7 +46,7 @@ describe('POST /protocols/new — createRecord payload with locationOptions', ()
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(createRecord).mockResolvedValue({
-      uri: `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/test1`,
+      uri: `at://${DID}/bio.cuanto.surveyProtocol/test1`,
       cid: FAKE_CID,
     });
   });
@@ -61,7 +61,7 @@ describe('POST /protocols/new — createRecord payload with locationOptions', ()
 
     expect(createRecord).toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.v0-1.surveyProtocol',
+      'bio.cuanto.surveyProtocol',
       expect.objectContaining({
         locationOptions: [
           expect.objectContaining({
@@ -98,7 +98,7 @@ describe('POST /protocols/new — createRecord payload with locationOptions', ()
 
     expect(createRecord).toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.v0-1.surveyProtocol',
+      'bio.cuanto.surveyProtocol',
       expect.objectContaining({
         locationOptions: [
           expect.objectContaining({
@@ -141,7 +141,7 @@ describe('POST /protocols/new — createRecord payload with locationOptions', ()
 
     expect(createRecord).toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.v0-1.surveyProtocol',
+      'bio.cuanto.surveyProtocol',
       expect.objectContaining({
         locationOptions: [
           expect.objectContaining({
@@ -185,7 +185,7 @@ describe('POST /protocols/new — locationOptions validation failures', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(createRecord).mockResolvedValue({
-      uri: `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/test1`,
+      uri: `at://${DID}/bio.cuanto.surveyProtocol/test1`,
       cid: FAKE_CID,
     });
   });

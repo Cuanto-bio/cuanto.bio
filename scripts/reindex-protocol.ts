@@ -1,7 +1,7 @@
 import { IdResolver } from '@atproto/identity';
 import postgres from 'postgres';
 
-const TARGET_NSID = 'bio.lexicons.temp.v0-1.surveyTarget';
+const TARGET_NSID = 'bio.cuanto.protocolTarget';
 
 interface AtRecord {
   uri: string;
@@ -90,7 +90,7 @@ async function main() {
   if (!protocolUri) {
     console.error('Usage: reindex-protocol.ts <protocol-at-uri>');
     console.error(
-      'Example: reindex-protocol.ts at://did:plc:abc123/bio.lexicons.temp.v0-1.surveyProtocol/abc',
+      'Example: reindex-protocol.ts at://did:plc:abc123/bio.cuanto.surveyProtocol/abc',
     );
     process.exit(1);
   }
@@ -142,7 +142,7 @@ async function main() {
       const { rkey: tRkey } = parseAtUri(t.uri);
       const target = t.value as Record<string, unknown>;
       await sql`
-        INSERT INTO survey_targets (at_uri, did, rkey, protocol_uri, record, indexed_at)
+        INSERT INTO protocol_targets (at_uri, did, rkey, protocol_uri, record, indexed_at)
         VALUES (${t.uri}, ${did}, ${tRkey}, ${protocolUri}, ${sql.json(target)}, now())
         ON CONFLICT (at_uri) DO UPDATE SET protocol_uri = EXCLUDED.protocol_uri, record = EXCLUDED.record
       `;

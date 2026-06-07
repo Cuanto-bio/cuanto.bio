@@ -26,8 +26,8 @@ import {
 import { GET } from './+server';
 
 const DID = 'did:test:sync-spec';
-const SURVEY_URI = `at://${DID}/bio.lexicons.temp.v0-1.survey/s1`;
-const TARGET_URI = `at://${DID}/bio.lexicons.temp.v0-1.surveyTarget/t1`;
+const SURVEY_URI = `at://${DID}/bio.cuanto.survey/s1`;
+const TARGET_URI = `at://${DID}/bio.cuanto.protocolTarget/t1`;
 const INCIDENTAL_URI = `at://${DID}/bio.lexicons.temp.v0-1.occurrence/occ-incidental`;
 const TARGETED_URI = `at://${DID}/bio.lexicons.temp.v0-1.occurrence/occ-targeted`;
 

@@ -1,7 +1,7 @@
 import type { l } from '@atproto/lex';
+import type { TaxonScope } from '$lib/lexicons/bio/cuanto/protocolTarget.defs';
 import * as Identification from '$lib/lexicons/bio/lexicons/temp/v0-1/identification';
 import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
-import type { TaxonScope } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs';
 import { insertIdentification } from '$lib/server/db/identifications';
 import { insertOccurrence } from '$lib/server/db/surveys';
 import logger from '$lib/server/logger';

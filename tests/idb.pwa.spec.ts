@@ -64,7 +64,7 @@ test('following page shows cached protocol offline', async ({
 }) => {
   await context.addCookies([AUTH_COOKIE]);
   const { protocolRkey } = await seedProtocol(sql, DID);
-  const protocolUri = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
   await seedFollow(sql, DID, protocolUri);
 
   try {
@@ -90,7 +90,7 @@ test('surveys page shows cached surveys offline', async ({
 }) => {
   await context.addCookies([AUTH_COOKIE]);
   const { protocolRkey } = await seedProtocol(sql, DID);
-  const protocolUri = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
   await seedSurvey(sql, DID, protocolUri, 'Offline Test Park');
 
   try {
@@ -161,7 +161,7 @@ test('pending surveys page shows a pending survey from IDB', async ({
 }) => {
   await context.addCookies([AUTH_COOKIE]);
   const { protocolRkey } = await seedProtocol(sql, DID);
-  const protocolUri = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
 
   try {
     // Visit online to install the SW.
@@ -237,7 +237,7 @@ test('surveys page renders cached surveys in createdAt DESC order when offline',
 }) => {
   await context.addCookies([AUTH_COOKIE]);
   const { protocolRkey } = await seedProtocol(sql, DID);
-  const protocolUri = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
 
   // Seed older first to confirm IDB cache order doesn't determine display order.
   await seedSurvey(
@@ -280,7 +280,7 @@ test('deleting a survey removes it from IDB so it is gone when offline', async (
 }) => {
   await context.addCookies([AUTH_COOKIE]);
   const { protocolRkey } = await seedProtocol(sql, DID);
-  const protocolUri = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+  const protocolUri = `at://${DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
   const { surveyRkey } = await seedSurvey(
     sql,
     DID,
@@ -307,7 +307,7 @@ test('deleting a survey removes it from IDB so it is gone when offline', async (
               rkey: protocolRkey,
               handle: HANDLE,
               record: {
-                $type: 'bio.lexicons.temp.v0-1.surveyProtocol',
+                $type: 'bio.cuanto.surveyProtocol',
                 title: 'Test Protocol',
                 description: '',
                 createdAt: new Date().toISOString(),

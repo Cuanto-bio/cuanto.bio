@@ -60,11 +60,11 @@ describe('user store', () => {
 // ── cached-protocols store ────────────────────────────────────────────────────
 
 const cachedProtocol1 = {
-  atUri: 'at://did:test:1/bio.lexicons.temp.v0-1.surveyProtocol/cp1',
+  atUri: 'at://did:test:1/bio.cuanto.surveyProtocol/cp1',
   rkey: 'cp1',
   handle: 'alice',
   record: {
-    $type: 'bio.lexicons.temp.v0-1.surveyProtocol' as const,
+    $type: 'bio.cuanto.surveyProtocol' as const,
     title: 'Cached Protocol One',
     description: 'First cached protocol',
     createdAt:
@@ -72,11 +72,11 @@ const cachedProtocol1 = {
   },
   targets: [
     {
-      atUri: 'at://did:test:1/bio.lexicons.temp.v0-1.surveyTarget/t1',
+      atUri: 'at://did:test:1/bio.cuanto.protocolTarget/t1',
       record: {
-        $type: 'bio.lexicons.temp.v0-1.surveyTarget' as const,
+        $type: 'bio.cuanto.protocolTarget' as const,
         protocol:
-          'at://did:test:1/bio.lexicons.temp.v0-1.surveyProtocol/cp1' as `at://did:${string}:${string}/${string}.${string}.${string}/${string}`,
+          'at://did:test:1/bio.cuanto.surveyProtocol/cp1' as `at://did:${string}:${string}/${string}.${string}.${string}/${string}`,
         scope: [],
       },
     },
@@ -99,11 +99,11 @@ describe('cached-protocols store', () => {
 
   test('getCachedProtocolByRkey falls back to followed-protocols when not in cache', async () => {
     const followedOnly = {
-      atUri: 'at://did:test:2/bio.lexicons.temp.v0-1.surveyProtocol/fo1',
+      atUri: 'at://did:test:2/bio.cuanto.surveyProtocol/fo1',
       rkey: 'fo1',
       handle: 'bob',
       record: {
-        $type: 'bio.lexicons.temp.v0-1.surveyProtocol' as const,
+        $type: 'bio.cuanto.surveyProtocol' as const,
         title: 'Followed Only',
         description: 'Only in followed-protocols',
         createdAt:
@@ -128,11 +128,11 @@ describe('cached-protocols store', () => {
 // ── followed-protocols store ──────────────────────────────────────────────────
 
 const protocol1 = {
-  atUri: 'at://did:test:1/bio.lexicons.temp.v0-1.surveyProtocol/fp1',
+  atUri: 'at://did:test:1/bio.cuanto.surveyProtocol/fp1',
   rkey: 'fp1',
   handle: 'alice',
   record: {
-    $type: 'bio.lexicons.temp.v0-1.surveyProtocol' as const,
+    $type: 'bio.cuanto.surveyProtocol' as const,
     title: 'Protocol One',
     description: 'First protocol',
     createdAt:
@@ -142,11 +142,11 @@ const protocol1 = {
 };
 
 const protocol2 = {
-  atUri: 'at://did:test:1/bio.lexicons.temp.v0-1.surveyProtocol/fp2',
+  atUri: 'at://did:test:1/bio.cuanto.surveyProtocol/fp2',
   rkey: 'fp2',
   handle: 'alice',
   record: {
-    $type: 'bio.lexicons.temp.v0-1.surveyProtocol' as const,
+    $type: 'bio.cuanto.surveyProtocol' as const,
     title: 'Protocol Two',
     description: 'Second protocol',
     createdAt:
@@ -202,7 +202,7 @@ describe('followed-protocols store', () => {
 // ── pending-surveys store ─────────────────────────────────────────────────────
 
 const pendingSurvey1: Omit<import('./db').PendingSurvey, 'id'> = {
-  protocolUri: 'at://did:test:1/bio.lexicons.temp.v0-1.surveyProtocol/p1',
+  protocolUri: 'at://did:test:1/bio.cuanto.surveyProtocol/p1',
   protocolRkey: 'p1',
   protocolTitle: 'whatever',
   locationName: 'Test Field',
@@ -348,7 +348,7 @@ describe('pending-surveys store', () => {
 // ── cached-surveys store ──────────────────────────────────────────────────────
 
 const survey1 = {
-  atUri: 'at://did:test:1/bio.lexicons.temp.v0-1.survey/cs1',
+  atUri: 'at://did:test:1/bio.cuanto.survey/cs1',
   did: 'did:test:1',
   rkey: 'cs1',
   handle: 'bob',
@@ -356,9 +356,9 @@ const survey1 = {
   protocolRkey: 'proto1',
   protocolTitle: 'Bird Count',
   record: {
-    $type: 'bio.lexicons.temp.v0-1.survey' as const,
+    $type: 'bio.cuanto.survey' as const,
     protocol: {
-      uri: 'at://did:test:1/bio.lexicons.temp.v0-1.surveyProtocol/sp1' as `at://did:${string}:${string}/${string}.${string}.${string}/${string}`,
+      uri: 'at://did:test:1/bio.cuanto.surveyProtocol/sp1' as `at://did:${string}:${string}/${string}.${string}.${string}/${string}`,
       cid: 'bafycid1' as `bafy${string}`,
     },
     createdAt:
@@ -374,11 +374,11 @@ const survey1 = {
       record: {
         $type: 'bio.lexicons.temp.v0-1.occurrence' as const,
         eventID:
-          'at://did:test:1/bio.lexicons.temp.v0-1.survey/cs1' as `at://did:${string}:${string}/${string}.${string}.${string}/${string}`,
+          'at://did:test:1/bio.cuanto.survey/cs1' as `at://did:${string}:${string}/${string}.${string}.${string}/${string}`,
         surveyTargetID:
-          'at://did:test:1/bio.lexicons.temp.v0-1.surveyTarget/st1' as `at://did:${string}:${string}/${string}.${string}.${string}/${string}`,
+          'at://did:test:1/bio.cuanto.protocolTarget/st1' as `at://did:${string}:${string}/${string}.${string}.${string}/${string}`,
         organismQuantity: '5',
-        organismQuantityType: 'individual-count',
+        organismQuantityType: 'individuals',
       },
     },
   ],
@@ -395,7 +395,7 @@ describe('cached-surveys store', () => {
 
   test('returns undefined for unknown atUri', async () => {
     const result = await getCachedSurvey(
-      'at://did:unknown/bio.lexicons.temp.v0-1.survey/missing',
+      'at://did:unknown/bio.cuanto.survey/missing',
     );
     expect(result).toBeUndefined();
   });
@@ -403,7 +403,7 @@ describe('cached-surveys store', () => {
   test('getCachedSurveys returns stored surveys', async () => {
     const survey2 = {
       ...survey1,
-      atUri: 'at://did:test:1/bio.lexicons.temp.v0-1.survey/cs2',
+      atUri: 'at://did:test:1/bio.cuanto.survey/cs2',
       rkey: 'cs2',
     };
     await cacheSurvey(survey1);

@@ -10,7 +10,7 @@ vi.mock('$lib/server/db/surveys', () => ({
   getSurveyDetailByHandleAndRkey: vi.fn(),
   getSurveyOwnerDid: vi.fn(),
   getOccurrencesForSurveys: vi.fn().mockResolvedValue([]),
-  getSurveyTargetsByUri: vi.fn().mockResolvedValue([]),
+  getProtocolTargetsByUri: vi.fn().mockResolvedValue([]),
   insertSurvey: vi.fn(),
   insertOccurrence: vi.fn(),
   deleteOccurrenceByAtUri: vi.fn(),
@@ -48,9 +48,9 @@ import {
   deleteOccurrencesBySurveyUri,
   deleteSurveyByAtUri,
   getOccurrencesForSurveys,
+  getProtocolTargetsByUri,
   getSurveyDetailByHandleAndRkey,
   getSurveyOwnerDid,
-  getSurveyTargetsByUri,
   insertOccurrence,
   insertSurvey,
 } from '$lib/server/db/surveys';
@@ -62,9 +62,9 @@ const DID = 'did:test:surveys-edit-spec';
 const HANDLE = 'testuser';
 const RKEY = 'survey1';
 
-const PROTOCOL_URI = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/proto1`;
-const SURVEY_URI = `at://${DID}/bio.lexicons.temp.v0-1.survey/${RKEY}`;
-const TARGET_URI = `at://${DID}/bio.lexicons.temp.v0-1.surveyTarget/target1`;
+const PROTOCOL_URI = `at://${DID}/bio.cuanto.surveyProtocol/proto1`;
+const SURVEY_URI = `at://${DID}/bio.cuanto.survey/${RKEY}`;
+const TARGET_URI = `at://${DID}/bio.cuanto.protocolTarget/target1`;
 const OCC_URI = `at://${DID}/bio.lexicons.temp.v0-1.occurrence/occ1`;
 
 const FAKE_SURVEY = {
@@ -75,7 +75,7 @@ const FAKE_SURVEY = {
   protocolRkey: 'proto1',
   protocolTitle: 'Test Protocol',
   record: {
-    $type: 'bio.lexicons.temp.v0-1.survey',
+    $type: 'bio.cuanto.survey',
     protocol: {
       uri: PROTOCOL_URI,
       cid: FAKE_CID,
@@ -99,7 +99,7 @@ const FAKE_SURVEY_WITH_OCC = {
         eventID: SURVEY_URI,
         surveyTargetID: TARGET_URI,
         organismQuantity: '3',
-        organismQuantityType: 'individual-count',
+        organismQuantityType: 'individuals',
       },
       identification: undefined,
     },
@@ -292,7 +292,7 @@ describe('PUT /api/surveys/[handle]/[rkey]', () => {
     expect(resp.status).toBe(200);
     expect(putRecord).toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.v0-1.survey',
+      'bio.cuanto.survey',
       RKEY,
       expect.objectContaining({ eventDurationValue: 60 }),
     );
@@ -349,7 +349,7 @@ describe('PUT /api/surveys/[handle]/[rkey]', () => {
       FAKE_SURVEY as never,
     );
     const newOccUri = `at://${DID}/bio.lexicons.temp.v0-1.occurrence/newOcc`;
-    // sql called for batch survey_targets lookup; empty scope → no identification created
+    // sql called for batch protocol_targets lookup; empty scope → no identification created
     // biome-ignore lint/suspicious/noExplicitAny: sql mock needs any cast
     vi.mocked(sql as any).mockResolvedValueOnce([{ record: { scope: [] } }]);
     vi.mocked(createRecord).mockResolvedValueOnce({
@@ -382,18 +382,18 @@ describe('PUT /api/surveys/[handle]/[rkey]', () => {
   test('creates identification when new occurrence has a matching taxon scope', async () => {
     const newOccUri = `at://${DID}/bio.lexicons.temp.v0-1.occurrence/newOcc`;
     const newIdentUri = `at://${DID}/bio.lexicons.temp.v0-1.identification/ident1`;
-    vi.mocked(getSurveyTargetsByUri).mockResolvedValueOnce([
+    vi.mocked(getProtocolTargetsByUri).mockResolvedValueOnce([
       {
         at_uri: TARGET_URI,
         record: {
           scope: [
             {
-              $type: 'bio.lexicons.temp.v0-1.surveyTarget#taxonScope',
+              $type: 'bio.cuanto.protocolTarget#taxonScope',
               scientificName: 'Quercus agrifolia',
               taxonRank: 'species',
             },
           ],
-          $type: 'bio.lexicons.temp.v0-1.surveyTarget',
+          $type: 'bio.cuanto.protocolTarget',
           protocol: PROTOCOL_URI,
         },
       },
@@ -467,7 +467,7 @@ describe('PUT /api/surveys/[handle]/[rkey]', () => {
     expect(resp.status).toBe(200);
     expect(putRecord).toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.v0-1.survey',
+      'bio.cuanto.survey',
       RKEY,
       expect.objectContaining({ createdAt: FAKE_SURVEY.record.createdAt }),
     );
@@ -493,7 +493,7 @@ describe('PUT /api/surveys/[handle]/[rkey] — location geometry', () => {
     expect(resp.status).toBe(200);
     expect(putRecord).toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.v0-1.survey',
+      'bio.cuanto.survey',
       RKEY,
       expect.objectContaining({
         location: expect.objectContaining({
@@ -525,7 +525,7 @@ describe('PUT /api/surveys/[handle]/[rkey] — location geometry', () => {
     expect(resp.status).toBe(200);
     expect(putRecord).toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.v0-1.survey',
+      'bio.cuanto.survey',
       RKEY,
       expect.objectContaining({
         track: expect.objectContaining({ source: 'uploaded' }),
@@ -543,7 +543,7 @@ describe('PUT /api/surveys/[handle]/[rkey] — location geometry', () => {
     expect(resp.status).toBe(200);
     expect(putRecord).toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.v0-1.survey',
+      'bio.cuanto.survey',
       RKEY,
       expect.objectContaining({
         track: expect.objectContaining({ source: 'device' }),
@@ -561,9 +561,9 @@ describe('PUT /api/surveys/[handle]/[rkey] — location geometry', () => {
     expect(resp.status).toBe(200);
     const recordArg = vi
       .mocked(putRecord)
-      .mock.calls.find(
-        (c) => c[1] === 'bio.lexicons.temp.v0-1.survey',
-      )?.[3] as { track?: unknown };
+      .mock.calls.find((c) => c[1] === 'bio.cuanto.survey')?.[3] as {
+      track?: unknown;
+    };
     expect(recordArg.track).toBeUndefined();
   });
 });

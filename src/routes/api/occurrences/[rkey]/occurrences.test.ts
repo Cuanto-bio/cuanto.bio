@@ -39,8 +39,8 @@ const DID = 'did:test:occ-spec';
 const RKEY = 'testrkey';
 const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
 const OCC_URI = `at://${DID}/bio.lexicons.temp.v0-1.occurrence/${RKEY}`;
-const TARGET_URI = `at://${DID}/bio.lexicons.temp.v0-1.surveyTarget/tgtA`;
-const OLD_TARGET_URI = `at://${DID}/bio.lexicons.temp.v0-1.surveyTarget/oldTgt`;
+const TARGET_URI = `at://${DID}/bio.cuanto.protocolTarget/tgtA`;
+const OLD_TARGET_URI = `at://${DID}/bio.cuanto.protocolTarget/oldTgt`;
 
 const BASE_OCCURRENCE = {
   at_uri: OCC_URI,
@@ -48,8 +48,7 @@ const BASE_OCCURRENCE = {
   rkey: RKEY,
   record: {
     $type: 'bio.lexicons.temp.v0-1.occurrence' as const,
-    eventID:
-      `at://${DID}/bio.lexicons.temp.v0-1.survey/svy1` as `at://${string}`,
+    eventID: `at://${DID}/bio.cuanto.survey/svy1` as `at://${string}`,
     surveyTargetID: OLD_TARGET_URI as `at://${string}`,
     organismQuantity: '2',
   },

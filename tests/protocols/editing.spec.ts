@@ -118,7 +118,7 @@ test.describe('protocol editing', () => {
   test('editing replaces survey targets', async ({ page, sql, context }) => {
     await context.addCookies([authCookie(EDIT_DID)]);
     const { protocolRkey } = await seedProtocol(sql, EDIT_DID);
-    const protocolUri = `at://${EDIT_DID}/bio.lexicons.temp.v0-1.surveyProtocol/${protocolRkey}`;
+    const protocolUri = `at://${EDIT_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
 
     await page.goto(`/protocols/${EDIT_HANDLE}/${protocolRkey}/edit`);
 
@@ -141,7 +141,7 @@ test.describe('protocol editing', () => {
     );
 
     const targets = await sql<{ record: Record<string, unknown> }[]>`
-      SELECT record FROM survey_targets WHERE protocol_uri = ${protocolUri}
+      SELECT record FROM protocol_targets WHERE protocol_uri = ${protocolUri}
     `;
     expect(targets).toHaveLength(1);
     const scope = (

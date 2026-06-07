@@ -31,11 +31,11 @@ const HANDLE = 'user-edit-unit-spec';
 const RKEY = 'testrkey';
 
 const FAKE_PROTOCOL = {
-  atUri: `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${RKEY}`,
+  atUri: `at://${DID}/bio.cuanto.surveyProtocol/${RKEY}`,
   rkey: RKEY,
   handle: HANDLE,
   record: {
-    $type: 'bio.lexicons.temp.v0-1.surveyProtocol',
+    $type: 'bio.cuanto.surveyProtocol',
     title: 'Original Title',
     description: 'Original Description',
     createdAt: '2024-01-01T00:00:00.000Z',
@@ -160,7 +160,7 @@ describe('POST /protocols/[handle]/[rkey]/edit — validation', () => {
     });
     expect(putRecord).toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.v0-1.surveyProtocol',
+      'bio.cuanto.surveyProtocol',
       RKEY,
       expect.objectContaining({
         title: 'New Title',
@@ -172,15 +172,15 @@ describe('POST /protocols/[handle]/[rkey]/edit — validation', () => {
 });
 
 describe('POST /protocols/[handle]/[rkey]/edit — target management', () => {
-  const PROTOCOL_URI = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/${RKEY}`;
+  const PROTOCOL_URI = `at://${DID}/bio.cuanto.surveyProtocol/${RKEY}`;
   const TARGET_A = {
-    atUri: `at://${DID}/bio.lexicons.temp.v0-1.surveyTarget/targetA`,
+    atUri: `at://${DID}/bio.cuanto.protocolTarget/targetA`,
     record: {
-      $type: 'bio.lexicons.temp.v0-1.surveyTarget',
+      $type: 'bio.cuanto.protocolTarget',
       protocol: PROTOCOL_URI,
       scope: [
         {
-          $type: 'bio.lexicons.temp.v0-1.surveyTarget#taxonScope',
+          $type: 'bio.cuanto.protocolTarget#taxonScope',
           taxonID: 'https://www.inaturalist.org/taxa/1',
           scientificName: 'Species A',
           taxonRank: 'species',
@@ -189,13 +189,13 @@ describe('POST /protocols/[handle]/[rkey]/edit — target management', () => {
     },
   };
   const TARGET_B = {
-    atUri: `at://${DID}/bio.lexicons.temp.v0-1.surveyTarget/targetB`,
+    atUri: `at://${DID}/bio.cuanto.protocolTarget/targetB`,
     record: {
-      $type: 'bio.lexicons.temp.v0-1.surveyTarget',
+      $type: 'bio.cuanto.protocolTarget',
       protocol: PROTOCOL_URI,
       scope: [
         {
-          $type: 'bio.lexicons.temp.v0-1.surveyTarget#taxonScope',
+          $type: 'bio.cuanto.protocolTarget#taxonScope',
           taxonID: 'https://www.inaturalist.org/taxa/2',
           scientificName: 'Species B',
           taxonRank: 'species',
@@ -205,7 +205,7 @@ describe('POST /protocols/[handle]/[rkey]/edit — target management', () => {
   };
   const SCOPE_C = [
     {
-      $type: 'bio.lexicons.temp.v0-1.surveyTarget#taxonScope',
+      $type: 'bio.cuanto.protocolTarget#taxonScope',
       taxonID: 'https://www.inaturalist.org/taxa/3',
       scientificName: 'Species C',
       taxonRank: 'species',
@@ -223,7 +223,7 @@ describe('POST /protocols/[handle]/[rkey]/edit — target management', () => {
       cid: FAKE_CID,
     });
     vi.mocked(createRecord).mockResolvedValue({
-      uri: `at://${DID}/bio.lexicons.temp.v0-1.surveyTarget/newC`,
+      uri: `at://${DID}/bio.cuanto.protocolTarget/newC`,
       cid: FAKE_CID,
     });
   });
@@ -255,7 +255,7 @@ describe('POST /protocols/[handle]/[rkey]/edit — target management', () => {
     await submitWithAandC();
     expect(createRecord).not.toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.v0-1.surveyTarget',
+      'bio.cuanto.protocolTarget',
       expect.objectContaining({ scope: TARGET_A.record.scope }),
     );
   });
@@ -264,7 +264,7 @@ describe('POST /protocols/[handle]/[rkey]/edit — target management', () => {
     await submitWithAandC();
     expect(createRecord).toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.v0-1.surveyTarget',
+      'bio.cuanto.protocolTarget',
       expect.objectContaining({ scope: SCOPE_C }),
     );
   });
@@ -281,12 +281,12 @@ describe('POST /protocols/[handle]/[rkey]/edit — target management', () => {
     });
     expect(createRecord).not.toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.v0-1.surveyTarget',
+      'bio.cuanto.protocolTarget',
       expect.anything(),
     );
     expect(putRecord).not.toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.v0-1.surveyTarget',
+      'bio.cuanto.protocolTarget',
       expect.anything(),
       expect.anything(),
     );
@@ -294,13 +294,13 @@ describe('POST /protocols/[handle]/[rkey]/edit — target management', () => {
 
   test('updates a verbatim target in place when its text changes', async () => {
     const TARGET_V = {
-      atUri: `at://${DID}/bio.lexicons.temp.v0-1.surveyTarget/targetV`,
+      atUri: `at://${DID}/bio.cuanto.protocolTarget/targetV`,
       record: {
-        $type: 'bio.lexicons.temp.v0-1.surveyTarget',
+        $type: 'bio.cuanto.protocolTarget',
         protocol: PROTOCOL_URI,
         scope: [
           {
-            $type: 'bio.lexicons.temp.v0-1.surveyTarget#verbatimScope',
+            $type: 'bio.cuanto.protocolTarget#verbatimScope',
             verbatimTargetScope: 'Old text',
           },
         ],
@@ -321,7 +321,7 @@ describe('POST /protocols/[handle]/[rkey]/edit — target management', () => {
     });
     expect(putRecord).toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.v0-1.surveyTarget',
+      'bio.cuanto.protocolTarget',
       TARGET_V.atUri.split('/').at(-1),
       expect.objectContaining({
         scope: expect.arrayContaining([
@@ -332,7 +332,7 @@ describe('POST /protocols/[handle]/[rkey]/edit — target management', () => {
     expect(deleteRecord).not.toHaveBeenCalledWith(TARGET_V.atUri);
     expect(createRecord).not.toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.v0-1.surveyTarget',
+      'bio.cuanto.protocolTarget',
       expect.objectContaining({ scope: updatedScope }),
     );
   });
@@ -352,12 +352,12 @@ describe('POST /protocols/[handle]/[rkey]/edit — target management', () => {
     });
     expect(createRecord).not.toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.v0-1.surveyTarget',
+      'bio.cuanto.protocolTarget',
       expect.objectContaining({ scope: updatedScopeA }),
     );
     expect(putRecord).toHaveBeenCalledWith(
       DID,
-      'bio.lexicons.temp.v0-1.surveyTarget',
+      'bio.cuanto.protocolTarget',
       TARGET_A.atUri.split('/').at(-1),
       expect.objectContaining({
         scope: expect.arrayContaining([

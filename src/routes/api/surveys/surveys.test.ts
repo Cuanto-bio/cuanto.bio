@@ -15,7 +15,7 @@ vi.mock('$lib/server/db/surveys', () => ({
   insertOccurrence: vi.fn(),
   getSurveysByDid: vi.fn(),
   getOccurrencesForSurveys: vi.fn(),
-  getSurveyTargetsByUri: vi.fn().mockResolvedValue([]),
+  getProtocolTargetsByUri: vi.fn().mockResolvedValue([]),
   groupOccurrencesBySurvey: vi.fn(),
   toSurveyResponse: vi.fn(),
 }));
@@ -66,12 +66,12 @@ const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
 const DID = 'did:test:surveys-spec';
 
 const protocol = {
-  at_uri: `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/proto1`,
+  at_uri: `at://${DID}/bio.cuanto.surveyProtocol/proto1`,
   did: DID,
   rkey: 'proto1',
   cid: FAKE_CID,
   record: {
-    $type: 'bio.lexicons.temp.v0-1.surveyProtocol',
+    $type: 'bio.cuanto.surveyProtocol',
     title: 'Test',
     createdAt: '2026-01-01T00:00:00.000Z',
   },
@@ -115,13 +115,13 @@ beforeEach(() => {
     protocol as unknown as Awaited<ReturnType<typeof getProtocolByUri>>,
   );
   vi.mocked(createRecord).mockResolvedValue({
-    uri: `at://${DID}/bio.lexicons.temp.v0-1.survey/survey1`,
+    uri: `at://${DID}/bio.cuanto.survey/survey1`,
     cid: FAKE_CID,
   });
-  // survey_targets query returns no rows; users query returns the handle
+  // protocol_targets query returns no rows; users query returns the handle
   // biome-ignore lint/suspicious/noExplicitAny: sql mock needs any cast for mockResolvedValueOnce
   vi.mocked(sql as any)
-    .mockResolvedValueOnce([]) // survey_targets
+    .mockResolvedValueOnce([]) // protocol_targets
     .mockResolvedValue([{ handle: 'alice' }]); // users (and any subsequent calls)
 });
 
@@ -164,7 +164,7 @@ describe('POST /api/surveys — surveyorCount validation', () => {
   });
 
   test('saves surveyorCount to survey record when valid', async () => {
-    const surveyUri = `at://${DID}/bio.lexicons.temp.v0-1.survey/svy1`;
+    const surveyUri = `at://${DID}/bio.cuanto.survey/svy1`;
     vi.mocked(createRecord).mockResolvedValueOnce({
       uri: surveyUri,
       cid: FAKE_CID,
@@ -194,7 +194,7 @@ describe('POST /api/surveys — incidentals', () => {
 
   test('returns 422 when incidental is missing taxonID', async () => {
     vi.mocked(createRecord).mockResolvedValueOnce({
-      uri: `at://${DID}/bio.lexicons.temp.v0-1.survey/s1`,
+      uri: `at://${DID}/bio.cuanto.survey/s1`,
       cid: FAKE_CID,
     });
     const body = {
@@ -213,7 +213,7 @@ describe('POST /api/surveys — incidentals', () => {
 
   test('returns 422 when incidental is missing scientificName', async () => {
     vi.mocked(createRecord).mockResolvedValueOnce({
-      uri: `at://${DID}/bio.lexicons.temp.v0-1.survey/s1`,
+      uri: `at://${DID}/bio.cuanto.survey/s1`,
       cid: FAKE_CID,
     });
     const body = {
@@ -234,7 +234,7 @@ describe('POST /api/surveys — incidentals', () => {
   });
 
   test('creates occurrence and identification for a valid incidental', async () => {
-    const surveyUri = `at://${DID}/bio.lexicons.temp.v0-1.survey/s1`;
+    const surveyUri = `at://${DID}/bio.cuanto.survey/s1`;
     const occUri = `at://${DID}/bio.lexicons.temp.v0-1.occurrence/occ1`;
     const identUri = `at://${DID}/bio.lexicons.temp.v0-1.identification/ident1`;
     vi.mocked(createRecord)
@@ -273,7 +273,7 @@ describe('POST /api/surveys — incidentals', () => {
 
   test('does not create occurrence or identification when incidentals is absent', async () => {
     vi.mocked(createRecord).mockResolvedValue({
-      uri: `at://${DID}/bio.lexicons.temp.v0-1.survey/s1`,
+      uri: `at://${DID}/bio.cuanto.survey/s1`,
       cid: FAKE_CID,
     });
     const resp = await callPost({
@@ -333,7 +333,7 @@ describe('POST /api/surveys — eventDate validation', () => {
 
   test('returns 200 when eventDate is today', async () => {
     vi.mocked(createRecord).mockResolvedValue({
-      uri: `at://${DID}/bio.lexicons.temp.v0-1.survey/survey1`,
+      uri: `at://${DID}/bio.cuanto.survey/survey1`,
       cid: FAKE_CID,
     });
     // biome-ignore lint/suspicious/noExplicitAny: sql mock needs any cast
@@ -349,7 +349,7 @@ describe('POST /api/surveys — eventDate validation', () => {
 });
 
 describe('GET /api/surveys', () => {
-  const SURVEY_URI = `at://${DID}/bio.lexicons.temp.v0-1.survey/s1`;
+  const SURVEY_URI = `at://${DID}/bio.cuanto.survey/s1`;
   const INCIDENTAL_URI = `at://${DID}/bio.lexicons.temp.v0-1.occurrence/occ-incidental`;
 
   beforeEach(() => {

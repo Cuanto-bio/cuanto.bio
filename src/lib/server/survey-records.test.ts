@@ -20,8 +20,8 @@ vi.mock('$lib/server/logger', () => ({
 }));
 
 import type { l } from '@atproto/lex';
+import type { TaxonScope } from '$lib/lexicons/bio/cuanto/protocolTarget.defs';
 import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
-import type { TaxonScope } from '$lib/lexicons/bio/lexicons/temp/v0-1/surveyTarget.defs';
 import { insertIdentification } from '$lib/server/db/identifications';
 import { insertOccurrence } from '$lib/server/db/surveys';
 import { createRecord, putRecord } from '$lib/server/pds';
@@ -29,13 +29,13 @@ import { attachIdentificationToOccurrence } from './survey-records';
 
 const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
 const DID = 'did:test:survey-records-spec';
-const SURVEY_URI = `at://${DID}/bio.lexicons.temp.v0-1.survey/svy1`;
+const SURVEY_URI = `at://${DID}/bio.cuanto.survey/svy1`;
 const OCC_URI = `at://${DID}/bio.lexicons.temp.v0-1.occurrence/occ1`;
 const OCC_RKEY = 'occ1';
 const IDENT_URI = `at://${DID}/bio.lexicons.temp.v0-1.identification/ident1`;
 
 const TAXON_SCOPE: TaxonScope = {
-  $type: 'bio.lexicons.temp.v0-1.surveyTarget#taxonScope',
+  $type: 'bio.cuanto.protocolTarget#taxonScope',
   scientificName: 'Quercus agrifolia',
   taxonRank: 'species',
   vernacularName: 'Coast Live Oak',
@@ -47,7 +47,7 @@ function makeOccRecord() {
     eventID: SURVEY_URI as l.AtUriString,
     taxonID: TAXON_SCOPE.taxonID,
     organismQuantity: '1',
-    organismQuantityType: 'individual-count',
+    organismQuantityType: 'individuals',
   });
 }
 
