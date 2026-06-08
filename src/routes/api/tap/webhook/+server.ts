@@ -5,11 +5,16 @@ import type { Main as ProtocolTarget } from '$lib/lexicons/bio/cuanto/protocolTa
 import type { Main as Survey } from '$lib/lexicons/bio/cuanto/survey.defs';
 import type { Main as Follow } from '$lib/lexicons/bio/cuanto/surveyProtocol/follow.defs';
 import type { Main as SurveyProtocol } from '$lib/lexicons/bio/cuanto/surveyProtocol.defs';
+import type { Main as SurveyTarget } from '$lib/lexicons/bio/cuanto/surveyTarget.defs';
 import type { Main as Identification } from '$lib/lexicons/bio/lexicons/temp/v0-1/identification.defs';
 import type { Main as Occurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs';
 import { insertIdentification } from '$lib/server/db/identifications';
 import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
 import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
+import {
+  deleteSurveyTargetByUri,
+  insertSurveyTarget,
+} from '$lib/server/db/survey-targets';
 import { insertOccurrence, insertSurvey } from '$lib/server/db/surveys';
 import { insertUser } from '$lib/server/db/users';
 import logger from '$lib/server/logger';
@@ -25,6 +30,7 @@ import type { RequestHandler } from './$types';
 const PROTOCOL_NSID = 'bio.cuanto.surveyProtocol';
 const TARGET_NSID = 'bio.cuanto.protocolTarget';
 const SURVEY_NSID = 'bio.cuanto.survey';
+const SURVEY_TARGET_NSID = 'bio.cuanto.surveyTarget';
 const OCCURRENCE_NSID = 'bio.lexicons.temp.v0-1.occurrence';
 const IDENTIFICATION_NSID = 'bio.lexicons.temp.v0-1.identification';
 const FOLLOW_NSID = 'bio.cuanto.surveyProtocol.follow';
@@ -182,6 +188,24 @@ export const POST: RequestHandler = async ({ request }) => {
     } else if (evt.action === 'delete') {
       await deleteFollow(atUri);
       log.info({ atUri }, 'deleted protocol follow');
+    }
+    return json({ ok: true });
+  }
+
+  if (evt.collection === SURVEY_TARGET_NSID) {
+    if (evt.action === 'create' && evt.record) {
+      const target = evt.record as unknown as SurveyTarget;
+      await insertSurveyTarget(
+        evt.did,
+        evt.rkey,
+        target,
+        atUri,
+        target.protocolTargetID,
+      );
+      log.info({ atUri }, 'ingested survey target');
+    } else if (evt.action === 'delete') {
+      await deleteSurveyTargetByUri(atUri);
+      log.info({ atUri }, 'deleted survey target');
     }
     return json({ ok: true });
   }

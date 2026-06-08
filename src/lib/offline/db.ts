@@ -36,6 +36,10 @@ export interface CachedProtocol extends Protocol {
 export interface Occurrence {
   atUri: string;
   record: AtOccurrence;
+  // The canonical protocolTarget URI, resolved server-side from the surveyor's
+  // surveyTarget. App-level only (not part of the lexicon record); used to relate
+  // occurrences to a protocol's targets.
+  protocolTargetUri?: string;
   identification?: {
     scientificName: string;
     vernacularName?: string;

@@ -15,6 +15,7 @@ import {
   PdsSessionExpiredError,
   putRecord,
 } from '$lib/server/pds';
+import { surveyTargetUriFor } from '$lib/surveyTargets';
 import type { RequestHandler } from './$types';
 
 const log = logger.child({ component: 'occurrences-api' });
@@ -63,9 +64,11 @@ export const PATCH: RequestHandler = async ({ request, locals, params }) => {
     if (!surveyTargetID)
       return json({ error: 'surveyTargetID required' }, { status: 422 });
 
+    // The client sends the protocolTarget URI; store the surveyor's own
+    // surveyTarget URI (idempotent if a surveyTarget URI is already sent).
     const updated = {
       ...occurrence.record,
-      surveyTargetID: surveyTargetID as l.AtUriString,
+      surveyTargetID: surveyTargetUriFor(did, surveyTargetID) as l.AtUriString,
     };
     try {
       await putRecord(

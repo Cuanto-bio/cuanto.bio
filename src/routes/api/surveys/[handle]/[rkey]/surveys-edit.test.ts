@@ -23,6 +23,11 @@ vi.mock('$lib/server/db/identifications', () => ({
   insertIdentification: vi.fn(),
 }));
 
+vi.mock('$lib/server/materialize-targets', () => ({
+  materializeSurveyTargets: vi.fn(),
+  gcSurveyTargetsIfUnused: vi.fn(),
+}));
+
 vi.mock('$lib/server/db', () => {
   const tag = Object.assign(
     vi.fn(() => Promise.resolve([{ did: DID }])),
@@ -372,7 +377,7 @@ describe('PUT /api/surveys/[handle]/[rkey]', () => {
       'bio.lexicons.temp.v0-1.occurrence',
       expect.objectContaining({
         eventID: SURVEY_URI,
-        surveyTargetID: TARGET_URI,
+        surveyTargetID: `at://${DID}/bio.cuanto.surveyTarget/target1`,
         organismQuantity: '2',
       }),
     );

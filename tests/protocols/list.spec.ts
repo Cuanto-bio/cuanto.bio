@@ -80,8 +80,8 @@ test.describe('protocol detail Last Survey column', () => {
     );
     const olderUri = `at://${LAST_DID}/bio.cuanto.survey/${olderRkey}`;
     const newerUri = `at://${LAST_DID}/bio.cuanto.survey/${newerRkey}`;
-    await seedOccurrence(sql, LAST_DID, olderUri, taxonTargetUri);
-    await seedOccurrence(sql, LAST_DID, newerUri, taxonTargetUri);
+    await seedOccurrence(sql, LAST_DID, olderUri, protocolUri, taxonTargetUri);
+    await seedOccurrence(sql, LAST_DID, newerUri, protocolUri, taxonTargetUri);
 
     await page.goto(`/protocols/${LAST_HANDLE}/${protocolRkey}`);
 

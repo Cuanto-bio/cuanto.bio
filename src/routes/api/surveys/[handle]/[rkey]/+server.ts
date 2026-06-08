@@ -22,9 +22,14 @@ import {
   insertSurvey,
 } from '$lib/server/db/surveys';
 import logger from '$lib/server/logger';
+import {
+  gcSurveyTargetsIfUnused,
+  materializeSurveyTargets,
+} from '$lib/server/materialize-targets';
 import { createRecord, deleteRecord, putRecord } from '$lib/server/pds';
 import { attachIdentificationToOccurrence } from '$lib/server/survey-records';
 import { eventDateIsInFuture } from '$lib/server/survey-validation';
+import { surveyTargetUriFor } from '$lib/surveyTargets';
 import type { RequestHandler } from './$types';
 
 const log = logger.child({ component: 'api-surveys-detail' });
@@ -92,6 +97,10 @@ export const DELETE: RequestHandler = async ({ params, locals, url }) => {
   } catch (err) {
     log.error({ err }, 'Failed to delete survey from PDS');
   }
+
+  // Clean up materialized surveyTargets if this was the last survey for the
+  // protocol and the user no longer follows it.
+  await gcSurveyTargetsIfUnused(did, survey.record.protocol.uri);
 
   return new Response(null, { status: 204 });
 };
@@ -241,6 +250,9 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
   await putRecord(did, Survey.$type, surveyRkey, surveyRecord);
   await insertSurvey(did, surveyRkey, surveyRecord, survey.atUri);
 
+  // Ensure surveyTargets exist before occurrences reference them (idempotent).
+  await materializeSurveyTargets(did, survey.record.protocol.uri);
+
   // Pre-fetch taxon scopes for new occurrences in one batch query
   const newTargetUris = body.occurrences
     .filter(
@@ -268,7 +280,10 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
         const occRkey = occ.atUri.split('/').at(-1) ?? '';
         const occRecord = Occurrence.$build({
           eventID: survey.atUri as l.AtUriString,
-          surveyTargetID: occ.surveyTargetUri as l.AtUriString,
+          surveyTargetID: surveyTargetUriFor(
+            did,
+            occ.surveyTargetUri,
+          ) as l.AtUriString,
           ...(occ.taxonID ? { taxonID: occ.taxonID as l.UriString } : {}),
           organismQuantity: occ.organismQuantity,
           organismQuantityType: 'individuals',
@@ -310,7 +325,10 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
       // New occurrence
       const occRecord = Occurrence.$build({
         eventID: survey.atUri as l.AtUriString,
-        surveyTargetID: occ.surveyTargetUri as l.AtUriString,
+        surveyTargetID: surveyTargetUriFor(
+          did,
+          occ.surveyTargetUri,
+        ) as l.AtUriString,
         ...(occ.taxonID ? { taxonID: occ.taxonID as l.UriString } : {}),
         organismQuantity: occ.organismQuantity,
         organismQuantityType: 'individuals',

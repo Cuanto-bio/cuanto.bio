@@ -76,7 +76,7 @@ const incidentalOccs = $derived(
 
 const orphanedOccs = $derived(
   survey.occurrences.filter(
-    (o) => o.record.surveyTargetID && !targetUris.has(o.record.surveyTargetID),
+    (o) => o.protocolTargetUri && !targetUris.has(o.protocolTargetUri),
   ),
 );
 
@@ -86,7 +86,7 @@ const targetOccCount = $derived(
 
 const targetFilter = createTargetFilter(
   () => protocol.targets,
-  (t) => survey.occurrences.some((o) => o.record.surveyTargetID === t.atUri),
+  (t) => survey.occurrences.some((o) => o.protocolTargetUri === t.atUri),
   { initialOnlyCounted: true },
 );
 
@@ -385,7 +385,7 @@ const externalLinkProps =
       {#each targetFilter.filtered as target (target.atUri)}
         {@const taxonScope = target.record.scope.find(s => s.$type.endsWith('#taxonScope')) as TaxonScope}
         {@const verbatimScope = target.record.scope.find(s => s.$type.endsWith('#verbatimScope')) as VerbatimScope}
-        {@const occurrence = survey.occurrences.find(o => o.record.surveyTargetID === target.atUri)}
+        {@const occurrence = survey.occurrences.find(o => o.protocolTargetUri === target.atUri)}
         {#if taxonScope}
           {@render surveyTargetRow({ occurrence, taxon: taxonScope })}
         {:else if verbatimScope}

@@ -5,6 +5,10 @@ import {
   deleteFollow,
   getFollowByDidAndProtocol,
 } from '$lib/server/db/protocol-follows';
+import {
+  gcSurveyTargetsIfUnused,
+  materializeSurveyTargets,
+} from '$lib/server/materialize-targets';
 import { createRecord, deleteRecord } from '$lib/server/pds';
 import type { Actions } from './$types';
 
@@ -49,6 +53,10 @@ export const actions: Actions = {
       createdAt,
     });
 
+    // Adopting a protocol materializes the surveyor's own copies of its targets.
+    // Non-fatal: the survey-creation path re-ensures materialization.
+    await materializeSurveyTargets(locals.did, protocol.at_uri);
+
     return { isFollowing: true };
   },
 
@@ -72,6 +80,10 @@ export const actions: Actions = {
 
     await deleteFollow(follow.at_uri);
     await deleteRecord(follow.at_uri);
+
+    // Clean up materialized surveyTargets if the user is no longer engaged with
+    // the protocol (no remaining surveys).
+    await gcSurveyTargetsIfUnused(locals.did, protocol.at_uri);
 
     return { isFollowing: false };
   },

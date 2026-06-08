@@ -23,10 +23,12 @@ import {
   toSurveyResponse,
 } from '$lib/server/db/surveys';
 import logger from '$lib/server/logger';
+import { materializeSurveyTargets } from '$lib/server/materialize-targets';
 import { createRecord, PdsSessionExpiredError } from '$lib/server/pds';
 import { attachIdentificationToOccurrence } from '$lib/server/survey-records';
 import { eventDateIsInFuture } from '$lib/server/survey-validation';
 import type { IncidentalInput } from '$lib/surveys';
+import { surveyTargetUriFor } from '$lib/surveyTargets';
 import type { RequestHandler } from './$types';
 
 const log = logger.child({ component: 'api-surveys' });
@@ -156,7 +158,12 @@ async function createOccurrence(
 ) {
   const occurrenceRecord = Occurrence.$build({
     eventID: surveyUri as l.AtUriString,
-    surveyTargetID: inputOcc.surveyTargetUri as l.AtUriString,
+    // References the surveyor's own durable surveyTarget (not the protocol
+    // author's protocolTarget that the client sent).
+    surveyTargetID: surveyTargetUriFor(
+      did,
+      inputOcc.surveyTargetUri,
+    ) as l.AtUriString,
     ...(inputOcc.taxonID ? { taxonID: inputOcc.taxonID as l.UriString } : {}),
     organismQuantity: inputOcc.organismQuantity,
     organismQuantityType: 'individuals',
@@ -254,6 +261,11 @@ async function postSurvey(request: Request, did: string) {
   }
 
   const { protocol, taxonScopeMap } = await fetchProtocolRecords(body);
+
+  // Ensure the surveyor has materialized surveyTargets for this protocol before
+  // occurrences reference them. Idempotent; also covers surveying a protocol the
+  // user never explicitly followed.
+  await materializeSurveyTargets(did, protocol.at_uri);
 
   const locationEntries = [
     ...(body.latitude && body.longitude

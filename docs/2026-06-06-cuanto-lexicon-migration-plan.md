@@ -59,13 +59,26 @@ keeps occurrence→target references same-repo (never dangles), and aligns with 
 *export* time by projecting per-survey target rows from the survey→protocol→target join (a
 `dwc-dp.ts` concern, not a storage mandate).
 
-- **Materialize on follow** (online): creating a `bio.cuanto.surveyProtocol.follow` also
-  materializes the protocol's targets. Follow-time (not survey-time) matters because the app
-  surveys **offline**; targets must already exist before going into the field, or offline
-  occurrences would reference nonexistent targets.
-- **Deterministic rkey:** each surveyTarget reuses its source protocolTarget's rkey (a valid
-  tid). Materialization is idempotent (re-running finds the existing record) and the
-  occurrence-repoint mapping is trivial (same rkey, surveyor's repo).
+- **Materialize on follow, re-ensure at survey time:** adopting a protocol (the follow action)
+  materializes the protocol's targets; survey create/edit also calls the idempotent
+  `materializeSurveyTargets`, so surveying an un-followed protocol still has its targets. (An
+  earlier "offline" rationale for follow-time materialization does not actually apply, because
+  occurrence records are built **server-side** at POST, not on the client.)
+- **Deterministic rkey (convenience, not load-bearing):** each surveyTarget reuses its source
+  protocolTarget's rkey, so materialization is idempotent (re-running finds the existing
+  record). Correctness does **not** depend on it: occurrences reference the surveyTarget
+  directly and the protocolTarget correlation is resolved through the `survey_targets` index, so
+  nothing breaks if rkeys ever diverge.
+
+**Occurrence → target references.** An occurrence stores only `surveyTargetID` (the surveyor's
+own surveyTarget — same repo, never dangles). The canonical protocolTarget is **not** duplicated
+onto the occurrence record; it is always reachable transitively
+(occurrence → surveyTarget → `protocolTargetID`), so the federated lexicon stays minimal and
+external consumers (who ingest the surveyTargets anyway) lose nothing. For our own UI — which
+holds occurrences and the protocol's protocolTargets but not the surveyTargets — the server
+resolves a `protocolTargetUri` per occurrence via the `survey_targets` index and attaches it as
+an **app-level** field (a sibling of `record`, not inside it); the frontend matches occurrences
+to protocol targets on that.
 - **Lifecycle / GC:** a surveyTarget set is alive while the surveyor is *engaged* with the
   protocol = **followed OR has ≥1 survey** for it. Eligible for deletion only when neither.
   Key on **survey** existence, not occurrence existence — a sought-but-not-found target has no
@@ -85,7 +98,7 @@ keeps occurrence→target references same-repo (never dangles), and aligns with 
 | `bio.lexicons.temp.v0-1.surveyTarget` | `bio.cuanto.protocolTarget` (author's canonical) |
 | (new) | `bio.cuanto.surveyTarget` (surveyor's materialized copy) |
 | `bio.cuanto.surveyProtocol.follow` | unchanged (`subject` at-uri rewritten in place) |
-| `bio.lexicons.temp.v0-1.occurrence` | unchanged (content synced; `surveyTargetID` repointed) |
+| `bio.lexicons.temp.v0-1.occurrence` | unchanged (`organismQuantityType` synced; `surveyTargetID` points at the surveyor's surveyTarget) |
 | `bio.lexicons.temp.v0-1.identification` | unchanged (content synced) |
 | `bio.lexicons.temp.v0-1.media` | unchanged |
 
@@ -96,7 +109,7 @@ whose collection moves, so it migrates as a cheap in-place `putRecord`.
 
 ---
 
-# PR 1 — Namespace move + occurrence/identification sync + table rename
+# PR 1 — Namespace move + occurrence/identification sync + table rename  *(implemented)*
 
 ## 1.1 Lexicon schema files
 
@@ -162,7 +175,7 @@ source table name changes. Update the streaming queries in `src/lib/server/db/su
 
 ---
 
-# PR 2 — Two-tier targets (surveyTarget materialization + GC)
+# PR 2 — Two-tier targets (surveyTarget materialization + GC)  *(implemented)*
 
 ## 2.1 surveyTarget lexicon
 
@@ -185,22 +198,36 @@ In the follow action(s) (`src/routes/app/protocols/[handle]/[rkey]/+page.server.
 creation, materialize the protocol's targets into the surveyor's repo:
 - Source the protocol's targets and their `scope` from the local index (`protocol_targets`),
   so it works regardless of the author's own migration status.
-- For each, `createRecord`/`putRecord` a `bio.cuanto.surveyTarget` reusing the protocolTarget's
-  rkey, `protocol` = protocol at-uri, `protocolTargetID` = protocolTarget at-uri, `scope` copied.
-  Idempotent via the reused rkey.
+- For each, `putRecord` a `bio.cuanto.surveyTarget` reusing the protocolTarget's rkey,
+  `protocol` = protocol at-uri, `protocolTargetID` = protocolTarget at-uri, `scope` copied.
+  Idempotent via the reused rkey (skip targets already present in the index).
+- **Re-ensure at survey time:** survey create (`/api/surveys` POST) and edit (`/api/surveys/
+  [handle]/[rkey]` PUT) also call `materializeSurveyTargets` before writing occurrences, so a
+  survey of an un-followed protocol still has its targets. Lives in
+  `src/lib/server/materialize-targets.ts`.
 - New DB table + layer: `survey_targets` (fresh in PR2) with `at_uri`, `did`, `rkey`,
   `protocol_uri`, `protocol_target_uri`, `record` JSONB; `src/lib/server/db/survey-targets.ts`
-  with insert/list-by-did-and-protocol/delete. Index this collection in the TAP webhook.
+  with insert/list-by-did-and-protocol/delete-by-did-and-protocol. Index this collection in the
+  TAP webhook.
 
-## 2.3 Repoint occurrence references
+## 2.3 Occurrence → surveyTarget, with app-level protocolTarget resolution
 
-- New survey occurrences set `occurrence.surveyTargetID` to the surveyor's own
-  `bio.cuanto.surveyTarget` at-uri (same repo). Update the occurrence write paths
-  (`src/lib/server/survey-records.ts`, `src/routes/api/occurrences/[rkey]/+server.ts`,
-  survey creation in `src/routes/api/surveys/+server.ts` and offline upload
-  `src/lib/offline/upload.ts`).
-- Offline: surveyTargets materialized at follow time are available offline (cache alongside
-  `cached-protocols`/`followed-protocols`) so offline occurrences can reference them.
+- **Write side:** new survey occurrences (and relink) set `occurrence.surveyTargetID` to the
+  surveyor's own `bio.cuanto.surveyTarget` at-uri via `surveyTargetUriFor(did, protocolTargetUri)`
+  (`src/lib/surveyTargets.ts`). The client still sends the protocolTarget URI; the server maps
+  it. Write paths: `src/routes/api/surveys/+server.ts`, `src/routes/api/surveys/[handle]/[rkey]/
+  +server.ts`, `src/routes/api/occurrences/[rkey]/+server.ts`. The occurrence record carries
+  **only** `surveyTargetID` (no `protocolTargetID` on the lexicon record).
+- **Read side (app-level correlation):** `getOccurrencesForSurveys` `LEFT JOIN survey_targets st
+  ON st.at_uri = o.record->>'surveyTargetID'` and returns `st.protocol_target_uri`;
+  `groupOccurrencesBySurvey` attaches it as `Occurrence.protocolTargetUri` (sibling of `record`,
+  defined in `src/lib/offline/db.ts`). The offline cache carries it because it's part of the
+  survey API response.
+- **Frontend matching** uses `o.protocolTargetUri === protocolTarget.atUri` in
+  `SurveyDetail.svelte`, `SurveyForm.svelte`, `OrphanedOccurrences.svelte`. Incidental detection
+  stays on `!o.record.surveyTargetID`. `getLastSurveyByTargetUris` joins `survey_targets` to key
+  results by protocolTarget. No offline/IndexedDB schema change (surveyTargets never reach the
+  client).
 
 ## 2.4 Event-driven GC
 
@@ -216,22 +243,23 @@ creation, materialize the protocol's targets into the surveyor's repo:
 
 ## 2.5 DwC-DP export — source from surveyor targets
 
-Switch the same streaming queries (`src/lib/server/db/surveys.ts`) to source targets from the
-new surveyor-owned `survey_targets`, joined per surveyor (`st.did = s.did AND
-st.protocol_uri = s.protocol_uri`) and matched to occurrences via `o.record->>'surveyTargetID'
-= st.at_uri` (now the surveyor's surveyTarget). The export emits **one target set per surveyor**
-(did + protocol) rather than denormalized targets for every survey; since the surveyor's
-surveyTarget at-uri is stable and unique, simplify the synthesized `surveyTargetID`
-(`{survey}#target#{target}`) in `dwc-dp.ts` accordingly, and rework the per-(survey × target)
-absence synthesis (`streamAbsencesByProtocolUri`) against the surveyor targets.
+In the three target-bearing streaming queries (`src/lib/server/db/surveys.ts`:
+`streamSurveyTargetsByProtocolUri`, `streamTargetedOccurrencesByProtocolUri`,
+`streamAbsencesByProtocolUri`), change the join from `protocol_targets st ON
+st.protocol_uri = s.protocol_uri` to `survey_targets st ON st.did = s.did AND
+st.protocol_uri = s.protocol_uri` — sourcing from the surveyor's own durable targets so the
+export survives the protocol author deleting their protocol. The occurrence match
+(`o.record->>'surveyTargetID' = st.at_uri`) is unchanged (it now resolves to the surveyor's
+surveyTarget), and the CSV row structure and synthesized `surveyTargetID`
+(`{survey}#target#{st.at_uri}`) stay as they were — `st.at_uri` is now the surveyor's stable
+surveyTarget URI. The incidental query (no target) is unchanged (`surveyTargetID IS NULL`).
 **Absence semantics are preserved as-is:** notDetected is still computed against the surveyor's
 *current* target set, so a target added after a survey still back-fills a phantom notDetected
 onto that survey (a pre-existing behavior of the protocol-level export). Making absence
 temporally correct (only targets sought as of each survey) is deferred to a near-term follow-up,
 tracked in tangled issue #11 ("Export should only generate not detected for targets of the
-relevant version"). Open detail to settle during implementation: how `surveyID` is expressed
-when targets are per-surveyor. Verify output against the DwC-DP schemas (`dwc-dp-schemas.ts`,
-`dwc-dp-README.md`); update `dwc-dp.test.ts`.
+relevant version"). `surveyID` stays per-survey (the row structure is unchanged), so the export
+remains DwC-DP-valid. The unit-level CSV builders (`dwc-dp.test.ts`) are unaffected.
 
 ---
 

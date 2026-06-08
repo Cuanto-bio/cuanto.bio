@@ -21,6 +21,10 @@ interface OccurrenceRowForSurvey {
   at_uri: string;
   survey_uri: string;
   record: AtOccurrence;
+  // Resolved from the surveyor's surveyTarget; the canonical protocolTarget URI
+  // used to relate occurrences to a protocol's targets. Not part of the lexicon
+  // record (an app-level convenience). Optional so test fixtures can omit it.
+  protocol_target_uri?: string | null;
 }
 
 interface ProtocolTargetRow {
@@ -74,9 +78,10 @@ export async function getOccurrencesForSurveys(
 ): Promise<OccurrenceRowForSurvey[]> {
   if (surveyUris.length === 0) return [];
   return sql<OccurrenceRowForSurvey[]>`
-    SELECT at_uri, survey_uri, record
-    FROM occurrences
-    WHERE survey_uri = ANY(${sql.array(surveyUris)})
+    SELECT o.at_uri, o.survey_uri, o.record, st.protocol_target_uri
+    FROM occurrences o
+    LEFT JOIN survey_targets st ON st.at_uri = o.record->>'surveyTargetID'
+    WHERE o.survey_uri = ANY(${sql.array(surveyUris)})
   `;
 }
 
@@ -99,18 +104,22 @@ export async function getLastSurveyByTargetUris(
   targetUris: string[],
 ): Promise<LastSurveyRow[]> {
   if (targetUris.length === 0) return [];
+  // Occurrences reference each surveyor's own surveyTarget; resolve to the shared
+  // protocolTarget URI via survey_targets.protocol_target_uri so callers can key
+  // results by protocolTarget.
   return sql<LastSurveyRow[]>`
-    SELECT DISTINCT ON (o.record->>'surveyTargetID')
-      o.record->>'surveyTargetID'          AS target_uri,
+    SELECT DISTINCT ON (st.protocol_target_uri)
+      st.protocol_target_uri               AS target_uri,
       COALESCE(s.event_date, s.created_at) AS survey_date,
       u.handle                             AS survey_handle,
       s.rkey                               AS survey_rkey
     FROM occurrences o
+    JOIN survey_targets st ON st.at_uri = o.record->>'surveyTargetID'
     JOIN surveys s ON s.at_uri = o.survey_uri
     JOIN users u   ON u.did    = s.did
-    WHERE o.record->>'surveyTargetID' = ANY(${sql.array(targetUris)})
+    WHERE st.protocol_target_uri = ANY(${sql.array(targetUris)})
     ORDER BY
-      o.record->>'surveyTargetID',
+      st.protocol_target_uri,
       COALESCE(s.event_date, s.created_at) DESC NULLS LAST
   `;
 }
@@ -127,6 +136,17 @@ export function toLastSurveyMap(rows: LastSurveyRow[]): LastSurveyByTargetUri {
   return map;
 }
 
+export async function countSurveysByDidAndProtocol(
+  did: string,
+  protocolUri: string,
+): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    SELECT COUNT(*)::int AS count FROM surveys
+    WHERE did = ${did} AND protocol_uri = ${protocolUri}
+  `;
+  return row?.count ?? 0;
+}
+
 export function groupOccurrencesBySurvey(
   occurrences: (OccurrenceRowForSurvey & {
     identification?: Occurrence['identification'];
@@ -138,6 +158,7 @@ export function groupOccurrencesBySurvey(
     list.push({
       atUri: o.at_uri,
       record: o.record,
+      protocolTargetUri: o.protocol_target_uri ?? undefined,
       identification: o.identification,
     });
     map.set(o.survey_uri, list);
@@ -338,10 +359,12 @@ export interface SurveyTargetExportRow {
   verbatim_scope: string | null;
 }
 
-// One row per (survey × protocol target) pair, ordered by survey then target.
-// This expansion is needed because DwC-DP's survey-target table links individual
-// surveys to their targets — our targets are defined at the protocol level but
-// apply to every survey under that protocol.
+// One row per (survey × surveyor target) pair, ordered by survey then target.
+// Sources from the surveyor's own survey_targets (durable copies of the
+// protocol's targets) so the export survives the protocol author deleting the
+// protocol, and reflects exactly what each surveyor sought. DwC-DP's
+// survey-target table links individual surveys to their targets, hence the
+// per-survey expansion.
 export function streamSurveyTargetsByProtocolUri(protocolUri: string) {
   return sql<SurveyTargetExportRow[]>`
     SELECT
@@ -351,7 +374,7 @@ export function streamSurveyTargetsByProtocolUri(protocolUri: string) {
       st.record->'scope'->0->>'taxonID'              AS taxon_id,
       st.record->'scope'->0->>'verbatimTargetScope'  AS verbatim_scope
     FROM surveys s
-    JOIN protocol_targets st ON st.protocol_uri = s.protocol_uri
+    JOIN survey_targets st ON st.did = s.did AND st.protocol_uri = s.protocol_uri
     WHERE s.protocol_uri = ${protocolUri}
     ORDER BY s.at_uri, st.at_uri
   `.cursor(100);
@@ -382,7 +405,7 @@ export function streamTargetedOccurrencesByProtocolUri(protocolUri: string) {
       )                  AS taxon_id,
       true               AS is_presence
     FROM surveys s
-    JOIN protocol_targets st ON st.protocol_uri = s.protocol_uri
+    JOIN survey_targets st ON st.did = s.did AND st.protocol_uri = s.protocol_uri
     JOIN occurrences o
       ON o.survey_uri = s.at_uri
       AND o.record->>'surveyTargetID' = st.at_uri
@@ -409,7 +432,7 @@ export function streamAbsencesByProtocolUri(protocolUri: string) {
       st.record->'scope'->0->>'taxonID'        AS taxon_id,
       false              AS is_presence
     FROM surveys s
-    JOIN protocol_targets st ON st.protocol_uri = s.protocol_uri
+    JOIN survey_targets st ON st.did = s.did AND st.protocol_uri = s.protocol_uri
     LEFT JOIN occurrences o
       ON o.survey_uri = s.at_uri
       AND o.record->>'surveyTargetID' = st.at_uri

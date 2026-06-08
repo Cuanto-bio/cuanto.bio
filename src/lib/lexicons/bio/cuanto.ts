@@ -5,3 +5,4 @@
 export * as protocolTarget from './cuanto/protocolTarget.js'
 export * as survey from './cuanto/survey.js'
 export * as surveyProtocol from './cuanto/surveyProtocol.js'
+export * as surveyTarget from './cuanto/surveyTarget.js'

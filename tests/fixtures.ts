@@ -229,15 +229,32 @@ export async function seedOccurrence(
   sql: Sql,
   did: string,
   surveyUri: string,
-  surveyTargetUri: string,
+  protocolUri: string,
+  // The protocol author's protocolTarget URI.
+  protocolTargetUri: string,
 ): Promise<void> {
   const rkey = `testocc${Date.now()}${Math.floor(Math.random() * 1000)}`;
   const atUri = `at://${did}/bio.lexicons.temp.v0-1.occurrence/${rkey}`;
+  const targetRkey = protocolTargetUri.split('/').at(-1) ?? '';
+  const surveyTargetUri = `at://${did}/bio.cuanto.surveyTarget/${targetRkey}`;
   const record = {
     $type: 'bio.lexicons.temp.v0-1.occurrence',
     eventID: surveyUri,
     surveyTargetID: surveyTargetUri,
   };
+  // The occurrence's protocolTarget is resolved at the app level by joining
+  // survey_targets on surveyTargetID, so seed the row that join depends on.
+  const targetRecord = {
+    $type: 'bio.cuanto.surveyTarget',
+    protocol: protocolUri,
+    protocolTargetID: protocolTargetUri,
+    scope: [],
+  };
+  await sql`
+    INSERT INTO survey_targets (at_uri, did, rkey, protocol_uri, protocol_target_uri, record, indexed_at)
+    VALUES (${surveyTargetUri}, ${did}, ${targetRkey}, ${protocolUri}, ${protocolTargetUri}, ${sql.json(targetRecord)}, now())
+    ON CONFLICT (at_uri) DO NOTHING
+  `;
   await sql`
     INSERT INTO occurrences (at_uri, did, rkey, survey_uri, record, indexed_at)
     VALUES (${atUri}, ${did}, ${rkey}, ${surveyUri}, ${sql.json(record)}, now())
@@ -248,6 +265,7 @@ export async function teardownDid(sql: Sql, did: string): Promise<void> {
   await sql`DELETE FROM identifications WHERE did = ${did}`;
   await sql`DELETE FROM occurrences WHERE did = ${did}`;
   await sql`DELETE FROM surveys WHERE did = ${did}`;
+  await sql`DELETE FROM survey_targets WHERE did = ${did}`;
   await sql`DELETE FROM protocol_targets WHERE did = ${did}`;
   await sql`DELETE FROM protocol_follows WHERE did = ${did}`;
   await sql`DELETE FROM survey_protocols WHERE did = ${did}`;

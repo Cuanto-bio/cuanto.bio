@@ -16,7 +16,7 @@ const targetUris = $derived(new Set(targets.map((t) => t.atUri)));
 
 const orphans = $derived(
   occurrences.filter(
-    (o) => o.record.surveyTargetID && !targetUris.has(o.record.surveyTargetID),
+    (o) => o.protocolTargetUri && !targetUris.has(o.protocolTargetUri),
   ),
 );
 

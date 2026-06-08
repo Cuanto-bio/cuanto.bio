@@ -29,6 +29,10 @@ vi.mock('$lib/server/db/survey-protocols', () => ({
   getProtocolByUri: vi.fn(),
 }));
 
+vi.mock('$lib/server/materialize-targets', () => ({
+  materializeSurveyTargets: vi.fn(),
+}));
+
 vi.mock('$lib/server/db', () => {
   const tag = Object.assign(
     vi.fn(() => Promise.resolve([])),

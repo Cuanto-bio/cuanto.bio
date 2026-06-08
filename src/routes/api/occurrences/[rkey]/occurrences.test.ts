@@ -40,6 +40,9 @@ const RKEY = 'testrkey';
 const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
 const OCC_URI = `at://${DID}/bio.lexicons.temp.v0-1.occurrence/${RKEY}`;
 const TARGET_URI = `at://${DID}/bio.cuanto.protocolTarget/tgtA`;
+// Relinking stores the surveyor's own surveyTarget (same rkey as the
+// protocolTarget the client sent) as surveyTargetID.
+const SURVEY_TARGET_URI = `at://${DID}/bio.cuanto.surveyTarget/tgtA`;
 const OLD_TARGET_URI = `at://${DID}/bio.cuanto.protocolTarget/oldTgt`;
 
 const BASE_OCCURRENCE = {
@@ -133,7 +136,7 @@ describe('PATCH /api/occurrences/[rkey]', () => {
         DID,
         'bio.lexicons.temp.v0-1.occurrence',
         RKEY,
-        expect.objectContaining({ surveyTargetID: TARGET_URI }),
+        expect.objectContaining({ surveyTargetID: SURVEY_TARGET_URI }),
       );
     });
 
@@ -141,7 +144,7 @@ describe('PATCH /api/occurrences/[rkey]', () => {
       await callPatch({ action: 'relink', surveyTargetID: TARGET_URI });
       expect(updateOccurrenceRecord).toHaveBeenCalledWith(
         OCC_URI,
-        expect.objectContaining({ surveyTargetID: TARGET_URI }),
+        expect.objectContaining({ surveyTargetID: SURVEY_TARGET_URI }),
       );
     });
 

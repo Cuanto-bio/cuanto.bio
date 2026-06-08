@@ -49,7 +49,7 @@
           "surveyTargetID": {
             "type": "string",
             "format": "at-uri",
-            "description": "The SurveyTarget this Occurrence was intended to satisfy. Expresses observer intent."
+            "description": "The surveyor's own SurveyTarget this Occurrence was intended to satisfy. A durable, same-repo copy of the targeted criteria. Expresses observer intent. The originating ProtocolTarget is reachable via the SurveyTarget's protocolTargetID."
           },
           "eventID": {
             "type": "string",

@@ -104,12 +104,13 @@ function toDatetimeLocal(isoString: string | null | undefined): string {
   return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
 }
 
-// Build initial organism quantities from existing survey occurrences (edit)
+// Build initial organism quantities from existing survey occurrences (edit).
+// Keyed by protocolTargetUri, the shared canonical target identity the form uses.
 function buildQuantitiesFromSurvey(s: Survey): Record<string, string> {
   const map: Record<string, string> = {};
   for (const occ of s.occurrences) {
-    if (occ.record.surveyTargetID && occ.record.organismQuantity) {
-      map[occ.record.surveyTargetID] = String(occ.record.organismQuantity);
+    if (occ.protocolTargetUri && occ.record.organismQuantity) {
+      map[occ.protocolTargetUri] = String(occ.record.organismQuantity);
     }
   }
   return map;
@@ -128,13 +129,13 @@ function buildIncidentalsFromSurvey(s: Survey): IncidentalOccurrence[] {
     }));
 }
 
-// Maps surveyTargetID → existing occurrence atUri (edit only)
+// Maps protocolTargetUri → existing occurrence atUri (edit only)
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
 const existingOccurrenceUris: Record<string, string> = isEdit
   ? Object.fromEntries(
       (sv.occurrences ?? [])
-        .filter((o) => o.record.surveyTargetID)
-        .map((o) => [String(o.record.surveyTargetID), o.atUri]),
+        .filter((o) => o.protocolTargetUri)
+        .map((o) => [String(o.protocolTargetUri), o.atUri]),
     )
   : {};
 
