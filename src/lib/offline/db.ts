@@ -166,6 +166,13 @@ async function getDB(): Promise<IDBPDatabase<CuantoDB>> {
       if (oldVersion < 9) {
         db.createObjectStore('gps-tracks', { keyPath: 'atUri' });
       }
+      if (oldVersion < 10) {
+        // Lexicon namespace migration changed survey and protocol AT-URIs; clear
+        // cached stores so stale old-URI entries don't persist after re-sync.
+        tx.objectStore('cached-surveys').clear();
+        tx.objectStore('cached-protocols').clear();
+        tx.objectStore('followed-protocols').clear();
+      }
       // v8: occurrence shape changed from {count: number} to {organismQuantity: string}.
       // Data migration is handled lazily in getPendingSurveys() because the upgrade
       // callback is synchronous and cannot await IDB requests.
