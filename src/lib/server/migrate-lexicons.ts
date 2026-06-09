@@ -362,8 +362,13 @@ export async function migrateUser(did: string): Promise<void> {
 
   // 9. Remove stale old-namespace rows from Postgres. PDS records are left intact.
 
-  // Old surveys: safe to delete unconditionally. Step 6 re-indexed all of this
-  // user's occurrences to new survey URIs, so the cascade to occurrences is a no-op.
+  // Update any occurrences whose PDS records were deleted before step 6 could
+  // re-index them, leaving stale survey_uri values. Without this, deleting old
+  // survey rows below would cascade-delete those occurrences, which fails
+  // because identifications.occurrence_uri has no ON DELETE CASCADE.
+  for (const [oldUri, newUri] of surveyMap) {
+    await sql`UPDATE occurrences SET survey_uri = ${newUri} WHERE survey_uri = ${oldUri}`;
+  }
   const oldSurveyUris = [...surveyMap.keys()];
   if (oldSurveyUris.length > 0) {
     await sql`DELETE FROM surveys WHERE at_uri = ANY(${sql.array(oldSurveyUris)})`;
