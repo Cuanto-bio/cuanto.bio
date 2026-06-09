@@ -4,7 +4,7 @@
   "defs": {
     "main": {
       "type": "record",
-      "description": "A protocol author's canonical target: a potential subject for surveys following this Protocol. Belongs to a single Protocol.",
+      "description": "Subject for surveys following a Protocol.",
       "key": "tid",
       "record": {
         "type": "object",

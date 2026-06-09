@@ -4,7 +4,7 @@
   "defs": {
     "main": {
       "type": "record",
-      "description": "An event where participants collect data required by a Protocol. Absence of an Occurrence for a SurveyTarget implies the target was not found.",
+      "description": "An event where participants collect data required by a Survey Protocol.",
       "key": "tid",
       "record": {
         "type": "object",
