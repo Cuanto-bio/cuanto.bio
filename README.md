@@ -101,8 +101,8 @@ Create three Railway services in a project:
 |---|---|
 | `TAP_WEBHOOK_URL` | Internal Railway URL of the app's webhook endpoint, e.g. `https://<app-internal>/api/tap/webhook` |
 | `TAP_ADMIN_PASSWORD` | Must match the value set on the app service |
-| `TAP_SIGNAL_COLLECTION` | `bio.lexicons.temp.surveyProtocol` |
-| `TAP_COLLECTION_FILTERS` | `bio.lexicons.temp.surveyProtocol,bio.lexicons.temp.surveyTarget,bio.lexicons.temp.survey,bio.cuanto.surveyProtocol.follow,bio.lexicons.temp.occurrence` |
+| `TAP_SIGNAL_COLLECTION` | `bio.cuanto.surveyProtocol` |
+| `TAP_COLLECTION_FILTERS` | `bio.cuanto.surveyProtocol,bio.cuanto.surveyTarget,bio.cuanto.survey,bio.cuanto.surveyProtocol.follow,bio.lexicons.temp.v0-1.occurrence,bio.lexicons.temp.v0-1.identification` |
 
 ### Migrations
 

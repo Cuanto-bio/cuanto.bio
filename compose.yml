@@ -24,8 +24,8 @@ services:
       TAP_WEBHOOK_URL: "http://host.docker.internal:5173/api/tap/webhook"
       TAP_ADMIN_PASSWORD: "${TAP_ADMIN_PASSWORD}"
       TAP_NO_REPLAY: "true"
-      TAP_SIGNAL_COLLECTION: bio.lexicons.temp.v0-1.surveyProtocol
-      TAP_COLLECTION_FILTERS: "bio.lexicons.temp.v0-1.surveyProtocol,bio.lexicons.temp.v0-1.surveyTarget,bio.lexicons.temp.v0-1.survey,bio.cuanto.surveyProtocol.follow,bio.lexicons.temp.v0-1.occurrence,bio.lexicons.temp.v0-1.identification"
+      TAP_SIGNAL_COLLECTION: bio.cuanto.surveyProtocol
+      TAP_COLLECTION_FILTERS: "bio.cuanto.surveyProtocol,bio.cuanto.surveyTarget,bio.cuanto.survey,bio.cuanto.surveyProtocol.follow,bio.lexicons.temp.v0-1.occurrence,bio.lexicons.temp.v0-1.identification"
     volumes:
       - tap_data:/data
     restart: unless-stopped
