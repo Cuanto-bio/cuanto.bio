@@ -1,3 +1,4 @@
+import { parseAtUri } from '$lib/atUri';
 import sql from './index.js';
 
 export interface ProtocolFollow {
@@ -36,6 +37,24 @@ export async function createFollow(follow: {
     ON CONFLICT ON CONSTRAINT uq_follow_did_protocol
       DO UPDATE SET at_uri = EXCLUDED.at_uri, rkey = EXCLUDED.rkey,
                     created_at = EXCLUDED.created_at
+  `;
+}
+
+// Re-points an existing follow's protocol_uri while preserving its at_uri. Used
+// by the lexicon migration, where a follow keeps its record (and at_uri) but its
+// subject moves to the protocol's new NSID. Keyed on at_uri (not the
+// did+protocol_uri pair createFollow conflicts on) because the protocol_uri is
+// precisely what changes; upserts so a missing index row is created.
+export async function reindexFollowSubject(
+  atUri: string,
+  protocolUri: string,
+): Promise<void> {
+  const { did, rkey } = parseAtUri(atUri);
+  await sql`
+    INSERT INTO protocol_follows (at_uri, did, rkey, protocol_uri, created_at)
+    VALUES (${atUri}, ${did}, ${rkey}, ${protocolUri}, now())
+    ON CONFLICT ON CONSTRAINT protocol_follows_at_uri_key
+      DO UPDATE SET protocol_uri = EXCLUDED.protocol_uri
   `;
 }
 

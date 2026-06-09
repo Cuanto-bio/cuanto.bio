@@ -6,6 +6,26 @@ Cuanto.bio will extend the [lexicons.bio](https://lexicons.bio) lexicons, which 
 
 This document describes the lexicons for humans.
 
+> **Current model (2026-06).** Survey-domain records have moved to our own
+> `bio.cuanto.*` namespace and targets are now two-tier. The sections below
+> predate that move and use older NSIDs; the authoritative description of the
+> current design is
+> [`docs/2026-06-06-cuanto-lexicon-migration-plan.md`](./2026-06-06-cuanto-lexicon-migration-plan.md).
+> In brief:
+>
+> - `bio.cuanto.surveyProtocol`, `bio.cuanto.survey`, `bio.cuanto.surveyProtocol.follow`.
+> - **`bio.cuanto.protocolTarget`** — the protocol author's canonical target
+>   (the former Survey Target, renamed to emphasize the protocol link).
+> - **`bio.cuanto.surveyTarget`** — the surveyor's own durable copy of a target,
+>   materialized once per adopted protocol. It carries its own `scope` and a
+>   `protocolTargetID` back-link, so what a surveyor sought survives the protocol
+>   author editing or deleting the protocol.
+> - `occurrence`/`identification` stay on `bio.lexicons.temp.v0-1.*`.
+>   `occurrence.surveyTargetID` references the surveyor's `bio.cuanto.surveyTarget`;
+>   the canonical protocolTarget is reachable via that surveyTarget's
+>   `protocolTargetID` (resolved at the app level, not duplicated onto the
+>   occurrence record).
+
 ## New Record Lexicons
 
 Records of each of these lexicons "belong" to the owner of the PDS in which they reside, e.g. Protocol does not have any field specifying authorship because it's implied that its author and authority is the owner of the PDS where it is stored.

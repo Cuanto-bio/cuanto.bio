@@ -174,6 +174,17 @@ async function withSessionErrorHandling<T>(
   }
 }
 
+// Validates that the stored OAuth session for a DID is usable (refreshing the
+// token if needed), throwing PdsSessionExpiredError if it is dead. Cheap enough
+// to await before kicking off a long-running background migration so the caller
+// gets immediate re-auth feedback.
+export async function assertActiveSession(did: string): Promise<void> {
+  if (process.env.PDS_MOCK === 'true') return;
+  await withSessionErrorHandling(did, async () => {
+    await (await getClient()).restore(did);
+  });
+}
+
 export async function createRecord(
   did: string,
   collection: string,

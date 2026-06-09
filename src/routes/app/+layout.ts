@@ -19,8 +19,14 @@ export const load: LayoutLoad = async ({ fetch }) => {
         did: string;
         handle: string;
         avatarUrl?: string;
+        needsLexiconMigration?: boolean;
       };
-      await saveIdbUser(user);
+      // Don't persist the migration flag to IDB; it's a live server signal.
+      await saveIdbUser({
+        did: user.did,
+        handle: user.handle,
+        avatarUrl: user.avatarUrl,
+      });
       syncOfflineData(fetch); // intentionally not awaited
       return user;
     }

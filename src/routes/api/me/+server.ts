@@ -5,8 +5,14 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = async ({ locals }) => {
   if (!locals.did) return json({ error: 'Unauthorized' }, { status: 401 });
 
-  const [user] = await sql<{ handle: string; avatar_url: string | null }[]>`
-    SELECT handle, avatar_url FROM users WHERE did = ${locals.did}
+  const [user] = await sql<
+    {
+      handle: string;
+      avatar_url: string | null;
+      needs_lexicon_migration: boolean;
+    }[]
+  >`
+    SELECT handle, avatar_url, needs_lexicon_migration FROM users WHERE did = ${locals.did}
   `;
   if (!user) return json({ error: 'User not found' }, { status: 404 });
 
@@ -14,5 +20,6 @@ export const GET: RequestHandler = async ({ locals }) => {
     did: locals.did,
     handle: user.handle,
     avatarUrl: user.avatar_url ?? undefined,
+    needsLexiconMigration: user.needs_lexicon_migration,
   });
 };
