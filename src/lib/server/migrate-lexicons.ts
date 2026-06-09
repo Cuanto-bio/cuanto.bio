@@ -107,17 +107,13 @@ async function fetchProtocolTargets(
   return [...byRkey.entries()].map(([rkey, v]) => ({ rkey, ...v }));
 }
 
-// Migrates one user's records to the bio.cuanto.* namespace and the two-tier
-// target model, in place against their PDS via the stored OAuth session.
-// Idempotent and resumable: already-migrated records are skipped.
-export async function migrateUser(did: string): Promise<void> {
-  log.info({ did }, 'starting lexicon migration');
-
-  const protocolMap = new Map<string, StrongRef>(); // new protocol uri -> {uri,cid}
-  const surveyMap = new Map<string, string>(); // old survey uri -> new survey uri
-  const engagedProtocols = new Set<string>(); // new protocol uris this user uses
-
-  // 1. Own protocols: surveyProtocol -> bio.cuanto.surveyProtocol.
+// Migrates the user's own surveyProtocol records to bio.cuanto.surveyProtocol
+// and indexes them in survey_protocols. Returns a map from new protocol URI to
+// {uri, cid} used by subsequent steps to resolve CIDs without extra PDS calls.
+async function migrateOwnProtocols(
+  did: string,
+): Promise<Map<string, StrongRef>> {
+  const protocolMap = new Map<string, StrongRef>();
   for (const p of (await listAtRecords(did, OLD_PROTOCOL_NSID)) ?? []) {
     const { rkey } = parseAtUri(p.uri);
     const record = { ...(p.value as Json), $type: NEW_PROTOCOL_NSID };
@@ -125,8 +121,12 @@ export async function migrateUser(did: string): Promise<void> {
     protocolMap.set(res.uri, res);
     await insertProtocol(did, rkey, record as never, res.uri, res.cid);
   }
+  return protocolMap;
+}
 
-  // 2. Own protocol targets: surveyTarget -> bio.cuanto.protocolTarget.
+// Migrates the user's own surveyTarget records to bio.cuanto.protocolTarget
+// and indexes them in protocol_targets.
+async function migrateOwnTargets(did: string): Promise<void> {
   for (const t of (await listAtRecords(did, OLD_TARGET_NSID)) ?? []) {
     const { rkey } = parseAtUri(t.uri);
     const value = t.value as Json;
@@ -143,6 +143,34 @@ export async function migrateUser(did: string): Promise<void> {
     );
     await insertTarget(did, rkey, record as never, res.uri);
   }
+}
+
+// Phase-1 migration: writes the user's own protocol and protocolTarget records
+// to the bio.cuanto.* namespace and indexes them locally. Run this for all
+// users before migrateUser so cross-author follow re-indexing finds the FK
+// target in survey_protocols instead of deferring with a warning.
+// Idempotent: already-migrated records are skipped via upsertPdsRecord.
+export async function migrateUserProtocols(did: string): Promise<void> {
+  log.info({ did }, 'phase 1: migrating own protocols and targets');
+  await migrateOwnProtocols(did);
+  await migrateOwnTargets(did);
+  log.info({ did }, 'phase 1 complete');
+}
+
+// Migrates one user's records to the bio.cuanto.* namespace and the two-tier
+// target model, in place against their PDS via the stored OAuth session.
+// Idempotent and resumable: already-migrated records are skipped.
+export async function migrateUser(did: string): Promise<void> {
+  log.info({ did }, 'starting lexicon migration');
+
+  const surveyMap = new Map<string, string>(); // old survey uri -> new survey uri
+  const engagedProtocols = new Set<string>(); // new protocol uris this user uses
+
+  // 1. Own protocols: surveyProtocol -> bio.cuanto.surveyProtocol.
+  const protocolMap = await migrateOwnProtocols(did);
+
+  // 2. Own protocol targets: surveyTarget -> bio.cuanto.protocolTarget.
+  await migrateOwnTargets(did);
 
   // 3. Surveys: survey -> bio.cuanto.survey (rewrite protocol strongRef).
   for (const s of (await listAtRecords(did, OLD_SURVEY_NSID)) ?? []) {

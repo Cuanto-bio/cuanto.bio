@@ -71,7 +71,11 @@ vi.mock('$lib/server/logger', () => ({
   default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }));
 
-import { cleanupMigratedRecords, migrateUser } from './migrate-lexicons';
+import {
+  cleanupMigratedRecords,
+  migrateUser,
+  migrateUserProtocols,
+} from './migrate-lexicons';
 
 const DID = 'did:plc:surveyor';
 const oldProtocol = `at://${DID}/bio.lexicons.temp.v0-1.surveyProtocol/proto1`;
@@ -378,5 +382,68 @@ describe('migrateUser — cross-author (author not yet migrated)', () => {
     // the author's records are untouched (we can't write their repo)
     expect(store.has(authorOldProtocol)).toBe(true);
     expect(store.has(authorOldTarget)).toBe(true);
+  });
+});
+
+describe('migrateUserProtocols', () => {
+  test('migrates own protocols and targets but leaves surveys, follows, and occurrences untouched', async () => {
+    await migrateUserProtocols(DID);
+
+    expect(store.get(newProtocol)?.value.$type).toBe(
+      'bio.cuanto.surveyProtocol',
+    );
+    expect(store.get(newProtocolTarget)?.value.protocol).toBe(newProtocol);
+    // surveys, follows, and occurrences must not be touched
+    expect(store.has(newSurvey)).toBe(false);
+    expect(store.get(followUri)?.value.subject).toBe(oldProtocol);
+    expect((store.get(occUri)?.value as { eventID: string }).eventID).toBe(
+      oldSurvey,
+    );
+  });
+
+  test('is idempotent: second call does not change anything', async () => {
+    await migrateUserProtocols(DID);
+    const snapshot = new Map([...store.entries()].map(([k, v]) => [k, v.cid]));
+    await migrateUserProtocols(DID);
+    const after = new Map([...store.entries()].map(([k, v]) => [k, v.cid]));
+    expect(after).toEqual(snapshot);
+  });
+
+  test('after phase 1 for a protocol author, full migration of a follower succeeds without FK deferral', async () => {
+    // Simulates the two-pass ordering in the admin endpoint: protocol authors
+    // are indexed first so cross-author follow re-indexing has the FK target.
+    const AUTHOR = 'did:plc:author-phased';
+    const authorOldProto = `at://${AUTHOR}/bio.lexicons.temp.v0-1.surveyProtocol/p1`;
+    const authorNewProto = `at://${AUTHOR}/bio.cuanto.surveyProtocol/p1`;
+    const followerFollow = `at://${DID}/bio.cuanto.surveyProtocol.follow/f1`;
+
+    store.clear();
+    seed(authorOldProto, {
+      $type: 'bio.lexicons.temp.v0-1.surveyProtocol',
+      title: 'Theirs',
+      description: 'd',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    seed(followerFollow, {
+      $type: 'bio.cuanto.surveyProtocol.follow',
+      subject: authorOldProto,
+      createdAt: '2026-01-15T00:00:00.000Z',
+    });
+
+    // Phase 1: index the author's protocol.
+    await migrateUserProtocols(AUTHOR);
+    expect(store.has(authorNewProto)).toBe(true);
+
+    // Phase 2: migrate the follower. reindexFollowSubject must be called with
+    // the new protocol URI and must not be swallowed by the FK-deferral path.
+    reindexFollowSubject.mockClear();
+    await migrateUser(DID);
+
+    expect(reindexFollowSubject).toHaveBeenCalledWith(
+      followerFollow,
+      authorNewProto,
+    );
+    // The follow's PDS subject is rewritten.
+    expect(store.get(followerFollow)?.value.subject).toBe(authorNewProto);
   });
 });
