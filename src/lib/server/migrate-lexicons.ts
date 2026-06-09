@@ -109,19 +109,22 @@ async function fetchProtocolTargets(
 
 // Migrates the user's own surveyProtocol records to bio.cuanto.surveyProtocol
 // and indexes them in survey_protocols. Returns a map from new protocol URI to
-// {uri, cid} used by subsequent steps to resolve CIDs without extra PDS calls.
+// {uri, cid} used by subsequent steps to resolve CIDs without extra PDS calls,
+// plus the old protocol URIs for post-migration DB cleanup.
 async function migrateOwnProtocols(
   did: string,
-): Promise<Map<string, StrongRef>> {
+): Promise<{ protocolMap: Map<string, StrongRef>; oldProtocolUris: string[] }> {
   const protocolMap = new Map<string, StrongRef>();
+  const oldProtocolUris: string[] = [];
   for (const p of (await listAtRecords(did, OLD_PROTOCOL_NSID)) ?? []) {
+    oldProtocolUris.push(p.uri);
     const { rkey } = parseAtUri(p.uri);
     const record = { ...(p.value as Json), $type: NEW_PROTOCOL_NSID };
     const res = await upsertPdsRecord(did, NEW_PROTOCOL_NSID, rkey, record);
     protocolMap.set(res.uri, res);
     await insertProtocol(did, rkey, record as never, res.uri, res.cid);
   }
-  return protocolMap;
+  return { protocolMap, oldProtocolUris };
 }
 
 // Migrates the user's own surveyTarget records to bio.cuanto.protocolTarget
@@ -167,7 +170,7 @@ export async function migrateUser(did: string): Promise<void> {
   const engagedProtocols = new Set<string>(); // new protocol uris this user uses
 
   // 1. Own protocols: surveyProtocol -> bio.cuanto.surveyProtocol.
-  const protocolMap = await migrateOwnProtocols(did);
+  const { protocolMap, oldProtocolUris } = await migrateOwnProtocols(did);
 
   // 2. Own protocol targets: surveyTarget -> bio.cuanto.protocolTarget.
   await migrateOwnTargets(did);
@@ -353,9 +356,35 @@ export async function migrateUser(did: string): Promise<void> {
   }
 
   // The old-NSID records (survey/surveyProtocol/surveyTarget) are intentionally
-  // RETAINED as a fallback. Their content now lives in the new collections and
-  // the app no longer reads them, but deleting them is a separate, explicit step
-  // (cleanupMigratedRecords) run only once the migration is verified.
+  // RETAINED on the PDS as a fallback. Their content now lives in the new
+  // collections and the app no longer reads them, but deleting them is a separate,
+  // explicit step (cleanupMigratedRecords) run only once the migration is verified.
+
+  // 9. Remove stale old-namespace rows from Postgres. PDS records are left intact.
+
+  // Old surveys: safe to delete unconditionally. Step 6 re-indexed all of this
+  // user's occurrences to new survey URIs, so the cascade to occurrences is a no-op.
+  const oldSurveyUris = [...surveyMap.keys()];
+  if (oldSurveyUris.length > 0) {
+    await sql`DELETE FROM surveys WHERE at_uri = ANY(${sql.array(oldSurveyUris)})`;
+  }
+
+  // Old protocols: only delete when no surveys or follows still reference them.
+  // Another user's unmigrated surveys/follows block the delete until they migrate,
+  // at which point their own cleanup removes the row. Cascade deletes old
+  // protocol_target rows for any protocol row that is removed.
+  if (oldProtocolUris.length > 0) {
+    await sql`
+      DELETE FROM survey_protocols
+      WHERE at_uri = ANY(${sql.array(oldProtocolUris)})
+        AND NOT EXISTS (
+          SELECT 1 FROM surveys WHERE protocol_uri = survey_protocols.at_uri
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM protocol_follows WHERE protocol_uri = survey_protocols.at_uri
+        )
+    `;
+  }
 
   // Clear the staleness flag.
   await sql`UPDATE users SET needs_lexicon_migration = false WHERE did = ${did}`;
