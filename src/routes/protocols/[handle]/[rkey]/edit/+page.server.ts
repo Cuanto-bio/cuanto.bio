@@ -125,8 +125,12 @@ export const actions: Actions = {
     for (const target of toDelete) {
       try {
         await deleteRecord(target.atUri);
+        log.info({ atUri: target.atUri, did }, 'deleted protocol target');
       } catch (err) {
-        log.error({ err }, 'Failed to delete survey target from PDS');
+        log.error(
+          { err, atUri: target.atUri },
+          'Failed to delete protocol target from PDS',
+        );
       }
     }
 
