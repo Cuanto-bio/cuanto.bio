@@ -22,6 +22,11 @@ Incidental observations not linked to a survey target are excluded from
 `occurrence.csv`. Only occurrences explicitly recorded against one of the
 protocol's targets appear in the export.
 
+Non-detections (`occurrenceStatus: notDetected`) are only reported for targets
+that existed at the time the survey was conducted, based on the target's
+`createdAt` timestamp. Targets added to the protocol after a survey was
+completed are not reported as not-detected for that survey.
+
 ## Learn more
 
 - [DwC-DP overview](https://gbif.github.io/dwc-dp/dp/)

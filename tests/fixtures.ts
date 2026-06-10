@@ -261,6 +261,42 @@ export async function seedOccurrence(
   `;
 }
 
+// Seeds a survey_target without an occurrence, so it shows up as notDetected in
+// the dwc-dp export for any survey by the same did+protocol without a matching
+// occurrence. targetCreatedAt controls the temporal gate; null means "unknown
+// birth time" (treated as always existing).
+export async function seedSurveyTarget(
+  sql: Sql,
+  did: string,
+  protocolUri: string,
+  protocolTargetUri: string,
+  targetCreatedAt: Date | null = null,
+): Promise<{ surveyTargetUri: string }> {
+  const targetRkey = protocolTargetUri.split('/').at(-1) ?? '';
+  const surveyTargetUri = `at://${did}/bio.cuanto.surveyTarget/${targetRkey}`;
+  const targetRecord = {
+    $type: 'bio.cuanto.surveyTarget',
+    protocol: protocolUri,
+    protocolTargetID: protocolTargetUri,
+    scope: [],
+    createdAt: targetCreatedAt?.toISOString(),
+  };
+  await sql`
+    INSERT INTO survey_targets (
+      at_uri, did, rkey, protocol_uri, protocol_target_uri, record,
+      indexed_at, created_at
+    )
+    VALUES (
+      ${surveyTargetUri}, ${did}, ${targetRkey}, ${protocolUri},
+      ${protocolTargetUri}, ${sql.json(targetRecord)},
+      now(), ${targetCreatedAt}
+    )
+    ON CONFLICT (at_uri) DO UPDATE SET
+      created_at = EXCLUDED.created_at
+  `;
+  return { surveyTargetUri };
+}
+
 export async function teardownDid(sql: Sql, did: string): Promise<void> {
   await sql`DELETE FROM identifications WHERE did = ${did}`;
   await sql`DELETE FROM occurrences WHERE did = ${did}`;

@@ -37,6 +37,7 @@ export async function materializeSurveyTargets(
     const record = SurveyTarget.$build({
       protocol: protocolUri as l.AtUriString,
       protocolTargetID: pt.at_uri as l.AtUriString,
+      createdAt: new Date().toISOString() as l.DatetimeString,
       scope: pt.record.scope,
     });
     const { uri } = await putRecord(did, SurveyTarget.$nsid, rkey, record);

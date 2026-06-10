@@ -16,8 +16,12 @@ export async function insertSurveyTarget(
   atUri: string,
   protocolTargetUri: string,
 ): Promise<void> {
+  const targetCreatedAt = record.createdAt ? new Date(record.createdAt) : null;
   await sql`
-    INSERT INTO survey_targets (at_uri, did, rkey, protocol_uri, protocol_target_uri, record, indexed_at)
+    INSERT INTO survey_targets (
+      at_uri, did, rkey, protocol_uri, protocol_target_uri, record,
+      indexed_at, created_at
+    )
     VALUES (
       ${atUri},
       ${did},
@@ -25,12 +29,14 @@ export async function insertSurveyTarget(
       ${record.protocol},
       ${protocolTargetUri},
       ${sql.json(record as Parameters<typeof sql.json>[0])},
-      now()
+      now(),
+      ${targetCreatedAt}
     )
     ON CONFLICT (at_uri) DO UPDATE SET
       protocol_uri = EXCLUDED.protocol_uri,
       protocol_target_uri = EXCLUDED.protocol_target_uri,
-      record = EXCLUDED.record
+      record = EXCLUDED.record,
+      created_at = EXCLUDED.created_at
   `;
 }
 

@@ -10,7 +10,7 @@ const $nsid = 'bio.cuanto.survey'
 
 export { $nsid }
 
-/** An event where participants collect data required by a Protocol. Absence of an Occurrence for a SurveyTarget implies the target was not found. */
+/** An event where participants collect data required by a Survey Protocol. */
 type Main = {
   $type: 'bio.cuanto.survey'
 
@@ -62,7 +62,7 @@ type Main = {
 
 export type { Main }
 
-/** An event where participants collect data required by a Protocol. Absence of an Occurrence for a SurveyTarget implies the target was not found. */
+/** An event where participants collect data required by a Survey Protocol. */
 const main = l.record<'tid', Main>(
   'tid',
   $nsid,

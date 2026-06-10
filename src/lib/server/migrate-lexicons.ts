@@ -285,6 +285,7 @@ export async function migrateUser(did: string): Promise<void> {
         $type: SURVEY_TARGET_NSID,
         protocol: protocolUri,
         protocolTargetID: tgt.newTargetUri,
+        createdAt: new Date().toISOString(),
         scope: tgt.scope,
       };
       const res = await upsertPdsRecord(

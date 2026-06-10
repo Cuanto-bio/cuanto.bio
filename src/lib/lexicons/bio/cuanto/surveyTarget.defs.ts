@@ -9,7 +9,7 @@ const $nsid = 'bio.cuanto.surveyTarget'
 
 export { $nsid }
 
-/** A surveyor's materialized copy of a protocol's target, created when the surveyor adopts a Protocol. Carries its own copy of the target scope so what was sought stays durable and under the surveyor's control even if the protocol author deletes the Protocol. Occurrences reference these via surveyTargetID. */
+/** A surveyor's copy of a protocol's target, created when the surveyor adopts a Protocol. Carries its own copy of the target scope so what was sought stays durable and under the surveyor's control even if the protocol author deletes the Protocol. Occurrences reference these via surveyTargetID. */
 type Main = {
   $type: 'bio.cuanto.surveyTarget'
 
@@ -19,9 +19,14 @@ type Main = {
   protocol: l.AtUriString
 
   /**
-   * Provenance link to the protocol author's source protocolTarget (bio.cuanto.protocolTarget) this was materialized from. May dangle if the author later deletes their target; the scope copied below remains authoritative.
+   * Provenance link to the protocol author's source protocolTarget (bio.cuanto.protocolTarget) this was copied from.
    */
   protocolTargetID: l.AtUriString
+
+  /**
+   * Client-declared timestamp when the surveyor materialized this target. Used to determine whether the surveyor knew about this target when a survey was conducted.
+   */
+  createdAt: l.DatetimeString
 
   /**
    * One or more scope criteria copied from the source protocolTarget.
@@ -35,13 +40,14 @@ type Main = {
 
 export type { Main }
 
-/** A surveyor's materialized copy of a protocol's target, created when the surveyor adopts a Protocol. Carries its own copy of the target scope so what was sought stays durable and under the surveyor's control even if the protocol author deletes the Protocol. Occurrences reference these via surveyTargetID. */
+/** A surveyor's copy of a protocol's target, created when the surveyor adopts a Protocol. Carries its own copy of the target scope so what was sought stays durable and under the surveyor's control even if the protocol author deletes the Protocol. Occurrences reference these via surveyTargetID. */
 const main = l.record<'tid', Main>(
   'tid',
   $nsid,
   l.object({
     protocol: l.string({ format: 'at-uri' }),
     protocolTargetID: l.string({ format: 'at-uri' }),
+    createdAt: l.string({ format: 'datetime' }),
     scope: l.array(
       l.typedUnion(
         [

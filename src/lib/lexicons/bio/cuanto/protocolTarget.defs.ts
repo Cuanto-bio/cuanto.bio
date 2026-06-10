@@ -8,7 +8,7 @@ const $nsid = 'bio.cuanto.protocolTarget'
 
 export { $nsid }
 
-/** A protocol author's canonical target: a potential subject for surveys following this Protocol. Belongs to a single Protocol. */
+/** Subject for surveys following a Protocol. */
 type Main = {
   $type: 'bio.cuanto.protocolTarget'
 
@@ -29,7 +29,7 @@ type Main = {
 
 export type { Main }
 
-/** A protocol author's canonical target: a potential subject for surveys following this Protocol. Belongs to a single Protocol. */
+/** Subject for surveys following a Protocol. */
 const main = l.record<'tid', Main>(
   'tid',
   $nsid,

@@ -438,6 +438,10 @@ export function streamAbsencesByProtocolUri(protocolUri: string) {
       AND o.record->>'surveyTargetID' = st.at_uri
     WHERE s.protocol_uri = ${protocolUri}
       AND o.at_uri IS NULL
+      AND (
+        st.created_at IS NULL
+        OR st.created_at <= COALESCE(s.event_date, s.created_at)
+      )
     ORDER BY s.at_uri, st.at_uri
   `.cursor(100);
 }

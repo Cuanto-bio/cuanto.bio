@@ -8,7 +8,7 @@
       "key": "tid",
       "record": {
         "type": "object",
-        "required": ["protocol", "protocolTargetID", "scope"],
+        "required": ["protocol", "protocolTargetID", "createdAt", "scope"],
         "properties": {
           "protocol": {
             "type": "string",
@@ -19,6 +19,11 @@
             "type": "string",
             "format": "at-uri",
             "description": "Provenance link to the protocol author's source protocolTarget (bio.cuanto.protocolTarget) this was copied from."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Client-declared timestamp when the surveyor materialized this target. Used to determine whether the surveyor knew about this target when a survey was conducted."
           },
           "scope": {
             "type": "array",

@@ -80,7 +80,7 @@ Create three Railway services in a project:
 
 1. **PostGIS** — deploy the `postgis/postgis:16-3.4` Docker image
 2. **tap** — deploy `ghcr.io/bluesky-social/indigo/tap:latest` as a Docker image service
-3. **app** — an empty repo and connect it with the CLI (`railway connect`) or deploy from Github
+3. **app** — an empty repo and connect it with the CLI (`railway link`) or deploy from Github
 
 ### Environment variables
 
