@@ -407,7 +407,7 @@ function removeAddress(i: number, j: number) {
                     {/if}
                   </div>
                 {:else}
-                  <div>Target scope undefined</div>
+                  <div>Unrecognized target scope: <code>{JSON.stringify(scope)}</code></div>
                 {/if}
                 <button
                   type="button"

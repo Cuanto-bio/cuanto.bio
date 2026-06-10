@@ -20,20 +20,30 @@ const log = logger.child({ component: 'migrate-lexicons' });
 // Collections that move to a new NSID (rkey preserved). Occurrence,
 // identification, media keep their NSID and are updated in place.
 const OLD_PROTOCOL_NSID = 'bio.lexicons.temp.v0-1.surveyProtocol';
+const LEGACY_PROTOCOL_NSID = 'bio.lexicons.temp.surveyProtocol';
 const NEW_PROTOCOL_NSID = 'bio.cuanto.surveyProtocol';
 const OLD_TARGET_NSID = 'bio.lexicons.temp.v0-1.surveyTarget';
+const LEGACY_TARGET_NSID = 'bio.lexicons.temp.surveyTarget';
 const NEW_PROTOCOL_TARGET_NSID = 'bio.cuanto.protocolTarget';
 const OLD_SURVEY_NSID = 'bio.lexicons.temp.v0-1.survey';
+const LEGACY_SURVEY_NSID = 'bio.lexicons.temp.survey';
 const NEW_SURVEY_NSID = 'bio.cuanto.survey';
 const FOLLOW_NSID = 'bio.cuanto.surveyProtocol.follow';
 const SURVEY_TARGET_NSID = 'bio.cuanto.surveyTarget';
 const OCCURRENCE_NSID = 'bio.lexicons.temp.v0-1.occurrence';
 const IDENTIFICATION_NSID = 'bio.lexicons.temp.v0-1.identification';
 
+const OLD_PROTOCOL_NSIDS = [OLD_PROTOCOL_NSID, LEGACY_PROTOCOL_NSID];
+const OLD_TARGET_NSIDS = [OLD_TARGET_NSID, LEGACY_TARGET_NSID];
+const OLD_SURVEY_NSIDS = [OLD_SURVEY_NSID, LEGACY_SURVEY_NSID];
+
 const COLLECTION_MOVES: Record<string, string> = {
   [OLD_PROTOCOL_NSID]: NEW_PROTOCOL_NSID,
+  [LEGACY_PROTOCOL_NSID]: NEW_PROTOCOL_NSID,
   [OLD_TARGET_NSID]: NEW_PROTOCOL_TARGET_NSID,
+  [LEGACY_TARGET_NSID]: NEW_PROTOCOL_TARGET_NSID,
   [OLD_SURVEY_NSID]: NEW_SURVEY_NSID,
+  [LEGACY_SURVEY_NSID]: NEW_SURVEY_NSID,
 };
 
 type Json = Record<string, unknown>;
@@ -128,13 +138,15 @@ async function migrateOwnProtocols(
 ): Promise<{ protocolMap: Map<string, StrongRef>; oldProtocolUris: string[] }> {
   const protocolMap = new Map<string, StrongRef>();
   const oldProtocolUris: string[] = [];
-  for (const p of (await listAtRecords(did, OLD_PROTOCOL_NSID)) ?? []) {
-    oldProtocolUris.push(p.uri);
-    const { rkey } = parseAtUri(p.uri);
-    const record = { ...(p.value as Json), $type: NEW_PROTOCOL_NSID };
-    const res = await upsertPdsRecord(did, NEW_PROTOCOL_NSID, rkey, record);
-    protocolMap.set(res.uri, res);
-    await insertProtocol(did, rkey, record as never, res.uri, res.cid);
+  for (const nsid of OLD_PROTOCOL_NSIDS) {
+    for (const p of (await listAtRecords(did, nsid)) ?? []) {
+      oldProtocolUris.push(p.uri);
+      const { rkey } = parseAtUri(p.uri);
+      const record = { ...(p.value as Json), $type: NEW_PROTOCOL_NSID };
+      const res = await upsertPdsRecord(did, NEW_PROTOCOL_NSID, rkey, record);
+      protocolMap.set(res.uri, res);
+      await insertProtocol(did, rkey, record as never, res.uri, res.cid);
+    }
   }
   return { protocolMap, oldProtocolUris };
 }
@@ -142,26 +154,28 @@ async function migrateOwnProtocols(
 // Migrates the user's own surveyTarget records to bio.cuanto.protocolTarget
 // and indexes them in protocol_targets.
 async function migrateOwnTargets(did: string): Promise<void> {
-  for (const t of (await listAtRecords(did, OLD_TARGET_NSID)) ?? []) {
-    const { rkey } = parseAtUri(t.uri);
-    const value = t.value as Json;
-    const scope = ((value.scope ?? []) as Json[]).map((s) => ({
-      ...s,
-      $type: migrateScopeType((s as { $type?: string }).$type ?? ''),
-    }));
-    const record = {
-      ...value,
-      $type: NEW_PROTOCOL_TARGET_NSID,
-      protocol: migrateUri(value.protocol as string),
-      scope,
-    };
-    const res = await upsertPdsRecord(
-      did,
-      NEW_PROTOCOL_TARGET_NSID,
-      rkey,
-      record,
-    );
-    await insertTarget(did, rkey, record as never, res.uri);
+  for (const nsid of OLD_TARGET_NSIDS) {
+    for (const t of (await listAtRecords(did, nsid)) ?? []) {
+      const { rkey } = parseAtUri(t.uri);
+      const value = t.value as Json;
+      const scope = ((value.scope ?? []) as Json[]).map((s) => ({
+        ...s,
+        $type: migrateScopeType((s as { $type?: string }).$type ?? ''),
+      }));
+      const record = {
+        ...value,
+        $type: NEW_PROTOCOL_TARGET_NSID,
+        protocol: migrateUri(value.protocol as string),
+        scope,
+      };
+      const res = await upsertPdsRecord(
+        did,
+        NEW_PROTOCOL_TARGET_NSID,
+        rkey,
+        record,
+      );
+      await insertTarget(did, rkey, record as never, res.uri);
+    }
   }
 }
 
@@ -193,27 +207,29 @@ export async function migrateUser(did: string): Promise<void> {
   await migrateOwnTargets(did);
 
   // 3. Surveys: survey -> bio.cuanto.survey (rewrite protocol strongRef).
-  for (const s of (await listAtRecords(did, OLD_SURVEY_NSID)) ?? []) {
-    const { rkey } = parseAtUri(s.uri);
-    const value = s.value as Json;
-    const oldProtocol = value.protocol as StrongRef;
-    const newProtocolUri = migrateUri(oldProtocol.uri);
-    engagedProtocols.add(newProtocolUri);
-    const record = {
-      ...value,
-      $type: NEW_SURVEY_NSID,
-      protocol: {
-        uri: newProtocolUri,
-        cid: await resolveProtocolCid(
-          newProtocolUri,
-          oldProtocol.cid,
-          protocolMap,
-        ),
-      },
-    };
-    const res = await upsertPdsRecord(did, NEW_SURVEY_NSID, rkey, record);
-    surveyMap.set(s.uri, res.uri);
-    await insertSurvey(did, rkey, record as never, res.uri);
+  for (const nsid of OLD_SURVEY_NSIDS) {
+    for (const s of (await listAtRecords(did, nsid)) ?? []) {
+      const { rkey } = parseAtUri(s.uri);
+      const value = s.value as Json;
+      const oldProtocol = value.protocol as StrongRef;
+      const newProtocolUri = migrateUri(oldProtocol.uri);
+      engagedProtocols.add(newProtocolUri);
+      const record = {
+        ...value,
+        $type: NEW_SURVEY_NSID,
+        protocol: {
+          uri: newProtocolUri,
+          cid: await resolveProtocolCid(
+            newProtocolUri,
+            oldProtocol.cid,
+            protocolMap,
+          ),
+        },
+      };
+      const res = await upsertPdsRecord(did, NEW_SURVEY_NSID, rkey, record);
+      surveyMap.set(s.uri, res.uri);
+      await insertSurvey(did, rkey, record as never, res.uri);
+    }
   }
 
   // 4. Follows (in-place): rewrite subject to the protocol's new uri. The follow
@@ -448,9 +464,9 @@ export async function fixProtocolTargetScopes(did: string): Promise<void> {
 export async function cleanupMigratedRecords(did: string): Promise<void> {
   log.info({ did }, 'cleaning up migrated old records');
   for (const collection of [
-    OLD_SURVEY_NSID,
-    OLD_TARGET_NSID,
-    OLD_PROTOCOL_NSID,
+    ...OLD_SURVEY_NSIDS,
+    ...OLD_TARGET_NSIDS,
+    ...OLD_PROTOCOL_NSIDS,
   ]) {
     for (const r of (await listAtRecords(did, collection)) ?? []) {
       const migrated = await fetchAtRecord(migrateUri(r.uri));

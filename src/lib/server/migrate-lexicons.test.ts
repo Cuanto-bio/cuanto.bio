@@ -455,3 +455,56 @@ describe('migrateUserProtocols', () => {
     expect(store.get(followerFollow)?.value.subject).toBe(authorNewProto);
   });
 });
+
+describe('legacy (pre-v0-1) records', () => {
+  const legacyProtocol = `at://${DID}/bio.lexicons.temp.surveyProtocol/proto1`;
+  const legacyTarget = `at://${DID}/bio.lexicons.temp.surveyTarget/tgt1`;
+  const legacySurvey = `at://${DID}/bio.lexicons.temp.survey/svy1`;
+
+  beforeEach(() => {
+    store.clear();
+    seed(legacyProtocol, {
+      $type: 'bio.lexicons.temp.surveyProtocol',
+      title: 'Legacy Protocol',
+      description: 'd',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    seed(legacyTarget, {
+      $type: 'bio.lexicons.temp.surveyTarget',
+      protocol: legacyProtocol,
+      scope: [
+        {
+          $type: 'bio.lexicons.temp.surveyTarget#taxonScope',
+          scientificName: 'Quercus',
+          taxonRank: 'genus',
+        },
+      ],
+    });
+    seed(legacySurvey, {
+      $type: 'bio.lexicons.temp.survey',
+      protocol: { uri: legacyProtocol, cid: 'legacyprotocid' },
+      createdAt: '2026-02-01T00:00:00.000Z',
+      eventDate: '2026-02-01',
+      location: { $type: 'org.atgeo.place', name: 'Park' },
+    });
+  });
+
+  test('migrates protocol, target, and survey to bio.cuanto.* collections', async () => {
+    await migrateUser(DID);
+    expect(store.get(newProtocol)?.value.$type).toBe(
+      'bio.cuanto.surveyProtocol',
+    );
+    expect(store.get(newProtocolTarget)?.value.protocol).toBe(newProtocol);
+    expect(store.get(newSurvey)?.value.$type).toBe('bio.cuanto.survey');
+    const survey = store.get(newSurvey)?.value as { protocol: { uri: string } };
+    expect(survey.protocol.uri).toBe(newProtocol);
+  });
+
+  test('cleanupMigratedRecords removes legacy records after migration', async () => {
+    await migrateUser(DID);
+    await cleanupMigratedRecords(DID);
+    expect(store.has(legacyProtocol)).toBe(false);
+    expect(store.has(legacyTarget)).toBe(false);
+    expect(store.has(legacySurvey)).toBe(false);
+  });
+});
