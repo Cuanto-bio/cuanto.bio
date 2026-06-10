@@ -47,6 +47,18 @@ function migrateUri(uri: string): string {
   return next ? `at://${did}/${next}/${rkey}` : uri;
 }
 
+// Rewrites a scope-item $type whose base NSID moved, e.g.
+// "bio.lexicons.temp.v0-1.surveyTarget#taxonScope" ->
+// "bio.cuanto.protocolTarget#taxonScope".
+// Types without a fragment or whose NSID didn't move are returned unchanged.
+function migrateScopeType(type: string): string {
+  const hash = type.indexOf('#');
+  if (hash === -1) return type;
+  const nsid = type.slice(0, hash);
+  const next = COLLECTION_MOVES[nsid];
+  return next ? `${next}${type.slice(hash)}` : type;
+}
+
 // Writes a record at a known rkey, reusing the existing record if one is already
 // there (idempotent re-runs). Returns the resulting uri + cid.
 async function upsertPdsRecord(
@@ -133,10 +145,15 @@ async function migrateOwnTargets(did: string): Promise<void> {
   for (const t of (await listAtRecords(did, OLD_TARGET_NSID)) ?? []) {
     const { rkey } = parseAtUri(t.uri);
     const value = t.value as Json;
+    const scope = ((value.scope ?? []) as Json[]).map((s) => ({
+      ...s,
+      $type: migrateScopeType((s as { $type?: string }).$type ?? ''),
+    }));
     const record = {
       ...value,
       $type: NEW_PROTOCOL_TARGET_NSID,
       protocol: migrateUri(value.protocol as string),
+      scope,
     };
     const res = await upsertPdsRecord(
       did,
@@ -395,6 +412,33 @@ export async function migrateUser(did: string): Promise<void> {
   await sql`UPDATE users SET needs_lexicon_migration = false WHERE did = ${did}`;
 
   log.info({ did }, 'completed lexicon migration (old records retained)');
+}
+
+// Fixes scope item $type values in already-migrated bio.cuanto.protocolTarget
+// records on the PDS and in the local index. Idempotent: records whose scope
+// $types are already correct are skipped. Run as an explicit step via the
+// fix-scope-types admin endpoint after deploying the corrected migration.
+export async function fixProtocolTargetScopes(did: string): Promise<void> {
+  log.info({ did }, 'fixing protocol target scope types');
+  let fixed = 0;
+  for (const t of (await listAtRecords(did, NEW_PROTOCOL_TARGET_NSID)) ?? []) {
+    const value = t.value as Json;
+    const scope = ((value.scope ?? []) as Json[]).map((s) => ({
+      ...s,
+      $type: migrateScopeType((s as { $type?: string }).$type ?? ''),
+    }));
+    const alreadyCorrect = scope.every(
+      (s, i) =>
+        s.$type === ((value.scope as Json[])[i] as { $type?: string }).$type,
+    );
+    if (alreadyCorrect) continue;
+    const { rkey } = parseAtUri(t.uri);
+    const record = { ...value, scope };
+    await putRecord(did, NEW_PROTOCOL_TARGET_NSID, rkey, record);
+    await insertTarget(did, rkey, record as never, t.uri);
+    fixed++;
+  }
+  log.info({ did, fixed }, 'fixed protocol target scope types');
 }
 
 // Deletes the old-NSID records that have a confirmed migrated counterpart in the

@@ -292,6 +292,14 @@ describe('migrateUser', () => {
     expect(store.has(incidentalIdent)).toBe(true);
   });
 
+  test('rewrites scope item $type values to the new lexicon namespace', async () => {
+    await migrateUser(DID);
+    const target = store.get(newProtocolTarget)?.value as {
+      scope: Array<{ $type: string }>;
+    };
+    expect(target.scope[0].$type).toBe('bio.cuanto.protocolTarget#taxonScope');
+  });
+
   test('is idempotent: a second run leaves the repo unchanged', async () => {
     await migrateUser(DID);
     const snapshot = new Map([...store.entries()].map(([k, v]) => [k, v.cid]));

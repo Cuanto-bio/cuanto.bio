@@ -406,6 +406,8 @@ function removeAddress(i: number, j: number) {
                       </div>
                     {/if}
                   </div>
+                {:else}
+                  <div>Target scope undefined</div>
                 {/if}
                 <button
                   type="button"
