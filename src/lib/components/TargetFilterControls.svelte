@@ -59,7 +59,7 @@ function onSearchFocus() {
   </InputGroup.Root>
   <Button
     variant={filter.onlyCounted ? 'default' : 'outline'}
-    size={filter.onlyCounted ? 'default' : 'icon'}
+    size={filter.onlyCounted || filter.countedCount > 0 ? 'default' : 'icon'}
     aria-disabled={!filter.hasCounted}
     aria-label={filter.hasCounted ? 'Only counted' : 'Only counted, count a target first'}
     aria-pressed={filter.onlyCounted}
@@ -68,8 +68,10 @@ function onSearchFocus() {
   >
     <ListChecks class="size-4" />
     {#if filter.onlyCounted}
-      Only counted
+      {filter.countedCount} counted
       <X class="size-4" />
+    {:else if filter.countedCount > 0}
+      {filter.countedCount}
     {/if}
   </Button>
   <DropdownMenu.Root>

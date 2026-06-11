@@ -485,3 +485,39 @@ test('does not leave an orphaned in-progress draft when auto-save fires during n
 
   expect(pending).toHaveLength(0);
 });
+
+// ── Counted targets indicator ─────────────────────────────────────────────────
+
+test.describe('counted targets indicator', () => {
+  test('filter button shows count and updates as targets are counted', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+
+    // Before any counts, button is aria-disabled with no count shown
+    await expect(
+      page.getByRole('button', {
+        name: 'Only counted, count a target first',
+        exact: true,
+      }),
+    ).toBeVisible();
+
+    // Count the first target
+    await page.locator('[aria-label="Increase count"]').first().click();
+
+    // Button now shows '1' and is no longer aria-disabled
+    const btn = page.getByRole('button', { name: 'Only counted', exact: true });
+    await expect(btn).toContainText('1');
+    await expect(btn).toHaveAttribute('aria-pressed', 'false');
+
+    // Count a second target
+    await page.locator('[aria-label="Increase count"]').nth(1).click();
+    await expect(btn).toContainText('2');
+
+    // Activate the filter — button text changes to "2 counted"
+    await btn.click();
+    await expect(btn).toHaveAttribute('aria-pressed', 'true');
+    await expect(btn).toContainText('2 counted');
+  });
+});

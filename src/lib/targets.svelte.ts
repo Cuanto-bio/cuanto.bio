@@ -92,6 +92,7 @@ export function createTargetFilter(
   let onlyCounted = $state(opts?.initialOnlyCounted ?? false);
 
   const hasCounted = $derived(getTargets().some(isCounted));
+  const countedCount = $derived(getTargets().filter(isCounted).length);
 
   const filtered = $derived.by(() => {
     const targets = getTargets().filter((t) => {
@@ -131,6 +132,9 @@ export function createTargetFilter(
     },
     get hasCounted() {
       return hasCounted;
+    },
+    get countedCount() {
+      return countedCount;
     },
     get filtered() {
       return filtered;
