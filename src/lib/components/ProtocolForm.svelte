@@ -7,6 +7,7 @@ import GeoMap from '$lib/components/GeoMap.svelte';
 import TaxonAutocomplete, {
   type TaxonResult,
 } from '$lib/components/TaxonAutocomplete.svelte';
+import * as Alert from '$lib/components/ui/alert';
 import * as Card from '$lib/components/ui/card';
 import { Input } from '$lib/components/ui/input';
 import { Label } from '$lib/components/ui/label';
@@ -25,9 +26,10 @@ import type { PlaceResult } from '$lib/places';
 
 interface Props {
   protocol?: Protocol;
+  form?: { error?: string } | null;
 }
 
-let { protocol }: Props = $props();
+let { protocol, form }: Props = $props();
 
 const onlineState = useOnline();
 
@@ -299,6 +301,11 @@ function removeAddress(i: number, j: number) {
       </p>
     {:else}
     <Form method="POST" class="flex flex-col gap-6">
+      {#if form?.error}
+        <Alert.Root variant="destructive">
+          <Alert.Description>{form.error}</Alert.Description>
+        </Alert.Root>
+      {/if}
       <div class="flex flex-col gap-2">
         <Label for="title">Title</Label>
         <Input
