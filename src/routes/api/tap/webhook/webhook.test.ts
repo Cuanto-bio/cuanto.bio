@@ -8,6 +8,7 @@ vi.mock('$lib/server/db/survey-protocols', () => ({
 vi.mock('$lib/server/db/surveys', () => ({
   insertSurvey: vi.fn(),
   insertOccurrence: vi.fn(),
+  deleteOccurrenceByAtUri: vi.fn(),
 }));
 
 vi.mock('$lib/server/db/protocol-follows', () => ({
@@ -40,7 +41,11 @@ vi.mock('$lib/server/db/identifications', () => ({
 import { insertIdentification } from '$lib/server/db/identifications';
 import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
 import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
-import { insertOccurrence, insertSurvey } from '$lib/server/db/surveys';
+import {
+  deleteOccurrenceByAtUri,
+  insertOccurrence,
+  insertSurvey,
+} from '$lib/server/db/surveys';
 import { insertUser } from '$lib/server/db/users';
 import { fetchAtRecord, listAtRecords, resolveHandle } from '$lib/server/pds';
 import { POST } from './+server';
@@ -364,6 +369,25 @@ describe('POST /api/tap/webhook', () => {
       occurrenceEvent.record.record,
       'at://did:plc:abc123/bio.lexicons.temp.v0-1.occurrence/3occ',
     );
+  });
+
+  test('calls deleteOccurrenceByAtUri for an occurrence delete event', async () => {
+    const deleteEvent = {
+      ...occurrenceEvent,
+      record: {
+        ...occurrenceEvent.record,
+        action: 'delete',
+        record: undefined,
+      },
+    };
+    const resp = await POST({
+      request: makeRequest(deleteEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(deleteOccurrenceByAtUri).toHaveBeenCalledWith(
+      'at://did:plc:abc123/bio.lexicons.temp.v0-1.occurrence/3occ',
+    );
+    expect(insertOccurrence).not.toHaveBeenCalled();
   });
 
   test('returns 200 without inserting for a delete operation', async () => {

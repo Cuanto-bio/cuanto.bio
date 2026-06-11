@@ -15,7 +15,11 @@ import {
   deleteSurveyTargetByUri,
   insertSurveyTarget,
 } from '$lib/server/db/survey-targets';
-import { insertOccurrence, insertSurvey } from '$lib/server/db/surveys';
+import {
+  deleteOccurrenceByAtUri,
+  insertOccurrence,
+  insertSurvey,
+} from '$lib/server/db/surveys';
 import { insertUser } from '$lib/server/db/users';
 import logger from '$lib/server/logger';
 import {
@@ -207,6 +211,12 @@ export const POST: RequestHandler = async ({ request }) => {
       await deleteSurveyTargetByUri(atUri);
       log.info({ atUri }, 'deleted survey target');
     }
+    return json({ ok: true });
+  }
+
+  if (evt.collection === OCCURRENCE_NSID && evt.action === 'delete') {
+    await deleteOccurrenceByAtUri(atUri);
+    log.info({ atUri }, 'deleted occurrence');
     return json({ ok: true });
   }
 
