@@ -10,17 +10,15 @@ export const handle: Handle = async ({ event, resolve }) => {
 
   const response = await resolve(event);
 
-  if (event.locals.did) {
-    log.info(
-      {
-        did: event.locals.did,
-        method: event.request.method,
-        path: event.url.pathname,
-        status: response.status,
-      },
-      'request',
-    );
-  }
+  log.info(
+    {
+      did: event.locals.did ?? undefined,
+      method: event.request.method,
+      path: event.url.pathname,
+      status: response.status,
+    },
+    'request',
+  );
 
   return response;
 };
