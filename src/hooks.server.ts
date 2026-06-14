@@ -16,6 +16,7 @@ export const handle: Handle = async ({ event, resolve }) => {
       method: event.request.method,
       path: event.url.pathname,
       status: response.status,
+      bytes: response.headers.get('content-length') ?? undefined,
     },
     'request',
   );
