@@ -94,6 +94,28 @@ const FAKE_SURVEY = {
   occurrences: [],
 };
 
+const INC_URI = `at://${DID}/bio.lexicons.temp.v0-1.occurrence/inc1`;
+
+const FAKE_SURVEY_WITH_INCIDENTAL = {
+  ...FAKE_SURVEY,
+  occurrences: [
+    {
+      atUri: INC_URI,
+      record: {
+        $type: 'bio.lexicons.temp.v0-1.occurrence',
+        eventID: SURVEY_URI,
+        taxonID: 'https://www.inaturalist.org/taxa/47126',
+        organismQuantity: '1',
+        organismQuantityType: 'individuals',
+      },
+      identification: {
+        scientificName: 'Quercus agrifolia',
+        vernacularName: 'Coast Live Oak',
+      },
+    },
+  ],
+};
+
 const FAKE_SURVEY_WITH_OCC = {
   ...FAKE_SURVEY,
   occurrences: [
@@ -425,6 +447,17 @@ describe('PUT /api/surveys/[handle]/[rkey]', () => {
         acceptedIdentificationID: expect.objectContaining({ uri: newIdentUri }),
       }),
     );
+  });
+
+  test('deletes existing incidental occurrence when omitted from incidentals list', async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      FAKE_SURVEY_WITH_INCIDENTAL as never,
+    );
+    const body = { ...basePutBody, incidentals: [] };
+    const resp = await callPut(DID, body);
+    expect(resp.status).toBe(200);
+    expect(deleteOccurrenceByAtUri).toHaveBeenCalledWith(INC_URI);
+    expect(deleteRecord).toHaveBeenCalledWith(INC_URI);
   });
 
   test('creates new incidental occurrence with identification', async () => {

@@ -1,4 +1,11 @@
-import { expect, test } from '../fixtures.js';
+import {
+  expect,
+  seedIncidentalOccurrence,
+  seedProtocol,
+  seedSurvey,
+  teardownDid,
+  test,
+} from '../fixtures.js';
 import { cacheAndOpenNewSurvey, confirmFinishSurvey } from './helpers.js';
 
 // ── Taxon and verbatim occurrences ────────────────────────────────────────────
@@ -494,4 +501,107 @@ test('existing protocol occurrence tests are unaffected by incidentals changes',
   `;
   expect(identRows).toHaveLength(1);
   expect(identRows[0].record.scientificName).toBe('Quercus agrifolia');
+});
+
+// ── Edit mode: incidental deletion ───────────────────────────────────────────
+
+const INC_EDIT_DID = 'did:test:survey-inc-edit';
+const INC_EDIT_HANDLE = 'user-survey-inc-edit';
+
+test('deleting an incidental occurrence in edit mode removes it from the DB', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: 'did',
+      value: INC_EDIT_DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  const { protocolRkey } = await seedProtocol(sql, INC_EDIT_DID);
+  const protocolUri = `at://${INC_EDIT_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+  const { surveyRkey } = await seedSurvey(
+    sql,
+    INC_EDIT_DID,
+    protocolUri,
+    'Incidental Delete Test',
+  );
+  const surveyUri = `at://${INC_EDIT_DID}/bio.cuanto.survey/${surveyRkey}`;
+  const { occUri } = await seedIncidentalOccurrence(
+    sql,
+    INC_EDIT_DID,
+    surveyUri,
+    'https://www.inaturalist.org/taxa/47126',
+    'Quercus agrifolia',
+    'Coast Live Oak',
+  );
+
+  try {
+    await page.goto(`/app/protocols/${INC_EDIT_HANDLE}/${protocolRkey}`);
+    await page.waitForLoadState('networkidle');
+    await page.goto(`/app/surveys/${INC_EDIT_HANDLE}/${surveyRkey}/edit`);
+    await page.waitForSelector('[placeholder="e.g. Mission Dolores Park"]', {
+      state: 'visible',
+    });
+
+    // The seeded incidental should appear in the Incidentals section
+    const incidentalsSection = page
+      .getByRole('heading', { name: 'Incidentals' })
+      .locator('..')
+      .locator('ul');
+    await expect(
+      incidentalsSection.locator('li').filter({ hasText: 'Quercus agrifolia' }),
+    ).toBeVisible();
+
+    // Open the edit sheet for the incidental
+    await incidentalsSection
+      .locator('li')
+      .filter({ hasText: 'Quercus agrifolia' })
+      .getByRole('button')
+      .first()
+      .click();
+
+    // Delete button should appear since this is an existing incidental
+    await expect(
+      page.getByRole('button', { name: 'Delete', exact: true }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
+
+    // Incidental should be gone from the Incidentals section
+    await expect(
+      incidentalsSection.locator('li').filter({ hasText: 'Quercus agrifolia' }),
+    ).not.toBeVisible();
+
+    // Fill in required date and duration before saving
+    await page.fill('#pastDate', '2026-01-15T10:00');
+    await page.fill('#pastDuration', '30');
+
+    // Save the survey
+    await page.getByRole('button', { name: 'Save Survey' }).click();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+    await expect(page).toHaveURL(
+      new RegExp(`/app/surveys/${INC_EDIT_HANDLE}/${surveyRkey}(?!/edit)`),
+    );
+
+    // Verify the occurrence was deleted from the DB
+    const occRows = await sql`
+      SELECT at_uri FROM occurrences WHERE at_uri = ${occUri}
+    `;
+    expect(occRows).toHaveLength(0);
+
+    // Verify the identification was also deleted
+    const identRows = await sql`
+      SELECT at_uri FROM identifications WHERE occurrence_uri = ${occUri}
+    `;
+    expect(identRows).toHaveLength(0);
+  } finally {
+    await teardownDid(sql, INC_EDIT_DID);
+  }
 });

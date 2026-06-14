@@ -435,6 +435,38 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
     }
   }
 
+  // Delete existing incidental occurrences that were removed from the payload
+  const payloadIncidentalUris = new Set(
+    body.incidentals.map((i) => i.atUri).filter((u): u is string => !!u),
+  );
+  for (const occ of survey.occurrences) {
+    if (!occ.record.surveyTargetID && !payloadIncidentalUris.has(occ.atUri)) {
+      await deleteIdentificationsByOccurrenceUris([occ.atUri]).then(
+        async (rows) => {
+          for (const { at_uri } of rows) {
+            try {
+              await deleteRecord(at_uri);
+            } catch (err) {
+              log.error(
+                { err, at_uri },
+                'Failed to delete identification from PDS',
+              );
+            }
+          }
+        },
+      );
+      await deleteOccurrenceByAtUri(occ.atUri);
+      try {
+        await deleteRecord(occ.atUri);
+      } catch (err) {
+        log.error(
+          { err },
+          'Failed to delete removed incidental occurrence from PDS',
+        );
+      }
+    }
+  }
+
   const updated = await getSurveyDetailByHandleAndRkey(
     params.handle,
     params.rkey,

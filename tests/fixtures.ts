@@ -297,6 +297,47 @@ export async function seedSurveyTarget(
   return { surveyTargetUri };
 }
 
+export async function seedIncidentalOccurrence(
+  sql: Sql,
+  did: string,
+  surveyUri: string,
+  taxonID: string,
+  scientificName: string,
+  vernacularName?: string,
+): Promise<{ occUri: string }> {
+  const occRkey = `testinc${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  const occUri = `at://${did}/bio.lexicons.temp.v0-1.occurrence/${occRkey}`;
+  const occRecord = {
+    $type: 'bio.lexicons.temp.v0-1.occurrence',
+    eventID: surveyUri,
+    taxonID,
+    organismQuantity: '1',
+    organismQuantityType: 'individuals',
+  };
+  await sql`
+    INSERT INTO occurrences (at_uri, did, rkey, survey_uri, record, indexed_at)
+    VALUES (${occUri}, ${did}, ${occRkey}, ${surveyUri}, ${sql.json(occRecord)}, now())
+  `;
+
+  const identRkey = `testident${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  const identUri = `at://${did}/bio.lexicons.temp.v0-1.identification/${identRkey}`;
+  const identRecord = {
+    $type: 'bio.lexicons.temp.v0-1.identification',
+    occurrence: { uri: occUri, cid: FAKE_CID },
+    scientificName,
+    ...(vernacularName ? { vernacularName } : {}),
+    taxonRank: 'species',
+    taxonID,
+    createdAt: new Date().toISOString(),
+  };
+  await sql`
+    INSERT INTO identifications (at_uri, did, rkey, occurrence_uri, record, indexed_at)
+    VALUES (${identUri}, ${did}, ${identRkey}, ${occUri}, ${sql.json(identRecord)}, now())
+  `;
+
+  return { occUri };
+}
+
 export async function teardownDid(sql: Sql, did: string): Promise<void> {
   await sql`DELETE FROM identifications WHERE did = ${did}`;
   await sql`DELETE FROM occurrences WHERE did = ${did}`;
