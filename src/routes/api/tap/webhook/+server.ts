@@ -8,7 +8,11 @@ import type { Main as SurveyProtocol } from '$lib/lexicons/bio/cuanto/surveyProt
 import type { Main as SurveyTarget } from '$lib/lexicons/bio/cuanto/surveyTarget.defs';
 import type { Main as Identification } from '$lib/lexicons/bio/lexicons/temp/v0-1/identification.defs';
 import type { Main as Occurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs';
-import { insertIdentification } from '$lib/server/db/identifications';
+import {
+  deleteIdentificationByAtUri,
+  deleteIdentificationsByOccurrenceUris,
+  insertIdentification,
+} from '$lib/server/db/identifications';
 import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
 import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
 import {
@@ -215,8 +219,18 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 
   if (evt.collection === OCCURRENCE_NSID && evt.action === 'delete') {
+    // Remove dependent identifications first; identifications.occurrence_uri has
+    // no ON DELETE CASCADE, so deleting the occurrence while they exist fails the
+    // identifications_occurrence_uri_fkey constraint.
+    await deleteIdentificationsByOccurrenceUris([atUri]);
     await deleteOccurrenceByAtUri(atUri);
     log.info({ atUri }, 'deleted occurrence');
+    return json({ ok: true });
+  }
+
+  if (evt.collection === IDENTIFICATION_NSID && evt.action === 'delete') {
+    await deleteIdentificationByAtUri(atUri);
+    log.info({ atUri }, 'deleted identification');
     return json({ ok: true });
   }
 

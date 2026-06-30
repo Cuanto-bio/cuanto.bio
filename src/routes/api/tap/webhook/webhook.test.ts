@@ -36,9 +36,15 @@ vi.mock('$lib/server/db/users', () => ({
 
 vi.mock('$lib/server/db/identifications', () => ({
   insertIdentification: vi.fn(),
+  deleteIdentificationsByOccurrenceUris: vi.fn(() => Promise.resolve([])),
+  deleteIdentificationByAtUri: vi.fn(),
 }));
 
-import { insertIdentification } from '$lib/server/db/identifications';
+import {
+  deleteIdentificationByAtUri,
+  deleteIdentificationsByOccurrenceUris,
+  insertIdentification,
+} from '$lib/server/db/identifications';
 import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
 import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
 import {
@@ -384,9 +390,19 @@ describe('POST /api/tap/webhook', () => {
       request: makeRequest(deleteEvent, VALID_AUTH),
     } as Parameters<typeof POST>[0]);
     expect(resp.status).toBe(200);
-    expect(deleteOccurrenceByAtUri).toHaveBeenCalledWith(
-      'at://did:plc:abc123/bio.lexicons.temp.v0-1.occurrence/3occ',
-    );
+    const occUri = 'at://did:plc:abc123/bio.lexicons.temp.v0-1.occurrence/3occ';
+    expect(deleteIdentificationsByOccurrenceUris).toHaveBeenCalledWith([
+      occUri,
+    ]);
+    expect(deleteOccurrenceByAtUri).toHaveBeenCalledWith(occUri);
+    // Dependent identifications must be removed before the occurrence, or the
+    // occurrence delete fails the identifications_occurrence_uri_fkey constraint.
+    const idOrder = (
+      deleteIdentificationsByOccurrenceUris as ReturnType<typeof vi.fn>
+    ).mock.invocationCallOrder[0];
+    const occOrder = (deleteOccurrenceByAtUri as ReturnType<typeof vi.fn>).mock
+      .invocationCallOrder[0];
+    expect(idOrder).toBeLessThan(occOrder);
     expect(insertOccurrence).not.toHaveBeenCalled();
   });
 
@@ -680,6 +696,25 @@ describe('POST /api/tap/webhook', () => {
       identificationEvent.record.record,
       'at://did:plc:abc123/bio.lexicons.temp.v0-1.identification/3ident',
     );
+  });
+
+  test('calls deleteIdentificationByAtUri for an identification delete event', async () => {
+    const deleteEvent = {
+      ...identificationEvent,
+      record: {
+        ...identificationEvent.record,
+        action: 'delete',
+        record: undefined,
+      },
+    };
+    const resp = await POST({
+      request: makeRequest(deleteEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(deleteIdentificationByAtUri).toHaveBeenCalledWith(
+      'at://did:plc:abc123/bio.lexicons.temp.v0-1.identification/3ident',
+    );
+    expect(insertIdentification).not.toHaveBeenCalled();
   });
 
   test('fetches missing occurrence by URI and retries when insertIdentification gets FK violation', async () => {

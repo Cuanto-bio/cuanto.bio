@@ -39,6 +39,12 @@ export async function deleteIdentificationsByOccurrenceUris(
   `;
 }
 
+export async function deleteIdentificationByAtUri(
+  atUri: string,
+): Promise<void> {
+  await sql`DELETE FROM identifications WHERE at_uri = ${atUri}`;
+}
+
 export async function insertIdentification(
   did: string,
   rkey: string,
