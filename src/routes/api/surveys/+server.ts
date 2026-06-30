@@ -9,6 +9,10 @@ import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
 import { bbox, geo } from '$lib/lexicons/community/lexicon/location';
 import * as Place from '$lib/lexicons/org/atgeo/place';
 import type { Main as AtgeoPlace } from '$lib/lexicons/org/atgeo/place.defs';
+import {
+  type OccurrenceMetadata,
+  occurrenceMetadataFromSurveyInput,
+} from '$lib/occurrenceMetadata';
 import sql from '$lib/server/db';
 import { getIdentificationsForOccurrences } from '$lib/server/db/identifications';
 import type { ProtocolRow } from '$lib/server/db/survey-protocols';
@@ -155,8 +159,10 @@ async function createOccurrence(
   inputOcc: OccurrenceInput,
   surveyUri: string,
   did: string,
+  occMeta: OccurrenceMetadata,
 ) {
   const occurrenceRecord = Occurrence.$build({
+    ...occMeta,
     eventID: surveyUri as l.AtUriString,
     // References the surveyor's own durable surveyTarget (not the protocol
     // author's protocolTarget that the client sent).
@@ -183,8 +189,10 @@ async function createIncidentalOccurrence(
   input: IncidentalInput,
   surveyUri: string,
   did: string,
+  occMeta: OccurrenceMetadata,
 ) {
   const occurrenceRecord = Occurrence.$build({
+    ...occMeta,
     eventID: surveyUri as l.AtUriString,
     taxonID: input.taxonID as l.UriString,
     organismQuantity: input.organismQuantity,
@@ -285,6 +293,14 @@ async function postSurvey(request: Request, did: string) {
     ...(locationEntries.length > 0 ? { locations: locationEntries } : {}),
   };
 
+  // Survey-derived metadata copied onto every occurrence (date + coordinates).
+  const occMeta = occurrenceMetadataFromSurveyInput({
+    eventDate: body.eventDate,
+    latitude: body.latitude,
+    longitude: body.longitude,
+    gpsBbox: body.gpsBbox,
+  });
+
   const surveyUri = await createSurvey(protocol, body, location, did);
 
   for (const input of body.occurrences) {
@@ -293,7 +309,7 @@ async function postSurvey(request: Request, did: string) {
       continue;
 
     const { occUri, occCid, occRkey, occurrenceRecord } =
-      await createOccurrence(input, surveyUri, did);
+      await createOccurrence(input, surveyUri, did, occMeta);
 
     // If target has taxon scope, create an Identification and update the Occurrence
     // to indicate that this is the Occurrence user's accepted ident
@@ -319,7 +335,7 @@ async function postSurvey(request: Request, did: string) {
 
   for (const incidental of body.incidentals ?? []) {
     const { occUri, occCid, occRkey, occurrenceRecord } =
-      await createIncidentalOccurrence(incidental, surveyUri, did);
+      await createIncidentalOccurrence(incidental, surveyUri, did, occMeta);
 
     // taxonID validated above; cast bridges string → branded l.UriString
     await attachIdentificationToOccurrence(

@@ -489,7 +489,11 @@ function buildNewSurveyPayload(complete: boolean): PendingSurvey {
         : undefined;
     derivedBbox =
       gpsMode === 'bbox'
-        ? (gpsBbox ?? undefined)
+        ? // snapshot: gpsBbox is a $state proxy and goes to IndexedDB, which
+          // structured-clones it (a raw proxy throws "could not be cloned")
+          gpsBbox
+          ? $state.snapshot(gpsBbox)
+          : undefined
         : gpsMode === 'track' && trackSnapshot?.length
           ? (trackToBbox(trackSnapshot) ?? undefined)
           : undefined;

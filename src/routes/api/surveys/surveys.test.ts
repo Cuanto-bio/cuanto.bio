@@ -273,6 +273,15 @@ describe('POST /api/surveys — incidentals', () => {
     expect(putRecord).toHaveBeenCalledOnce();
     // insertOccurrence called twice: once for create, once for update
     expect(insertOccurrence).toHaveBeenCalledTimes(2);
+    // survey-derived metadata copied onto the incidental occurrence record;
+    // baseSurveyBody has no point/bbox, so only the date is set
+    const occRecord = vi.mocked(insertOccurrence).mock.calls[0][2] as Record<
+      string,
+      unknown
+    >;
+    expect(occRecord.eventDate).toBe('2026-05-01');
+    expect(occRecord.decimalLatitude).toBeUndefined();
+    expect(occRecord.decimalLongitude).toBeUndefined();
   });
 
   test('does not create occurrence or identification when incidentals is absent', async () => {
@@ -349,6 +358,76 @@ describe('POST /api/surveys — eventDate validation', () => {
       locals: { did: DID },
     } as unknown as Parameters<typeof POST>[0]);
     expect(resp.status).toBe(200);
+  });
+});
+
+describe('POST /api/surveys — occurrence metadata', () => {
+  const targetUri = `at://${DID}/bio.cuanto.protocolTarget/t1`;
+
+  test('copies the survey date (date-only) and point coords onto the occurrence', async () => {
+    vi.mocked(createRecord)
+      .mockResolvedValueOnce({
+        uri: `at://${DID}/bio.cuanto.survey/s1`,
+        cid: FAKE_CID,
+      }) // survey
+      .mockResolvedValueOnce({
+        uri: `at://${DID}/bio.lexicons.temp.v0-1.occurrence/occ1`,
+        cid: FAKE_CID,
+      }); // occurrence
+    vi.mocked(insertOccurrence).mockResolvedValue(undefined);
+
+    const resp = await callPost({
+      request: makeRequest({
+        ...baseSurveyBody,
+        latitude: '37.1234567',
+        longitude: '-122.7654321',
+        eventDate: '2026-05-01T10:00:00.000Z',
+        occurrences: [{ surveyTargetUri: targetUri, organismQuantity: '3' }],
+      }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+
+    const occRecord = vi.mocked(insertOccurrence).mock.calls[0][2] as Record<
+      string,
+      unknown
+    >;
+    expect(occRecord.eventDate).toBe('2026-05-01');
+    expect(occRecord.decimalLatitude).toBe('37.1234567');
+    expect(occRecord.decimalLongitude).toBe('-122.7654321');
+    expect(occRecord.coordinateUncertaintyInMeters).toBeUndefined();
+  });
+
+  test('uses the bbox centroid and sets coordinate uncertainty', async () => {
+    vi.mocked(createRecord)
+      .mockResolvedValueOnce({
+        uri: `at://${DID}/bio.cuanto.survey/s2`,
+        cid: FAKE_CID,
+      })
+      .mockResolvedValueOnce({
+        uri: `at://${DID}/bio.lexicons.temp.v0-1.occurrence/occ2`,
+        cid: FAKE_CID,
+      });
+    vi.mocked(insertOccurrence).mockResolvedValue(undefined);
+
+    const resp = await callPost({
+      request: makeRequest({
+        ...baseSurveyBody,
+        gpsBbox: { north: '38', south: '36', east: '-122', west: '-124' },
+        eventDate: '2026-05-01',
+        occurrences: [{ surveyTargetUri: targetUri, organismQuantity: '1' }],
+      }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+
+    const occRecord = vi.mocked(insertOccurrence).mock.calls[0][2] as Record<
+      string,
+      unknown
+    >;
+    expect(occRecord.decimalLatitude).toBe('37.0000000');
+    expect(occRecord.decimalLongitude).toBe('-123.0000000');
+    expect(typeof occRecord.coordinateUncertaintyInMeters).toBe('number');
   });
 });
 

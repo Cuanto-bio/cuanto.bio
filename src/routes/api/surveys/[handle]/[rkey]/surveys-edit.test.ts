@@ -606,6 +606,110 @@ describe('PUT /api/surveys/[handle]/[rkey] — location geometry', () => {
   });
 });
 
+describe('PUT /api/surveys/[handle]/[rkey] — occurrence metadata', () => {
+  const GPS_BBOX = { north: '38', south: '36', east: '-122', west: '-124' };
+
+  function occurrenceRecordFromPutRecord(): Record<string, unknown> {
+    return vi
+      .mocked(putRecord)
+      .mock.calls.find(
+        (c) => c[1] === 'bio.lexicons.temp.v0-1.occurrence',
+      )?.[3] as Record<string, unknown>;
+  }
+
+  test('fills blank metadata on an existing occurrence from the survey', async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      FAKE_SURVEY_WITH_OCC as never,
+    );
+    const body = {
+      ...basePutBody,
+      eventDate: '2026-05-01T10:00:00.000Z',
+      gpsBbox: GPS_BBOX,
+      occurrences: [
+        { atUri: OCC_URI, surveyTargetUri: TARGET_URI, organismQuantity: '3' },
+      ],
+    };
+    const resp = await callPut(DID, body);
+    expect(resp.status).toBe(200);
+    const occRecord = occurrenceRecordFromPutRecord();
+    expect(occRecord).toBeDefined();
+    expect(occRecord.eventDate).toBe('2026-05-01');
+    expect(occRecord.decimalLatitude).toBe('37.0000000');
+    expect(occRecord.decimalLongitude).toBe('-123.0000000');
+    expect(typeof occRecord.coordinateUncertaintyInMeters).toBe('number');
+  });
+
+  test('never clobbers metadata already on an occurrence', async () => {
+    const surveyWithOccMeta = {
+      ...FAKE_SURVEY,
+      occurrences: [
+        {
+          atUri: OCC_URI,
+          record: {
+            $type: 'bio.lexicons.temp.v0-1.occurrence',
+            eventID: SURVEY_URI,
+            surveyTargetID: TARGET_URI,
+            eventDate: '1999-01-01',
+            decimalLatitude: '1.1111111',
+            decimalLongitude: '2.2222222',
+            coordinateUncertaintyInMeters: 42,
+            organismQuantity: '3',
+            organismQuantityType: 'individuals',
+          },
+          identification: undefined,
+        },
+      ],
+    };
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      surveyWithOccMeta as never,
+    );
+    const body = {
+      ...basePutBody,
+      eventDate: '2026-05-01T10:00:00.000Z',
+      gpsBbox: GPS_BBOX,
+      occurrences: [
+        { atUri: OCC_URI, surveyTargetUri: TARGET_URI, organismQuantity: '3' },
+      ],
+    };
+    const resp = await callPut(DID, body);
+    expect(resp.status).toBe(200);
+    const occRecord = occurrenceRecordFromPutRecord();
+    expect(occRecord).toBeDefined();
+    expect(occRecord.eventDate).toBe('1999-01-01');
+    expect(occRecord.decimalLatitude).toBe('1.1111111');
+    expect(occRecord.decimalLongitude).toBe('2.2222222');
+    expect(occRecord.coordinateUncertaintyInMeters).toBe(42);
+  });
+
+  test('fills blank metadata on an existing incidental from the survey', async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      FAKE_SURVEY_WITH_INCIDENTAL as never,
+    );
+    const body = {
+      ...basePutBody,
+      eventDate: '2026-05-01T10:00:00.000Z',
+      gpsBbox: GPS_BBOX,
+      incidentals: [
+        {
+          atUri: INC_URI,
+          taxonID: 'https://www.inaturalist.org/taxa/47126',
+          scientificName: 'Quercus agrifolia',
+          taxonRank: 'species',
+          organismQuantity: '1',
+        },
+      ],
+    };
+    const resp = await callPut(DID, body);
+    expect(resp.status).toBe(200);
+    const occRecord = occurrenceRecordFromPutRecord();
+    expect(occRecord).toBeDefined();
+    expect(occRecord.eventDate).toBe('2026-05-01');
+    expect(occRecord.decimalLatitude).toBe('37.0000000');
+    expect(occRecord.decimalLongitude).toBe('-123.0000000');
+    expect(typeof occRecord.coordinateUncertaintyInMeters).toBe('number');
+  });
+});
+
 describe('PUT /api/surveys/[handle]/[rkey] — eventDate validation', () => {
   beforeEach(() => {
     vi.useFakeTimers();

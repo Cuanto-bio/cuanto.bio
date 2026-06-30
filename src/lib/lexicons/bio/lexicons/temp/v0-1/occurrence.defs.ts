@@ -14,9 +14,9 @@ type Main = {
   $type: 'bio.lexicons.temp.v0-1.occurrence'
 
   /**
-   * The date-time when the observation occurred, in ISO 8601 format (Darwin Core dwc:eventDate).
+   * The date, date-time, or interval during which the dwc:Event occurred (Darwin Core dwc:eventDate). Recommended best practice is to use a value that conforms to ISO 8601-1:2019 for single dates or date-times, or to ISO 8601-2:2019 (EDTF) for intervals and dates of reduced or uncertain precision; separate the start and end of an interval with a solidus ("/"). Include timezone information whenever a time of day is given. Examples: "1963-03-08", "1971", "1906-06", "1963-03-08T14:07:00-06:00", "1995-05-21/1995-05-23".
    */
-  eventDate?: l.DatetimeString
+  eventDate?: string
 
   /**
    * The geographic latitude in decimal degrees (Darwin Core dwc:decimalLatitude). Valid range: -90 to 90.
@@ -76,7 +76,7 @@ const main = l.record<'tid', Main>(
   'tid',
   $nsid,
   l.object({
-    eventDate: l.optional(l.string({ format: 'datetime' })),
+    eventDate: l.optional(l.string()),
     decimalLatitude: l.optional(l.string()),
     decimalLongitude: l.optional(l.string()),
     coordinateUncertaintyInMeters: l.optional(l.integer({ minimum: 0 })),

@@ -9,6 +9,10 @@ import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
 import { bbox, geo } from '$lib/lexicons/community/lexicon/location';
 import * as Place from '$lib/lexicons/org/atgeo/place';
 import type { Main as AtgeoPlace } from '$lib/lexicons/org/atgeo/place.defs';
+import {
+  mergeOccurrenceMetadata,
+  occurrenceMetadataFromSurveyInput,
+} from '$lib/occurrenceMetadata';
 import { deleteIdentificationsByOccurrenceUris } from '$lib/server/db/identifications';
 import {
   deleteOccurrenceByAtUri,
@@ -250,6 +254,15 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
   await putRecord(did, Survey.$type, surveyRkey, surveyRecord);
   await insertSurvey(did, surveyRkey, surveyRecord, survey.atUri);
 
+  // Survey-derived metadata for occurrences. On edit we fill gaps but never
+  // clobber metadata already on an occurrence (see mergeOccurrenceMetadata).
+  const occMeta = occurrenceMetadataFromSurveyInput({
+    eventDate: body.eventDate,
+    latitude: body.latitude,
+    longitude: body.longitude,
+    gpsBbox: body.gpsBbox,
+  });
+
   // Ensure surveyTargets exist before occurrences reference them (idempotent).
   await materializeSurveyTargets(did, survey.record.protocol.uri);
 
@@ -278,7 +291,13 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
       // Existing occurrence
       if (hasCount) {
         const occRkey = occ.atUri.split('/').at(-1) ?? '';
+        // Fill-but-don't-clobber survey metadata and preserve the existing
+        // acceptedIdentificationID (both read from the existing record).
+        const existingOcc = survey.occurrences.find(
+          (o) => o.atUri === occ.atUri,
+        );
         const occRecord = Occurrence.$build({
+          ...mergeOccurrenceMetadata(existingOcc?.record, occMeta),
           eventID: survey.atUri as l.AtUriString,
           surveyTargetID: surveyTargetUriFor(
             did,
@@ -288,10 +307,6 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
           organismQuantity: occ.organismQuantity,
           organismQuantityType: 'individuals',
         });
-        // Preserve acceptedIdentificationID if it exists on the existing record
-        const existingOcc = survey.occurrences.find(
-          (o) => o.atUri === occ.atUri,
-        );
         const withIdent = existingOcc?.record.acceptedIdentificationID
           ? {
               ...occRecord,
@@ -324,6 +339,7 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
     } else if (hasCount) {
       // New occurrence
       const occRecord = Occurrence.$build({
+        ...occMeta,
         eventID: survey.atUri as l.AtUriString,
         surveyTargetID: surveyTargetUriFor(
           did,
@@ -363,15 +379,16 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
       // Existing incidental
       if (hasCount) {
         const occRkey = inc.atUri.split('/').at(-1) ?? '';
+        const existingOcc = survey.occurrences.find(
+          (o) => o.atUri === inc.atUri,
+        );
         const occRecord = Occurrence.$build({
+          ...mergeOccurrenceMetadata(existingOcc?.record, occMeta),
           eventID: survey.atUri as l.AtUriString,
           taxonID: inc.taxonID as l.UriString,
           organismQuantity: inc.organismQuantity,
           organismQuantityType: 'individuals',
         });
-        const existingOcc = survey.occurrences.find(
-          (o) => o.atUri === inc.atUri,
-        );
         const withIdent = existingOcc?.record.acceptedIdentificationID
           ? {
               ...occRecord,
@@ -404,6 +421,7 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
     } else if (hasCount) {
       // New incidental
       const occRecord = Occurrence.$build({
+        ...occMeta,
         eventID: survey.atUri as l.AtUriString,
         taxonID: inc.taxonID as l.UriString,
         organismQuantity: inc.organismQuantity,
