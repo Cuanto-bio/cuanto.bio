@@ -80,7 +80,7 @@ export async function getProtocolStats(
       WITH matching_surveys AS (
         SELECT s.at_uri, s.record
         FROM surveys s
-        WHERE s.protocol_uri = ANY(${sql.array(params.protocolUris)})
+        WHERE s.protocol_uri = ANY(${params.protocolUris})
           ${startFilter}
           ${endFilter}
           ${bboxSurveyFilter}

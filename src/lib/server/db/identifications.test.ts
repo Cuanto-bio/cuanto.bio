@@ -6,14 +6,26 @@ vi.mock('$lib/server/db', () => {
     vi.fn(() => Promise.resolve([])),
     {
       json: (v: unknown) => v,
-      array: (v: unknown) => v,
+      // Mirror postgres.js: sql.array() on a single-element array mis-serializes
+      // it as a scalar, so Postgres rejects ANY($1) with
+      // "op ANY/ALL (array) requires array on right side".
+      array: (v: unknown) => {
+        if (Array.isArray(v) && v.length === 1) {
+          throw new Error('op ANY/ALL (array) requires array on right side');
+        }
+        return v;
+      },
     },
   );
   return { default: tag };
 });
 
 import sql from '$lib/server/db';
-import { insertIdentification } from './identifications';
+import {
+  deleteIdentificationsByOccurrenceUris,
+  getIdentificationsForOccurrences,
+  insertIdentification,
+} from './identifications';
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 
@@ -72,5 +84,32 @@ describe('insertIdentification', () => {
     expect(allArgs).toContain(
       'at://did:plc:abc/bio.lexicons.temp.v0-1.occurrence/3occ',
     );
+  });
+});
+
+describe('deleteIdentificationsByOccurrenceUris', () => {
+  test('handles a single occurrence URI', async () => {
+    await expect(
+      deleteIdentificationsByOccurrenceUris([
+        'at://did:plc:abc/bio.lexicons.temp.v0-1.occurrence/3occ',
+      ]),
+    ).resolves.toEqual([]);
+  });
+
+  test('short-circuits on an empty array', async () => {
+    await expect(deleteIdentificationsByOccurrenceUris([])).resolves.toEqual(
+      [],
+    );
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+});
+
+describe('getIdentificationsForOccurrences', () => {
+  test('handles a single occurrence URI', async () => {
+    await expect(
+      getIdentificationsForOccurrences([
+        'at://did:plc:abc/bio.lexicons.temp.v0-1.occurrence/3occ',
+      ]),
+    ).resolves.toBeInstanceOf(Map);
   });
 });

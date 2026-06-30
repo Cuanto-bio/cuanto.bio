@@ -95,7 +95,7 @@ export async function getOccurrencesForSurveys(
     SELECT o.at_uri, o.survey_uri, o.record, st.protocol_target_uri
     FROM occurrences o
     LEFT JOIN survey_targets st ON st.at_uri = o.record->>'surveyTargetID'
-    WHERE o.survey_uri = ANY(${sql.array(surveyUris)})
+    WHERE o.survey_uri = ANY(${surveyUris})
   `;
 }
 
@@ -131,7 +131,7 @@ export async function getLastSurveyByTargetUris(
     JOIN survey_targets st ON st.at_uri = o.record->>'surveyTargetID'
     JOIN surveys s ON s.at_uri = o.survey_uri
     JOIN users u   ON u.did    = s.did
-    WHERE st.protocol_target_uri = ANY(${sql.array(targetUris)})
+    WHERE st.protocol_target_uri = ANY(${targetUris})
     ORDER BY
       st.protocol_target_uri,
       COALESCE(s.event_date, s.created_at) DESC NULLS LAST
@@ -622,6 +622,6 @@ export async function getTaxonName(taxonId: string): Promise<string | null> {
 
 export async function getProtocolTargetsByUri(uris: string[]) {
   return sql<ProtocolTargetRow[]>`
-    SELECT at_uri, record FROM protocol_targets WHERE at_uri = ANY(${sql.array(uris)})
+    SELECT at_uri, record FROM protocol_targets WHERE at_uri = ANY(${uris})
   `;
 }

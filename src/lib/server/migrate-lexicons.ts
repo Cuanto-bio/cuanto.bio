@@ -405,7 +405,7 @@ export async function migrateUser(did: string): Promise<void> {
   }
   const oldSurveyUris = [...surveyMap.keys()];
   if (oldSurveyUris.length > 0) {
-    await sql`DELETE FROM surveys WHERE at_uri = ANY(${sql.array(oldSurveyUris)})`;
+    await sql`DELETE FROM surveys WHERE at_uri = ANY(${oldSurveyUris})`;
   }
 
   // Old protocols: only delete when no surveys or follows still reference them.
@@ -415,7 +415,7 @@ export async function migrateUser(did: string): Promise<void> {
   if (oldProtocolUris.length > 0) {
     await sql`
       DELETE FROM survey_protocols
-      WHERE at_uri = ANY(${sql.array(oldProtocolUris)})
+      WHERE at_uri = ANY(${oldProtocolUris})
         AND NOT EXISTS (
           SELECT 1 FROM surveys WHERE protocol_uri = survey_protocols.at_uri
         )

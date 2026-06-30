@@ -15,7 +15,7 @@ export async function getIdentificationsForOccurrences(
     { occurrence_uri: string; record: AtIdentification }[]
   >`
     SELECT occurrence_uri, record FROM identifications
-    WHERE occurrence_uri = ANY(${sql.array(occurrenceUris)})
+    WHERE occurrence_uri = ANY(${occurrenceUris})
   `;
   const map = new Map<string, IdentificationRow>();
   for (const row of rows) {
@@ -34,7 +34,7 @@ export async function deleteIdentificationsByOccurrenceUris(
   if (occurrenceUris.length === 0) return [];
   return sql<{ at_uri: string }[]>`
     DELETE FROM identifications
-    WHERE occurrence_uri = ANY(${sql.array(occurrenceUris)})
+    WHERE occurrence_uri = ANY(${occurrenceUris})
     RETURNING at_uri
   `;
 }

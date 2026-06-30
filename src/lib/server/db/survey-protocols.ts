@@ -50,7 +50,7 @@ export async function insertTarget(
 
 export async function deleteTargetsByUris(uris: string[]): Promise<void> {
   if (uris.length === 0) return;
-  await sql`DELETE FROM protocol_targets WHERE at_uri = ANY(${sql.array(uris)})`;
+  await sql`DELETE FROM protocol_targets WHERE at_uri = ANY(${uris})`;
 }
 
 export interface ProtocolRow {
@@ -76,7 +76,7 @@ export async function getTargetsForProtocols(
   return sql<TargetRow[]>`
     SELECT protocol_uri, at_uri, record
     FROM protocol_targets
-    WHERE protocol_uri = ANY(${sql.array(protocolUris)})
+    WHERE protocol_uri = ANY(${protocolUris})
   `;
 }
 
@@ -217,7 +217,7 @@ export async function getProtocolsByUris(
     SELECT sp.at_uri, u.handle, sp.record->>'title' AS title
     FROM survey_protocols sp
     JOIN users u ON u.did = sp.did
-    WHERE sp.at_uri = ANY(${sql.array(uris)})
+    WHERE sp.at_uri = ANY(${uris})
   `;
   const byUri = new Map(
     rows.map((r) => [
