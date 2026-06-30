@@ -47,6 +47,7 @@ type Props = {
   longitude?: string | null;
   bbox?: Bbox | null;
   track?: GpsTrackPoint[] | null;
+  showModeSelector?: boolean;
   onchange: (payload: ChangePayload) => void;
   class?: string;
 };
@@ -57,6 +58,7 @@ let {
   longitude: initialLng = null,
   bbox: initialBbox = null,
   track: initialTrack = null,
+  showModeSelector = true,
   onchange,
   class: className = '',
 }: Props = $props();
@@ -79,6 +81,10 @@ let trackFileName = $state<string | null>(
   initialTrack?.length ? 'GPX track' : null,
 );
 let gpxError = $state<string | null>(null);
+// svelte-ignore state_referenced_locally -- intentional: initialize from props
+let hasPoint = $state(!!(initialLat && initialLng));
+// svelte-ignore state_referenced_locally -- intentional: initialize from props
+let hasBbox = $state(!!initialBbox);
 
 let container: HTMLDivElement;
 let map: MaplibreMap | undefined;
@@ -114,11 +120,30 @@ function syncFromDraw() {
     );
     latitude = ll?.latitude ?? null;
     longitude = ll?.longitude ?? null;
+    hasPoint = !!(latitude && longitude);
   } else if (currentMode === 'bbox') {
     bboxVal = rectangleFeatureToBbox(
       snap.find((f) => f.geometry?.type === 'Polygon'),
     );
+    hasBbox = bboxVal != null;
   }
+  emit();
+}
+
+function clearPoint() {
+  draw?.clear();
+  latitude = null;
+  longitude = null;
+  hasPoint = false;
+  draw?.setMode(POINT);
+  emit();
+}
+
+function clearBbox() {
+  draw?.clear();
+  bboxVal = null;
+  hasBbox = false;
+  draw?.setMode(RECTANGLE);
   emit();
 }
 
@@ -156,8 +181,12 @@ function selectMode(m: Mode) {
   if (m !== 'point') {
     latitude = null;
     longitude = null;
+    hasPoint = false;
   }
-  if (m !== 'bbox') bboxVal = null;
+  if (m !== 'bbox') {
+    bboxVal = null;
+    hasBbox = false;
+  }
   if (m !== 'track') {
     trackPoints = null;
     trackFileName = null;
@@ -262,6 +291,7 @@ $effect(() => {
 </script>
 
 <div class="flex flex-col gap-2 {className}">
+  {#if showModeSelector}
   <fieldset class="flex flex-col gap-2">
     <legend class="text-sm font-medium leading-none">Coordinates</legend>
     <RadioGroup.Root
@@ -286,18 +316,20 @@ $effect(() => {
       </div>
     </RadioGroup.Root>
   </fieldset>
+  {/if}
 
+  <div bind:this={container} data-testid="location-picker-map" class="h-56 w-full rounded"></div>
   {#if currentMode === 'track'}
     {#if trackPoints?.length}
       <div class="flex flex-wrap items-center gap-2 text-sm">
+        <Button type="button" variant="outline" size="sm" onclick={clearTrack}>
+          Clear track
+        </Button>
         <span class="font-medium">{trackFileName ?? 'GPX track'}</span>
         <span class="text-muted-foreground text-xs">
           ({trackPoints.length}
           {trackPoints.length === 1 ? 'point' : 'points'})
         </span>
-        <Button type="button" variant="outline" size="sm" onclick={clearTrack}>
-          Clear
-        </Button>
       </div>
     {:else}
       <div class="flex flex-col gap-1 justify-start">
@@ -317,12 +349,27 @@ $effect(() => {
         {/if}
       </div>
     {/if}
-  {/if}
-
-  <div bind:this={container} data-testid="location-picker-map" class="h-56 w-full rounded"></div>
-  {#if currentMode === 'point'}
-    <p class="text-muted-foreground text-xs">Tap the map to place a point, then drag it to adjust.</p>
+  {:else if currentMode === 'point'}
+    <div class="flex items-center gap-2">
+      {#if hasPoint}
+        <Button type="button" variant="outline" size="sm" onclick={clearPoint}>
+          Clear point
+        </Button>
+      {/if}
+      <p class="text-muted-foreground text-xs">
+        {hasPoint ? 'Drag the point to adjust.' : 'Tap the map to place a point, then drag it to adjust.'}
+      </p>
+    </div>
   {:else if currentMode === 'bbox'}
-    <p class="text-muted-foreground text-xs">Tap two opposite corners to draw a box, then drag the handles to adjust.</p>
+    <div class="flex items-center gap-2">
+      {#if hasBbox}
+        <Button type="button" variant="outline" size="sm" onclick={clearBbox}>
+          Clear bounding box
+        </Button>
+      {/if}
+      <p class="text-muted-foreground text-xs">
+        {hasBbox ? 'Drag the handles to adjust.' : 'Tap two opposite corners to draw a box, then drag the handles to adjust.'}
+      </p>
+    </div>
   {/if}
 </div>

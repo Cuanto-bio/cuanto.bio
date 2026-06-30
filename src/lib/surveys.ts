@@ -84,3 +84,39 @@ export function hasUnresolvedIncidentals(
 ): boolean {
   return incidentals.some((i) => !i.taxonID);
 }
+
+export interface SurveyParams {
+  protocolUris?: string[];
+  startDate?: string;
+  stopDate?: string;
+  bbox?: {
+    north: string | null;
+    west: string | null;
+    east: string | null;
+    south: string | null;
+  };
+  taxonID?: string | null;
+}
+
+export function urlToSurveyParams(url: URL): SurveyParams {
+  const protocolsParam = url.searchParams.get('protocols');
+  const protocolUris = protocolsParam
+    ? protocolsParam
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
+
+  const north = url.searchParams.get('bboxNorth');
+  const south = url.searchParams.get('bboxSouth');
+  const east = url.searchParams.get('bboxEast');
+  const west = url.searchParams.get('bboxWest');
+
+  return {
+    protocolUris,
+    startDate: url.searchParams.get('start') ?? '',
+    stopDate: url.searchParams.get('stop') ?? '',
+    bbox: { north, south, east, west },
+    taxonID: url.searchParams.get('taxonID'),
+  };
+}

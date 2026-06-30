@@ -202,3 +202,50 @@ export async function getProtocolsPageByDid(
   `;
   return rows.map((r) => toProtocol(r, []));
 }
+
+export type ProtocolSearchResult = {
+  atUri: string;
+  handle: string;
+  title: string;
+};
+
+export async function getProtocolsByUris(
+  uris: string[],
+): Promise<ProtocolSearchResult[]> {
+  if (uris.length === 0) return [];
+  const rows = await sql<{ at_uri: string; handle: string; title: string }[]>`
+    SELECT sp.at_uri, u.handle, sp.record->>'title' AS title
+    FROM survey_protocols sp
+    JOIN users u ON u.did = sp.did
+    WHERE sp.at_uri = ANY(${sql.array(uris)})
+  `;
+  const byUri = new Map(
+    rows.map((r) => [
+      r.at_uri,
+      { atUri: r.at_uri, handle: r.handle, title: r.title },
+    ]),
+  );
+  return uris.flatMap((uri) => {
+    const entry = byUri.get(uri);
+    return entry ? [entry] : [];
+  });
+}
+
+export async function searchProtocols(
+  query: string,
+  limit: number = 10,
+): Promise<ProtocolSearchResult[]> {
+  const rows = await sql<{ at_uri: string; handle: string; title: string }[]>`
+    SELECT sp.at_uri, u.handle, sp.record->>'title' AS title
+    FROM survey_protocols sp
+    JOIN users u ON u.did = sp.did
+    WHERE sp.record->>'title' ILIKE ${`%${query}%`}
+    ORDER BY sp.indexed_at DESC
+    LIMIT ${limit}
+  `;
+  return rows.map((r) => ({
+    atUri: r.at_uri,
+    handle: r.handle,
+    title: r.title,
+  }));
+}

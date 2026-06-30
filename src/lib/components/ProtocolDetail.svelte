@@ -1,4 +1,5 @@
 <script lang="ts">
+import ChartBarIcon from '@lucide/svelte/icons/chart-bar';
 import ClipboardClockIcon from '@lucide/svelte/icons/clipboard-clock';
 import ClipboardPlusIcon from '@lucide/svelte/icons/clipboard-plus';
 import DownloadIcon from '@lucide/svelte/icons/download';
@@ -60,19 +61,27 @@ function formatSurveyDate(iso: string) {
 </script>
 
 <main>
-  {#if isSignedIn}
-    <div class="mb-6 flex items-center justify-between">
-      <div class="flex items-center justify-between gap-2 w-full">
-        {#if isOwner}
-          <Button
-            href="/protocols/{protocol.handle}/{protocol.rkey}/edit"
-            variant="outline"
-          >
-            <PencilIcon />
-            Edit
-          </Button>
-        {/if}
-        <div class="flex gap-2">
+  <div class="mb-6 flex items-center justify-between">
+    <div class="flex items-center justify-between gap-2 w-full">
+      {#if isSignedIn && isOwner}
+        <Button
+          href="/protocols/{protocol.handle}/{protocol.rkey}/edit"
+          variant="outline"
+        >
+          <PencilIcon />
+          Edit
+        </Button>
+      {/if}
+      <div class="flex gap-2 ml-auto">
+        <Button
+          href="/stats?protocols={encodeURIComponent(protocol.atUri)}"
+          variant="outline"
+          title="View stats for this protocol"
+        >
+          <ChartBarIcon />
+          Stats
+        </Button>
+        {#if isSignedIn}
           {#if isOffline || isOwner}
             <Button
               href="/api/protocols/{protocol.handle}/{protocol.rkey}/export"
@@ -103,10 +112,10 @@ function formatSurveyDate(iso: string) {
               <span class="hidden sm:inline">Start Survey</span>
             </Button>
           </ButtonGroup>
-        </div>
+        {/if}
       </div>
     </div>
-  {/if}
+  </div>
 
   <div class="text-muted-foreground text-xs mb-1">PROTOCOL</div>
   <h1>{protocol.record.title}</h1>

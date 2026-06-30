@@ -104,6 +104,13 @@ onMount(() => {
               {/snippet}
             </SidebarMenuButton>
           </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton>
+              {#snippet child({ props })}
+                <a href='/stats' {...props}>Stats Explorer</a>
+              {/snippet}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>

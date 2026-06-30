@@ -74,14 +74,41 @@ const baseSurveyRecord = {
 };
 
 describe('insertSurvey', () => {
-  test('calls sql once with correct values', async () => {
+  test('calls sql twice (geom fragment + INSERT) when location has no coordinates', async () => {
     await insertSurvey(
       'did:plc:abc',
       '3xyz',
       baseSurveyRecord,
       'at://did:plc:abc/bio.cuanto.survey/3xyz',
     );
-    expect(mockSql).toHaveBeenCalledOnce();
+    // Two calls: NULL geom fragment + INSERT
+    expect(mockSql).toHaveBeenCalledTimes(2);
+  });
+
+  test('calls sql with ST_MakePoint geom fragment when location has coordinates', async () => {
+    const record = {
+      ...baseSurveyRecord,
+      location: {
+        $type: 'org.atgeo.place' as const,
+        name: 'Test Park',
+        locations: [
+          {
+            $type: 'community.lexicon.location.geo' as const,
+            latitude: '37.7',
+            longitude: '-122.4',
+          },
+        ],
+      },
+    };
+    await insertSurvey(
+      'did:plc:abc',
+      '3xyz',
+      record,
+      'at://did:plc:abc/bio.cuanto.survey/3xyz',
+    );
+    expect(mockSql).toHaveBeenCalledTimes(2);
+    const [firstCallStrings] = mockSql.mock.calls[0] as [TemplateStringsArray];
+    expect(firstCallStrings.join('')).toContain('ST_MakePoint');
   });
 
   test('handles missing eventDate gracefully', async () => {
@@ -94,7 +121,7 @@ describe('insertSurvey', () => {
         'at://did:plc:abc/bio.cuanto.survey/3xyz',
       ),
     ).resolves.toBeUndefined();
-    expect(mockSql).toHaveBeenCalledOnce();
+    expect(mockSql).toHaveBeenCalledTimes(2);
   });
 
   test('handles unparseable eventDate gracefully', async () => {
@@ -107,7 +134,7 @@ describe('insertSurvey', () => {
         'at://did:plc:abc/bio.cuanto.survey/3xyz',
       ),
     ).resolves.toBeUndefined();
-    expect(mockSql).toHaveBeenCalledOnce();
+    expect(mockSql).toHaveBeenCalledTimes(2);
   });
 });
 

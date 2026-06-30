@@ -3,6 +3,7 @@ import BookOpenIcon from '@lucide/svelte/icons/book-open';
 import BookmarkIcon from '@lucide/svelte/icons/bookmark';
 import EllipsisIcon from '@lucide/svelte/icons/ellipsis';
 import HomeIcon from '@lucide/svelte/icons/home';
+import TrendingUpIcon from '@lucide/svelte/icons/trending-up';
 import UserIcon from '@lucide/svelte/icons/user';
 import type { Component } from 'svelte';
 
@@ -54,6 +55,7 @@ export const SIGNED_IN_TABS: Tab[] = [
     items: [
       { href: '/protocols', label: 'All Protocols', icon: BookOpenIcon },
       { href: '/surveys', label: 'All Surveys', icon: BarChart2Icon },
+      { href: '/stats', label: 'Stats Explorer', icon: TrendingUpIcon },
     ],
   },
   {
@@ -80,6 +82,13 @@ export const SIGNED_OUT_TABS: LinkTab[] = [
     href: '/surveys',
     label: 'Surveys',
     icon: BarChart2Icon,
+  },
+  {
+    type: 'link',
+    key: 'stats',
+    href: '/stats',
+    label: 'Stats',
+    icon: TrendingUpIcon,
   },
   {
     type: 'link',

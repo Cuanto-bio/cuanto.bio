@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS surveys_geom_idx;
+ALTER TABLE surveys DROP COLUMN IF EXISTS geom;

@@ -2,8 +2,22 @@ import type { Main as AtProtocolTarget } from '$lib/lexicons/bio/cuanto/protocol
 import type { Main as AtSurvey } from '$lib/lexicons/bio/cuanto/survey.defs.js';
 import type { Main as AtOccurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs.js';
 import type { Occurrence, Survey } from '$lib/offline/db';
+import type { SurveyParams } from '$lib/surveys.js';
 import { getIdentificationsForOccurrences } from './identifications.js';
 import sql from './index.js';
+
+function extractSurveyCoords(
+  record: AtSurvey,
+): { lat: number; lon: number } | null {
+  const locations = record.location?.locations;
+  if (!locations) return null;
+  for (const loc of locations) {
+    if ('latitude' in loc && 'longitude' in loc) {
+      return parseCoords(loc.latitude as string, loc.longitude as string);
+    }
+  }
+  return null;
+}
 
 interface SurveyRow {
   at_uri: string;
@@ -210,7 +224,42 @@ export async function getSurveyDetailByHandleAndRkey(
   )[0];
 }
 
-export async function getSurveysPage(limit: number = 100, offset: number = 0) {
+export async function getSurveysPage(
+  limit: number = 100,
+  offset: number = 0,
+  params: SurveyParams = {},
+) {
+  const wheres = [];
+  if (params.protocolUris && params.protocolUris.length > 0) {
+    wheres.push(sql`s.protocol_uri IN ${sql(params.protocolUris)}`);
+  }
+  if (params.taxonID) {
+    wheres.push(sql`EXISTS (
+      SELECT 1
+      FROM occurrences o
+      JOIN survey_targets st ON st.at_uri = o.record->>'surveyTargetID'
+      JOIN protocol_targets pt ON pt.at_uri = st.protocol_target_uri
+      CROSS JOIN LATERAL jsonb_array_elements(pt.record->'scope') AS scope
+      WHERE o.survey_uri = s.at_uri
+        AND scope->>'taxonID' = ${params.taxonID}
+    )`);
+  }
+  if (params.startDate) {
+    wheres.push(
+      sql`COALESCE(s.event_date, s.created_at) >= ${`${params.startDate}T00:00:00Z`}::timestamptz`,
+    );
+  }
+  if (params.stopDate) {
+    wheres.push(
+      sql`COALESCE(s.event_date, s.created_at) <= ${`${params.stopDate}T23:59:59.999Z`}::timestamptz`,
+    );
+  }
+  const { north, south, east, west } = params.bbox ?? {};
+  if (north && south && east && west) {
+    wheres.push(
+      sql`ST_Within(s.geom, ST_MakeEnvelope(${parseFloat(west)}, ${parseFloat(south)}, ${parseFloat(east)}, ${parseFloat(north)}, 4326))`,
+    );
+  }
   const surveyRows = await sql<SurveyRow[]>`
     SELECT
       s.at_uri,
@@ -226,6 +275,11 @@ export async function getSurveysPage(limit: number = 100, offset: number = 0) {
     JOIN survey_protocols sp ON sp.at_uri = s.protocol_uri
     JOIN users u ON u.did = s.did
     JOIN users spu ON spu.did = sp.did
+    ${
+      wheres.length > 0
+        ? sql`WHERE ${wheres.reduce((acc, w) => sql`${acc} AND ${w}`)}`
+        : sql``
+    }
     ORDER BY s.created_at DESC NULLS LAST
     LIMIT ${limit}
     OFFSET ${offset}
@@ -290,9 +344,14 @@ export async function insertSurvey(
     return Number.isNaN(d.getTime()) ? null : d;
   })();
 
+  const coords = extractSurveyCoords(record);
+  const geomExpr = coords
+    ? sql`ST_SetSRID(ST_MakePoint(${coords.lon}, ${coords.lat}), 4326)`
+    : sql`NULL`;
+
   // event_date and created_at are stored separately for ORDER BY; record contains the full lexicon record.
   await sql`
-    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, event_date, created_at, record, indexed_at)
+    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, event_date, created_at, record, geom, indexed_at)
     VALUES (
       ${atUri},
       ${did},
@@ -301,13 +360,15 @@ export async function insertSurvey(
       ${eventDate},
       ${new Date(record.createdAt)},
       ${sql.json(record as Parameters<typeof sql.json>[0])},
+      ${geomExpr},
       now()
     )
     ON CONFLICT (at_uri) DO UPDATE SET
       protocol_uri = EXCLUDED.protocol_uri,
       event_date = EXCLUDED.event_date,
       created_at = EXCLUDED.created_at,
-      record = EXCLUDED.record
+      record = EXCLUDED.record,
+      geom = EXCLUDED.geom
   `;
 }
 
@@ -535,6 +596,28 @@ export async function insertOccurrence(
       record = EXCLUDED.record,
       geom = EXCLUDED.geom
   `;
+}
+
+export async function getTaxonName(taxonId: string): Promise<string | null> {
+  const rows = await sql<{ scientific_name: string }[]>`
+    (
+      SELECT record->'scope'->0->>'scientificName' AS scientific_name
+      FROM protocol_targets
+      WHERE record->'scope'->0->>'taxonID' = ${taxonId}
+        AND record->'scope'->0->>'scientificName' IS NOT NULL
+      LIMIT 1
+    )
+    UNION ALL
+    (
+      SELECT record->>'scientificName' AS scientific_name
+      FROM identifications
+      WHERE record->>'taxonID' = ${taxonId}
+        AND record->>'scientificName' IS NOT NULL
+      LIMIT 1
+    )
+    LIMIT 1
+  `;
+  return rows[0]?.scientific_name ?? null;
 }
 
 export async function getProtocolTargetsByUri(uris: string[]) {

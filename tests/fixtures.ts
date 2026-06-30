@@ -10,7 +10,11 @@ const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
 export async function seedProtocol(
   sql: Sql,
   did: string,
-): Promise<{ protocolRkey: string }> {
+): Promise<{
+  protocolRkey: string;
+  taxonTargetUri: string;
+  verbatimTargetUri: string;
+}> {
   const handle = `user-${did.split(':').pop()}`;
   await sql`
     INSERT INTO users (did, handle) VALUES (${did}, ${handle})
@@ -72,7 +76,11 @@ export async function seedProtocol(
     `;
   }
 
-  return { protocolRkey: rkey };
+  return {
+    protocolRkey: rkey,
+    taxonTargetUri: `at://${did}/bio.cuanto.protocolTarget/${targets[0].rkey}`,
+    verbatimTargetUri: `at://${did}/bio.cuanto.protocolTarget/${targets[1].rkey}`,
+  };
 }
 
 export async function seedProtocolWithLocationOptions(
@@ -176,7 +184,7 @@ export async function seedSurvey(
   protocolUri: string,
   locationName = 'Test Location',
   createdAt = new Date().toISOString(),
-): Promise<{ surveyRkey: string }> {
+): Promise<{ surveyRkey: string; surveyAtUri: string }> {
   const rkey = `testsurvey${Date.now()}${Math.floor(Math.random() * 1000)}`;
   const atUri = `at://${did}/bio.cuanto.survey/${rkey}`;
   const record = {
@@ -189,7 +197,7 @@ export async function seedSurvey(
     INSERT INTO surveys (at_uri, did, rkey, protocol_uri, created_at, record, indexed_at)
     VALUES (${atUri}, ${did}, ${rkey}, ${protocolUri}, ${new Date(createdAt)}, ${sql.json(record)}, now())
   `;
-  return { surveyRkey: rkey };
+  return { surveyRkey: rkey, surveyAtUri: atUri };
 }
 
 export async function seedSurveyWithCoordinates(
@@ -219,8 +227,12 @@ export async function seedSurveyWithCoordinates(
     },
   };
   await sql`
-    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, created_at, record, indexed_at)
-    VALUES (${atUri}, ${did}, ${rkey}, ${protocolUri}, now(), ${sql.json(record)}, now())
+    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, created_at, record, geom, indexed_at)
+    VALUES (
+      ${atUri}, ${did}, ${rkey}, ${protocolUri}, now(), ${sql.json(record)},
+      ST_SetSRID(ST_MakePoint(${parseFloat(longitude)}, ${parseFloat(latitude)}), 4326),
+      now()
+    )
   `;
   return { surveyRkey: rkey };
 }
@@ -232,6 +244,7 @@ export async function seedOccurrence(
   protocolUri: string,
   // The protocol author's protocolTarget URI.
   protocolTargetUri: string,
+  organismQuantity?: string,
 ): Promise<void> {
   const rkey = `testocc${Date.now()}${Math.floor(Math.random() * 1000)}`;
   const atUri = `at://${did}/bio.lexicons.temp.v0-1.occurrence/${rkey}`;
@@ -241,6 +254,7 @@ export async function seedOccurrence(
     $type: 'bio.lexicons.temp.v0-1.occurrence',
     eventID: surveyUri,
     surveyTargetID: surveyTargetUri,
+    ...(organismQuantity !== undefined ? { organismQuantity } : {}),
   };
   // The occurrence's protocolTarget is resolved at the app level by joining
   // survey_targets on surveyTargetID, so seed the row that join depends on.

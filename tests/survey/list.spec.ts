@@ -2,6 +2,7 @@ import {
   expect,
   seedProtocol,
   seedSurvey,
+  seedSurveyWithCoordinates,
   teardownDid,
   test,
 } from '../fixtures.js';
@@ -50,6 +51,54 @@ test('/surveys/[handle] shows surveys for that user from JSONB record', async ({
     await expect(page.getByText('Test Protocol')).toBeVisible();
   } finally {
     await teardownDid(sql, PUBLIC_DID);
+  }
+});
+
+// ── Bbox filtering ────────────────────────────────────────────────────────────
+
+const BBOX_DID = 'did:test:survey-bbox';
+const BBOX_HANDLE = 'user-survey-bbox';
+
+test('/surveys with bbox only shows surveys within bounds', async ({
+  page,
+  sql,
+}) => {
+  await sql`
+    INSERT INTO users (did, handle) VALUES (${BBOX_DID}, ${BBOX_HANDLE})
+    ON CONFLICT (did) DO NOTHING
+  `;
+  const { protocolRkey } = await seedProtocol(sql, BBOX_DID);
+  const protocolUri = `at://${BBOX_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+  await seedSurveyWithCoordinates(
+    sql,
+    BBOX_DID,
+    protocolUri,
+    'Inside Meadow',
+    '37.7749',
+    '-122.4194',
+  );
+  await seedSurveyWithCoordinates(
+    sql,
+    BBOX_DID,
+    protocolUri,
+    'Outside Meadow',
+    '40.7128',
+    '-74.0060',
+  );
+
+  try {
+    const params = new URLSearchParams({
+      protocols: protocolUri,
+      bboxNorth: '38',
+      bboxSouth: '37',
+      bboxEast: '-122',
+      bboxWest: '-123',
+    });
+    await page.goto(`/surveys?${params}`);
+    await expect(page.getByText('Inside Meadow')).toBeVisible();
+    await expect(page.getByText('Outside Meadow')).not.toBeVisible();
+  } finally {
+    await teardownDid(sql, BBOX_DID);
   }
 });
 
