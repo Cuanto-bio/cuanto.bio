@@ -25,6 +25,14 @@ let { form }: { form: ActionData } = $props();
 let handle = $state(form?.handle ?? '');
 let suggestions = $state<Actor[]>([]);
 
+// Selecting a suggestion sets `handle` to the picked actor's full handle,
+// which would otherwise re-trigger the search effect below and pop the
+// dropdown right back open over the field the user just finished with.
+// Plain (non-reactive) flag: it must not itself be a dependency of the
+// effect, or resetting it would retrigger the effect a second time, by
+// which point the flag is already consumed and the search runs anyway.
+let skipNextSearch = false;
+
 // Error shown beneath the field: either a client-side catch (before we waste a
 // round trip) or the server's response. clientError is reset at the start of
 // each submit; the server message is replaced on the next attempt.
@@ -54,6 +62,11 @@ const TYPEAHEAD_URL = 'typeahead.waow.tech';
 // const TYPEAHEAD_URL = 'public.api.bsky.app';
 
 $effect(() => {
+  if (skipNextSearch) {
+    skipNextSearch = false;
+    suggestions = [];
+    return;
+  }
   if (handle.length < 2) {
     suggestions = [];
     return;
@@ -97,6 +110,7 @@ $effect(() => {
           bind:value={handle}
           items={suggestions}
           onselect={(actor) => {
+            skipNextSearch = true;
             handle = actor.handle;
           }}
         >
