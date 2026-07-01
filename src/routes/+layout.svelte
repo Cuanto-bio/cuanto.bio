@@ -22,6 +22,8 @@ let { children } = $props();
 
 const online = useOnline();
 
+let scrollContainer = $state<HTMLDivElement>();
+
 // Record every client-side navigation so the mobile header can show a
 // contextual back link. `from` is null on the initial page load (no previous
 // route within the app), so we skip it — the stack starts empty.
@@ -29,6 +31,12 @@ const online = useOnline();
 // fires in the browser, but the browser import is kept there for clarity.
 afterNavigate(({ from, to }) => {
   if (from) nav.navigate(from.url?.href, to?.url?.href ?? '');
+
+  // .mobile-scroll (not the window) is the scrolling element on narrow/touch
+  // viewports, and it lives in this layout, so it survives client-side
+  // navigation instead of being recreated. SvelteKit's built-in scroll reset
+  // only touches window.scrollY, so we have to reset this one ourselves.
+  if (scrollContainer) scrollContainer.scrollTop = 0;
 });
 
 onMount(() => {
@@ -92,7 +100,7 @@ onMount(() => {
         </Collapsible.Trigger>
       </Collapsible.Root>
     </div>
-    <div class="mobile-scroll flex-1 overflow-y-auto">
+    <div class="mobile-scroll flex-1 overflow-y-auto" bind:this={scrollContainer}>
       <div class="mx-auto max-w-4xl px-4 pb-8 flex flex-col min-h-full">
         {@render children()}
         <InstallFooter />
