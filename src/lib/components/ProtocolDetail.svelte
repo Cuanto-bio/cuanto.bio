@@ -3,12 +3,15 @@ import ChartBarIcon from '@lucide/svelte/icons/chart-bar';
 import ClipboardClockIcon from '@lucide/svelte/icons/clipboard-clock';
 import ClipboardPlusIcon from '@lucide/svelte/icons/clipboard-plus';
 import DownloadIcon from '@lucide/svelte/icons/download';
+import EllipsisVerticalIcon from '@lucide/svelte/icons/ellipsis-vertical';
 import MinusIcon from '@lucide/svelte/icons/minus';
 import PencilIcon from '@lucide/svelte/icons/pencil';
 import PlusIcon from '@lucide/svelte/icons/plus';
+import type { Component } from 'svelte';
 import Button from '$lib/components/Button.svelte';
 import Form from '$lib/components/Form.svelte';
 import ButtonGroup from '$lib/components/ui/button-group/button-group.svelte';
+import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 import type { Main as LocationAddress } from '$lib/lexicons/community/lexicon/location/address.defs';
 import type { Main as LocationBbox } from '$lib/lexicons/community/lexicon/location/bbox.defs';
 import type { Main as LocationGeo } from '$lib/lexicons/community/lexicon/location/geo.defs';
@@ -19,6 +22,13 @@ import { sanitizeHtml } from '$lib/sanitize';
 import Handle from './handle.svelte';
 import Taxon from './Taxon.svelte';
 import * as Table from './ui/table';
+
+interface ActionItem {
+  href: string;
+  label: string;
+  title: string;
+  icon: Component;
+}
 
 interface Props {
   protocol: Protocol;
@@ -58,62 +68,101 @@ function formatDate(iso: string) {
 function formatSurveyDate(iso: string) {
   return new Date(iso).toLocaleDateString();
 }
+
+// Edit/Export collapse into a kebab menu on narrow screens. Stats is kept out
+// of this list since it's the only action ever shown to signed-out visitors
+// on the public (SSR, no-JS-friendly) protocol page.
+const collapsibleActions = $derived.by(() => {
+  const actions: (ActionItem | null)[] = [
+    isSignedIn && isOwner
+      ? {
+          href: `/protocols/${protocol.handle}/${protocol.rkey}/edit`,
+          label: 'Edit',
+          title: 'Edit this protocol',
+          icon: PencilIcon,
+        }
+      : null,
+    isSignedIn
+      ? {
+          href: `/api/protocols/${protocol.handle}/${protocol.rkey}/export`,
+          label: 'Export',
+          title: 'Export as DarwinCore Data Package',
+          icon: DownloadIcon,
+        }
+      : null,
+  ];
+  return actions.filter((action): action is ActionItem => action !== null);
+});
 </script>
 
 <main>
-  <div class="mb-6 flex items-center justify-between">
-    <div class="flex items-center justify-between gap-2 w-full">
-      {#if isSignedIn && isOwner}
+  <div class="mb-6 flex items-center justify-between gap-2">
+    {#if isSignedIn}
+      <ButtonGroup>
         <Button
-          href="/protocols/{protocol.handle}/{protocol.rkey}/edit"
+          href="/app/surveys/new/{protocol.rkey}?past=1"
           variant="outline"
+          title="Enter past survey data"
         >
-          <PencilIcon />
-          Edit
+          <ClipboardPlusIcon />
+          <span class="sm:hidden">Add</span>
+          <span class="hidden sm:inline">Add Past Survey</span>
         </Button>
+        <Button
+          href="/app/surveys/new/{protocol.rkey}"
+          title="Start a field survey now"
+          class="border-1 border-primary"
+        >
+          <ClipboardClockIcon />
+          <span class="sm:hidden">Start</span>
+          <span class="hidden sm:inline">Start Survey</span>
+        </Button>
+      </ButtonGroup>
+    {/if}
+    <div class="flex items-center gap-2 ml-auto">
+      <Button
+        href="/stats?protocols={encodeURIComponent(protocol.atUri)}"
+        variant="outline"
+        title="View stats for this protocol"
+      >
+        <ChartBarIcon />
+        Stats
+      </Button>
+      {#if collapsibleActions.length > 0}
+        <div class="hidden items-center gap-2 sm:flex">
+          {#each collapsibleActions as action (action.href)}
+            {@const Icon = action.icon}
+            <Button href={action.href} variant="outline" title={action.title}>
+              <Icon />
+              {action.label}
+            </Button>
+          {/each}
+        </div>
+        <div class="sm:hidden">
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger>
+              {#snippet child({ props })}
+                <Button variant="outline" size="icon" aria-label="More actions" {...props}>
+                  <EllipsisVerticalIcon />
+                </Button>
+              {/snippet}
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content align="end">
+              {#each collapsibleActions as action (action.href)}
+                {@const Icon = action.icon}
+                <DropdownMenu.Item>
+                  {#snippet child({ props })}
+                    <a href={action.href} title={action.title} {...props}>
+                      <Icon class="size-4" />
+                      {action.label}
+                    </a>
+                  {/snippet}
+                </DropdownMenu.Item>
+              {/each}
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
+        </div>
       {/if}
-      <div class="flex gap-2 ml-auto">
-        <Button
-          href="/stats?protocols={encodeURIComponent(protocol.atUri)}"
-          variant="outline"
-          title="View stats for this protocol"
-        >
-          <ChartBarIcon />
-          Stats
-        </Button>
-        {#if isSignedIn}
-          {#if isOffline || isOwner}
-            <Button
-              href="/api/protocols/{protocol.handle}/{protocol.rkey}/export"
-              variant="outline"
-              title="Export as DarwinCore Data Package"
-            >
-              <DownloadIcon />
-              Export
-            </Button>
-          {/if}
-          <ButtonGroup>
-            <Button
-              href="/app/surveys/new/{protocol.atUri.split('/').at(-1)}?past=1"
-              variant="outline"
-              title="Enter past survey data"
-            >
-              <ClipboardPlusIcon />
-              <span class="sm:hidden">Add</span>
-              <span class="hidden sm:inline">Add Past Survey</span>
-            </Button>
-            <Button
-              href="/app/surveys/new/{protocol.atUri.split('/').at(-1)}"
-              title="Start a field survey now"
-              class="border-1 border-primary"
-            >
-              <ClipboardClockIcon />
-              <span class="sm:hidden">Start</span>
-              <span class="hidden sm:inline">Start Survey</span>
-            </Button>
-          </ButtonGroup>
-        {/if}
-      </div>
     </div>
   </div>
 
