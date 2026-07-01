@@ -101,3 +101,63 @@ test('resets scroll position after navigating from a scrolled-down list to a pro
     for (const otherDid of otherDids) await teardownDid(sql, otherDid);
   }
 });
+
+test('signed-in cold launch (/app) lands on Followed Protocols, not All Protocols', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await teardownDid(sql, DID);
+  await context.addCookies([
+    {
+      name: 'did',
+      value: DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  await sql`INSERT INTO users (did, handle) VALUES (${DID}, 'user-mobile-nav-spec') ON CONFLICT (did) DO NOTHING`;
+
+  try {
+    await page.goto('/app');
+    await page.waitForURL('**/app/protocols/following', { timeout: 8000 });
+    await expect(
+      page.getByRole('heading', { name: 'Followed Protocols' }),
+    ).toBeVisible();
+  } finally {
+    await teardownDid(sql, DID);
+  }
+});
+
+test('highlights Explore (not Following) when signed in and viewing /protocols', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await teardownDid(sql, DID);
+  await context.addCookies([
+    {
+      name: 'did',
+      value: DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  await sql`INSERT INTO users (did, handle) VALUES (${DID}, 'user-mobile-nav-spec') ON CONFLICT (did) DO NOTHING`;
+
+  try {
+    await page.goto('/protocols');
+    await expect(page.getByRole('link', { name: 'Following' })).not.toHaveClass(
+      /active/,
+    );
+    await expect(page.getByRole('button', { name: 'Explore' })).toHaveClass(
+      /active/,
+    );
+  } finally {
+    await teardownDid(sql, DID);
+  }
+});

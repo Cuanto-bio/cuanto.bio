@@ -3,6 +3,6 @@ import { onMount } from 'svelte';
 import { goto } from '$app/navigation';
 
 onMount(() => {
-  goto('/app/protocols', { replaceState: true });
+  goto('/app/protocols/following', { replaceState: true });
 });
 </script>

@@ -22,11 +22,8 @@ function activeTabSignedOut(p: string) {
 }
 
 function activeTabSignedIn(p: string) {
-  // /protocols (public list) maps to 'following' intentionally: signed-in users
-  // reach it via the Explore popover, but the primary protocols destination is
-  // the Following tab, so we keep that tab highlighted for all protocol paths.
-  if (p.startsWith('/app/protocols') || p.startsWith('/protocols'))
-    return 'following';
+  if (p.startsWith('/app/protocols')) return 'following';
+  if (p.startsWith('/protocols')) return 'explore';
   if (p.startsWith('/app/surveys')) return 'surveys';
   if (p.startsWith('/surveys')) return 'explore';
   if (p === '/app/account' || p.startsWith('/auth')) return 'you';
