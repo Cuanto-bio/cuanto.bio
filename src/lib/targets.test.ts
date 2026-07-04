@@ -116,8 +116,35 @@ describe('createTargetFilter', () => {
   const hawk = taxonTarget('at://t/1', 'Buteo jamaicensis', 'Red-tailed Hawk');
   const owl = taxonTarget('at://t/2', 'Bubo virginianus', 'Great Horned Owl');
   const sparrow = taxonTarget('at://t/3', 'Melospiza melodia', 'Song Sparrow');
-  const verbatim = verbatimTarget('at://t/4', 'Trees > 10cm DBH');
-  const targets = [hawk, owl, sparrow, verbatim];
+  const pine = taxonTarget('at://t/4', 'Pinus edulis', 'Piñon Pine');
+  const tanuki = taxonTarget(
+    'at://t/5',
+    'Nyctereutes viverrinus',
+    'ホンドタヌキ',
+  );
+  const mushroom = taxonTarget(
+    'at://t/6',
+    'Omphalotus illinoinensis',
+    'Jack-o-lantern mushroom',
+  );
+  const fox = taxonTarget('at://t/7', 'Vulpes vulpes', 'ثَعْلَب');
+  const aeolid = taxonTarget(
+    'at://t/8',
+    'Orienthella piunca',
+    "Fisher's Aeolid",
+  );
+  const verbatim = verbatimTarget('at://t/9', 'Trees > 10cm DBH');
+  const targets = [
+    hawk,
+    owl,
+    sparrow,
+    pine,
+    tanuki,
+    mushroom,
+    fox,
+    aeolid,
+    verbatim,
+  ];
 
   test('returns all targets with no filter active', () => {
     const tf = createTargetFilter(
@@ -160,6 +187,78 @@ describe('createTargetFilter', () => {
     );
     tf.filterQuery = 'owl';
     expect(tf.filtered).toEqual([owl]);
+  });
+
+  test('filterQuery matches hypenated label with unhyphenated query', () => {
+    const tf = createTargetFilter(
+      () => targets,
+      () => false,
+    );
+    tf.filterQuery = 'red tailed';
+    expect(tf.filtered).toEqual([hawk]);
+  });
+
+  test('filterQuery matches unhypenated label with hyphenated query', () => {
+    const tf = createTargetFilter(
+      () => targets,
+      () => false,
+    );
+    tf.filterQuery = 'great-horned';
+    expect(tf.filtered).toEqual([owl]);
+  });
+
+  test('filterQuery matches diacritic in label with ASCII-equivalent in query', () => {
+    const tf = createTargetFilter(
+      () => targets,
+      () => false,
+    );
+    tf.filterQuery = 'pinon';
+    expect(tf.filtered).toEqual([pine]);
+  });
+
+  test('filterQuery matches ASCII-equivalent in label with diacritic in query', () => {
+    const tf = createTargetFilter(
+      () => targets,
+      () => false,
+    );
+    tf.filterQuery = 'horñed';
+    expect(tf.filtered).toEqual([owl]);
+  });
+
+  test('filterQuery matches east Asian characters in label', () => {
+    const tf = createTargetFilter(
+      () => targets,
+      () => false,
+    );
+    tf.filterQuery = 'ホンドタヌキ';
+    expect(tf.filtered).toEqual([tanuki]);
+  });
+
+  test('filterQuery matches hyphenated label when the hyphenated word between two hyphens is a single letter', () => {
+    const tf = createTargetFilter(
+      () => targets,
+      () => false,
+    );
+    tf.filterQuery = 'jack o lantern';
+    expect(tf.filtered).toEqual([mushroom]);
+  });
+
+  test('filterQuery matches label regardless of apostrophe', () => {
+    const tf = createTargetFilter(
+      () => targets,
+      () => false,
+    );
+    tf.filterQuery = 'fishers aeolid';
+    expect(tf.filtered).toEqual([aeolid]);
+  });
+
+  test('filterQuery matches vocalized Arabic label with unvocalized query', () => {
+    const tf = createTargetFilter(
+      () => targets,
+      () => false,
+    );
+    tf.filterQuery = 'ثعلب';
+    expect(tf.filtered).toEqual([fox]);
   });
 
   test('filterQuery matches scientific name', () => {

@@ -59,6 +59,18 @@ export async function seedProtocol(
         },
       ],
     },
+    {
+      rkey: `testtarget3${Date.now()}`,
+      scope: [
+        {
+          $type: 'bio.cuanto.protocolTarget#taxonScope',
+          scientificName: 'Orienthella piunca',
+          taxonRank: 'species',
+          taxonID: 'https://www.inaturalist.org/taxa/1655734',
+          vernacularName: "Fisher's aeolid",
+        },
+      ],
+    },
   ];
 
   for (let i = 0; i < targets.length; i++) {

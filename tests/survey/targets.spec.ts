@@ -77,6 +77,42 @@ test.describe('target search filter', () => {
     await page.getByPlaceholder('Search targets…').fill('zzznomatch');
     await expect(page.getByText(/No targets match/)).toBeVisible();
   });
+
+  test('filters taxon targets by scientificName with trailing space', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.getByPlaceholder('Search targets…').fill('agrifolia ');
+    await expect(
+      page.getByText('Coast live oak (Quercus agrifolia)'),
+    ).toBeVisible();
+    await expect(page.getByText('All birds')).not.toBeVisible();
+  });
+
+  test('filters taxon targets by vernacularName regardless of punctuation', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.getByPlaceholder('Search targets…').fill('fishers');
+    await expect(
+      page.getByText("Fisher's Aeolid (Orienthella piunca)"),
+    ).toBeVisible();
+    await expect(page.getByText('All birds')).not.toBeVisible();
+  });
+
+  test('filters taxon targets by vernacularName regardless of punctuation in query', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.getByPlaceholder('Search targets…').fill('fishers-aeolid');
+    await expect(
+      page.getByText("Fisher's Aeolid (Orienthella piunca)"),
+    ).toBeVisible();
+    await expect(page.getByText('All birds')).not.toBeVisible();
+  });
 });
 
 // ── Target sort and filter dropdown ───────────────────────────────────────────

@@ -69,6 +69,33 @@ function sortTargets(targets: Target[], sort: TargetSort): Target[] {
 }
 
 /**
+ * Normalize text for search comparison
+ * */
+function normalizeForSearch(text: string) {
+  return (
+    text
+      // case insensitive
+      .toLowerCase()
+      // ignore trailing whitespace
+      .trim()
+      // fold Latin/Greek/Cyrillic accents (café -> cafe) and Arabic harakat
+      // (مَرْحَبًا -> مرحبا), then recompose so untouched marks (e.g. Japanese
+      // dakuten) don't get treated as stray punctuation below
+      .normalize('NFD')
+      .replaceAll(/[\u0300-\u036f\u064b-\u0652]/g, '')
+      .normalize('NFC')
+      // treat hyphenated and space-separated words the same
+      .replaceAll(/-/g, ' ')
+      // normalize whitespace
+      .replaceAll(/\s/g, ' ')
+      // match regardless of punctuation, e.g. "fishers" should match "Fisher's";
+      // \p{L}\p{N}\p{M} (not \w) so other scripts and their combining marks
+      // (Devanagari, Thai, etc.) survive instead of being stripped as symbols
+      .replaceAll(/[^\p{L}\p{N}\p{M}\s]+/gu, '')
+  );
+}
+
+/**
  * Svelte 5 composable for filtering and sorting a target list.
  *
  * `getTargets` is called reactively — pass a getter that reads from `$state`
@@ -98,9 +125,9 @@ export function createTargetFilter(
     const targets = getTargets().filter((t) => {
       if (onlyCounted && !isCounted(t)) return false;
       if (!filterQuery.trim()) return true;
-      return targetLabel(t.record.scope)
-        .toLowerCase()
-        .includes(filterQuery.toLowerCase());
+      return normalizeForSearch(targetLabel(t.record.scope)).includes(
+        normalizeForSearch(filterQuery),
+      );
     });
     return sortTargets(targets, targetSort);
   });
