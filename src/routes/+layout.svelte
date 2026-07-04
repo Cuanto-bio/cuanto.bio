@@ -6,6 +6,7 @@ import { nav } from '$lib/navigation.svelte';
 import './layout.css';
 import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 import { Collapsible } from 'bits-ui';
+import { toast } from 'svelte-sonner';
 import favicon from '$lib/assets/favicon.svg';
 import * as Alert from '$lib/components/alert';
 import InstallFooter from '$lib/components/InstallFooter.svelte';
@@ -17,6 +18,7 @@ import { SidebarProvider, SidebarTrigger } from '$lib/components/ui/sidebar';
 import { Toaster } from '$lib/components/ui/sonner';
 import { useOnline } from '$lib/composables/online.svelte';
 import { install } from '$lib/pwa/install.svelte';
+import { SKIP_WAITING, watchForUpdates } from '$lib/pwa/swUpdate';
 
 let { children } = $props();
 
@@ -48,24 +50,40 @@ onMount(() => {
     // Register at an absolute path so the scope is always the origin root,
     // regardless of the base URL. Use type:'module' in dev because Vite serves
     // the SW as an ES module; use 'classic' in production for the compiled bundle.
-    navigator.serviceWorker.register('/service-worker.js', {
-      type: import.meta.env.DEV ? 'module' : 'classic',
-    });
-  }
+    navigator.serviceWorker
+      .register('/service-worker.js', {
+        type: import.meta.env.DEV ? 'module' : 'classic',
+      })
+      .then((registration) => {
+        // When an update has installed and is waiting to take over, prompt the
+        // user rather than forcing a reload. Clicking activates the waiting SW
+        // (SKIP_WAITING), which fires controllerchange below and reloads once.
+        watchForUpdates(
+          registration,
+          (waiting) => {
+            toast('A new version is available.', {
+              action: {
+                label: 'Reload',
+                onClick: () => waiting.postMessage({ type: SKIP_WAITING }),
+              },
+              duration: Number.POSITIVE_INFINITY,
+            });
+          },
+          () => !!navigator.serviceWorker.controller,
+        );
+      });
 
-  // If the SW is active but not yet controlling this page (e.g. first
-  // activation with clients.claim()), reload once so the next navigation
-  // goes through the SW and the page becomes properly controlled.
-  // TODO: replace this with a notice to the user that there's an update they
-  // can activate
-  if ('serviceWorker' in navigator && !navigator.serviceWorker.controller) {
-    navigator.serviceWorker.addEventListener(
-      'controllerchange',
-      () => {
-        window.location.reload();
-      },
-      { once: true },
-    );
+    // Reload once the controlling SW changes. Registered unconditionally: the
+    // previous guard (`!controller`) only ran on first install, so updates never
+    // reloaded and the page kept running JS chunks the new SW had already
+    // evicted, silently breaking navigation (issue #4). `refreshing` guards
+    // against any double reload.
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
   }
 });
 </script>
