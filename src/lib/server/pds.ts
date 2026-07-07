@@ -6,13 +6,27 @@ import {
 } from '@atproto/oauth-client-node';
 import { parseAtUri } from '$lib/atUri';
 import sql from '$lib/server/db';
-import { getClient } from './auth.js';
+import { getClient, isScopeSufficient } from './auth.js';
 
 export { parseAtUri };
 
 export class PdsSessionExpiredError extends Error {
+  constructor(message = 'AT Protocol session expired. Please sign in again.') {
+    super(message);
+  }
+}
+
+// Thrown instead of PdsSessionExpiredError when a session is still valid but
+// was granted before a scope the app now requires (e.g. a newly added
+// repo:<nsid>), or the user only partially consented to the requested scope.
+// Extends PdsSessionExpiredError so existing `instanceof PdsSessionExpiredError`
+// checks across route handlers and UI components already route this through
+// the same "please sign in again" flow.
+export class PdsScopeInsufficientError extends PdsSessionExpiredError {
   constructor() {
-    super('AT Protocol session expired. Please sign in again.');
+    super(
+      'Cuanto needs an additional permission. Please sign in again to grant it.',
+    );
   }
 }
 
@@ -159,10 +173,21 @@ export async function fetchAtRecord(atUri: string): Promise<AtRecord | null> {
  * process, which means there is no way to mock this function from the test layer
  * (e.g. vi.mock) — any mocking must be configured via the environment.
  */
+async function getGrantedScope(did: string): Promise<string | undefined> {
+  const rows = await sql<{ scope: string | null }[]>`
+    SELECT value->'tokenSet'->>'scope' AS scope FROM oauth_sessions WHERE key = ${did}
+  `;
+  return rows[0]?.scope ?? undefined;
+}
+
 async function withSessionErrorHandling<T>(
   did: string,
   fn: () => Promise<T>,
 ): Promise<T> {
+  if (!isScopeSufficient(await getGrantedScope(did))) {
+    await sql`DELETE FROM oauth_sessions WHERE key = ${did}`;
+    throw new PdsScopeInsufficientError();
+  }
   try {
     return await fn();
   } catch (err) {

@@ -57,7 +57,65 @@ class PgSessionStore {
   }
 }
 
-const SCOPE = 'atproto transition:generic';
+// Collections Cuanto reads and writes in the user's own repo. Keep in sync with
+// the lexicons under src/lib/lexicons/bio (their $nsid values). Used to build a
+// granular OAuth scope so the consent screen names only what the app touches,
+// instead of the alarming, do-anything `transition:generic` (issue #18).
+const REPO_COLLECTIONS = [
+  'bio.cuanto.surveyProtocol',
+  'bio.cuanto.surveyProtocol.follow',
+  'bio.cuanto.protocolTarget',
+  'bio.cuanto.survey',
+  'bio.cuanto.surveyTarget',
+  'bio.lexicons.temp.v0-1.occurrence',
+  'bio.lexicons.temp.v0-1.identification',
+  'bio.lexicons.temp.v0-1.media',
+];
+
+// Old-namespace collections the admin lexicon cleanup (cleanupMigratedRecords
+// in migrate-lexicons.ts) deletes from the user's repo after migrating them to
+// the bio.cuanto.* namespace. We only need delete on these, and only until every
+// user is migrated + cleaned up — then this list (and the cleanup) can go away.
+const LEGACY_DELETE_COLLECTIONS = [
+  'bio.lexicons.temp.v0-1.surveyProtocol',
+  'bio.lexicons.temp.surveyProtocol',
+  'bio.lexicons.temp.v0-1.surveyTarget',
+  'bio.lexicons.temp.surveyTarget',
+  'bio.lexicons.temp.v0-1.survey',
+  'bio.lexicons.temp.survey',
+];
+
+// Granular permission scope (https://atproto.com/specs/permission):
+// - `atproto`: required base scope (session + identity resolution).
+// - `repo:<nsid>`: create/update/delete records in each collection above. All
+//   of the app's PDS writes go through com.atproto.repo.* which this covers.
+// - `repo:<legacy>?action=delete`: let the migration cleanup delete old records.
+// - `blob:*/*`: upload GPX track blobs and photos (com.atproto.repo.uploadBlob).
+// NOTE: not yet verified against a live PDS OAuth flow — see
+// docs/2026-07-05-issue-18-oauth-scopes.md before deploying. `identity`/`rpc`
+// (guessed in the issue) appear unnecessary: the app never changes the user's
+// handle and makes no appview RPC calls.
+const SCOPE = [
+  'atproto',
+  ...REPO_COLLECTIONS.map((nsid) => `repo:${nsid}`),
+  ...LEGACY_DELETE_COLLECTIONS.map((nsid) => `repo:${nsid}?action=delete`),
+  'blob:*/*',
+].join(' ');
+
+// Compares a session's actually-granted scope (from its stored OAuth token
+// set) against what the app currently requires. A session predating a newly
+// added `repo:<nsid>` entry in SCOPE, or one the user only partially
+// consented to, will fail here — callers should treat that like an expired
+// session and force re-authorization, since refreshing a token can never
+// widen its granted scope; only a fresh /authorize round trip can.
+export function isScopeSufficient(
+  grantedScope: string | undefined,
+  requiredScope: string = SCOPE,
+): boolean {
+  if (!grantedScope) return false;
+  const granted = new Set(grantedScope.split(/\s+/));
+  return requiredScope.split(/\s+/).every((token) => granted.has(token));
+}
 
 // Loopback client is only for local development. In prod we need a
 // publicly-accessible URL

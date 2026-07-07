@@ -1,6 +1,36 @@
 import { TokenRefreshError } from '@atproto/oauth-client-node';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { fetchWithRetry, isPdsSessionError } from './pds';
+
+vi.mock('$lib/server/db', () => {
+  const tag = Object.assign(
+    vi.fn(() => Promise.resolve([])),
+    {
+      json: (v: unknown) => v,
+    },
+  );
+  return { default: tag };
+});
+
+vi.mock('./auth', () => ({
+  getClient: vi.fn(),
+  isScopeSufficient: vi.fn(),
+}));
+
+import sql from '$lib/server/db';
+import { getClient, isScopeSufficient } from './auth';
+import {
+  createRecord,
+  fetchWithRetry,
+  isPdsSessionError,
+  PdsScopeInsufficientError,
+  PdsSessionExpiredError,
+} from './pds';
+
+const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
+const mockGetClient = getClient as unknown as ReturnType<typeof vi.fn>;
+const mockIsScopeSufficient = isScopeSufficient as unknown as ReturnType<
+  typeof vi.fn
+>;
 
 describe('fetchWithRetry', () => {
   beforeEach(() => {
@@ -128,5 +158,61 @@ describe('isPdsSessionError', () => {
     expect(isPdsSessionError(null)).toBe(false);
     expect(isPdsSessionError(undefined)).toBe(false);
     expect(isPdsSessionError(42)).toBe(false);
+  });
+});
+
+describe('withSessionErrorHandling scope check (via createRecord)', () => {
+  const did = 'did:plc:test';
+  const restore = vi.fn();
+  const fetchHandler = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env.PDS_MOCK;
+    mockGetClient.mockResolvedValue({ restore });
+    restore.mockResolvedValue({ fetchHandler });
+    fetchHandler.mockResolvedValue(
+      new Response(
+        JSON.stringify({ uri: 'at://x/bio.cuanto.survey/z', cid: 'bafy' }),
+        {
+          status: 200,
+        },
+      ),
+    );
+  });
+
+  test('throws PdsScopeInsufficientError and deletes the session without contacting the PDS when scope is insufficient', async () => {
+    mockSql.mockResolvedValueOnce([{ scope: 'atproto' }]);
+    mockIsScopeSufficient.mockReturnValue(false);
+
+    let caught: unknown;
+    try {
+      await createRecord(did, 'bio.cuanto.survey', {});
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(PdsScopeInsufficientError);
+    // PdsScopeInsufficientError extends PdsSessionExpiredError, so existing
+    // `instanceof PdsSessionExpiredError` checks across the app keep working.
+    expect(caught).toBeInstanceOf(PdsSessionExpiredError);
+    expect(fetchHandler).not.toHaveBeenCalled();
+
+    const deleteCall = mockSql.mock.calls.find((args) =>
+      String(args[0][0]).includes('DELETE FROM oauth_sessions'),
+    );
+    expect(deleteCall).toBeDefined();
+  });
+
+  test('proceeds to the real write when scope is sufficient', async () => {
+    mockSql.mockResolvedValueOnce([
+      { scope: 'atproto repo:bio.cuanto.survey' },
+    ]);
+    mockIsScopeSufficient.mockReturnValue(true);
+
+    const result = await createRecord(did, 'bio.cuanto.survey', {});
+
+    expect(result).toEqual({ uri: 'at://x/bio.cuanto.survey/z', cid: 'bafy' });
+    expect(fetchHandler).toHaveBeenCalledOnce();
   });
 });
