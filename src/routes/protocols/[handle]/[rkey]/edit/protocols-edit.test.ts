@@ -4,6 +4,11 @@ vi.mock('$lib/server/pds', () => ({
   putRecord: vi.fn(),
   deleteRecord: vi.fn(),
   createRecord: vi.fn(),
+  PdsSessionExpiredError: class PdsSessionExpiredError extends Error {
+    constructor() {
+      super('AT Protocol session expired. Please sign in again.');
+    }
+  },
 }));
 
 vi.mock('$lib/server/db/survey-protocols', () => ({
@@ -22,7 +27,12 @@ vi.mock('$lib/logger', () => ({
 }));
 
 import { getProtocolDetailByHandleAndRkey } from '$lib/server/db/survey-protocols';
-import { createRecord, deleteRecord, putRecord } from '$lib/server/pds';
+import {
+  createRecord,
+  deleteRecord,
+  PdsSessionExpiredError,
+  putRecord,
+} from '$lib/server/pds';
 import { actions } from './+page.server';
 
 const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
@@ -167,6 +177,31 @@ describe('POST /protocols/[handle]/[rkey]/edit — validation', () => {
         description: 'New Description',
         createdAt: FAKE_PROTOCOL.record.createdAt,
       }),
+    );
+  });
+});
+
+describe('POST /protocols/[handle]/[rkey]/edit — PDS session expiry', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getProtocolDetailByHandleAndRkey).mockResolvedValue(
+      FAKE_PROTOCOL as never,
+    );
+  });
+
+  test('returns fail(401) with sessionExpired when putRecord throws PdsSessionExpiredError', async () => {
+    vi.mocked(putRecord).mockRejectedValueOnce(new PdsSessionExpiredError());
+
+    const result = await submitEdit({
+      title: 'New Title',
+      description: 'New Description',
+      targets: '[]',
+      locationOptions: '[]',
+    });
+
+    expect(result?.status).toBe(401);
+    expect((result?.data as { sessionExpired?: boolean }).sessionExpired).toBe(
+      true,
     );
   });
 });

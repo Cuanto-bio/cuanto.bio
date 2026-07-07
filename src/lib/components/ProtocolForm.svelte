@@ -26,7 +26,7 @@ import type { PlaceResult } from '$lib/places';
 
 interface Props {
   protocol?: Protocol;
-  form?: { error?: string } | null;
+  form?: { error?: string; sessionExpired?: boolean } | null;
 }
 
 let { protocol, form }: Props = $props();
@@ -46,44 +46,130 @@ type PlaceEntry = {
   addresses: AtAddress[];
 };
 
+type Draft = {
+  title: string;
+  description: string;
+  requiredFieldDate: boolean;
+  requiredFieldDuration: boolean;
+  requiredFieldSurveyorCount: boolean;
+  targets: Target[];
+  places: PlaceEntry[];
+  savedAt: number;
+};
+
+// A stashed draft older than this is treated as abandoned (e.g. the user
+// clicked "Sign in" but never completed the round trip) rather than restored,
+// so it doesn't resurface and silently overwrite an unrelated later visit to
+// this form. Matches the return_to cookie's maxAge in auth/signin/+page.server.ts,
+// since both are bridging the same reauth round trip.
+const DRAFT_MAX_AGE_MS = 10 * 60 * 1000;
+
+// Scoped to this specific protocol (or 'new') so drafts from different tabs/forms
+// don't collide.
+// svelte-ignore state_referenced_locally -- intentional: derived once from the prop this form was mounted with
+const draftKey = protocol
+  ? `protocol-draft:edit:${protocol.atUri}`
+  : 'protocol-draft:new';
+
+// svelte-ignore state_referenced_locally -- intentional: derived once from the prop this form was mounted with
+const returnTo = protocol
+  ? `/protocols/${protocol.handle}/${protocol.rkey}/edit`
+  : '/protocols/new';
+
+// Reads back a draft stashed just before navigating to sign back in after a PDS
+// session expired (see the "Sign in" link below), so the user's in-progress
+// entries survive the OAuth redirect round trip. Consumed once: cleared
+// immediately so a stale draft can't leak into an unrelated future visit. Also
+// discarded if too old, since an abandoned sign-in attempt (closed tab,
+// cancelled auth, browsed away) would otherwise sit in sessionStorage for the
+// rest of the browser tab's life and resurface unexpectedly on some later,
+// unrelated visit to this same URL.
+function readAndClearDraft(): Draft | null {
+  if (typeof sessionStorage === 'undefined') return null;
+  const raw = sessionStorage.getItem(draftKey);
+  if (!raw) return null;
+  sessionStorage.removeItem(draftKey);
+  try {
+    const draft = JSON.parse(raw) as Draft;
+    if (Date.now() - draft.savedAt > DRAFT_MAX_AGE_MS) return null;
+    return draft;
+  } catch {
+    return null;
+  }
+}
+
+// svelte-ignore state_referenced_locally -- intentional: read once at init
+const savedDraft = readAndClearDraft();
+
 // svelte-ignore state_referenced_locally -- intentional: initialize from server data
-let title = $state(protocol?.record?.title ?? '');
+let title = $state(savedDraft?.title ?? protocol?.record?.title ?? '');
 // svelte-ignore state_referenced_locally -- intentional: initialize from server data
-let description = $state(protocol?.record?.description ?? '');
+let description = $state(
+  savedDraft?.description ?? protocol?.record?.description ?? '',
+);
 
 // svelte-ignore state_referenced_locally -- intentional: initialize from server data
 let requiredFieldDate = $state(
-  protocol?.record?.requiredFields?.includes('eventDate') ?? false,
+  savedDraft?.requiredFieldDate ??
+    protocol?.record?.requiredFields?.includes('eventDate') ??
+    false,
 );
 // svelte-ignore state_referenced_locally -- intentional: initialize from server data
 let requiredFieldDuration = $state(
-  protocol?.record?.requiredFields?.includes('eventDuration') ?? false,
+  savedDraft?.requiredFieldDuration ??
+    protocol?.record?.requiredFields?.includes('eventDuration') ??
+    false,
 );
 // svelte-ignore state_referenced_locally -- intentional: initialize from server data
 let requiredFieldSurveyorCount = $state(
-  protocol?.record?.requiredFields?.includes('surveyorCount') ?? false,
+  savedDraft?.requiredFieldSurveyorCount ??
+    protocol?.record?.requiredFields?.includes('surveyorCount') ??
+    false,
 );
 
 // svelte-ignore state_referenced_locally -- intentional: initialize from server data
 let targets = $state<Target[]>(
-  (protocol?.targets || []).map((t) => ({
-    atUri: t.atUri,
-    scope: t.record.scope as (l.$Typed<TaxonScope> | l.$Typed<VerbatimScope>)[],
-  })),
+  savedDraft?.targets ??
+    (protocol?.targets || []).map((t) => ({
+      atUri: t.atUri,
+      scope: t.record.scope as (
+        | l.$Typed<TaxonScope>
+        | l.$Typed<VerbatimScope>
+      )[],
+    })),
 );
 
 // svelte-ignore state_referenced_locally -- intentional: initialize from server data
 let places = $state<PlaceEntry[]>(
-  (protocol?.record?.locationOptions ?? []).map((place) => ({
-    name: place.name,
-    geos: (place.locations ?? []).filter(
-      (loc) => loc.$type === 'community.lexicon.location.geo',
-    ) as AtGeo[],
-    addresses: (place.locations ?? []).filter(
-      (loc) => loc.$type === 'community.lexicon.location.address',
-    ) as AtAddress[],
-  })),
+  savedDraft?.places ??
+    (protocol?.record?.locationOptions ?? []).map((place) => ({
+      name: place.name,
+      geos: (place.locations ?? []).filter(
+        (loc) => loc.$type === 'community.lexicon.location.geo',
+      ) as AtGeo[],
+      addresses: (place.locations ?? []).filter(
+        (loc) => loc.$type === 'community.lexicon.location.address',
+      ) as AtAddress[],
+    })),
 );
+
+// Stashes the in-progress draft to sessionStorage before following the "Sign
+// in" link, so it can be restored by readAndClearDraft() when the user lands
+// back on this form after re-authenticating.
+function stashDraft() {
+  if (typeof sessionStorage === 'undefined') return;
+  const draft: Draft = {
+    title,
+    description,
+    requiredFieldDate,
+    requiredFieldDuration,
+    requiredFieldSurveyorCount,
+    targets: $state.snapshot(targets),
+    places: $state.snapshot(places),
+    savedAt: Date.now(),
+  };
+  sessionStorage.setItem(draftKey, JSON.stringify(draft));
+}
 
 let placeQuery = $state('');
 let placeResults = $state<PlaceResult[]>([]);
@@ -301,7 +387,22 @@ function removeAddress(i: number, j: number) {
       </p>
     {:else}
     <Form method="POST" class="flex flex-col gap-6">
-      {#if form?.error}
+      {#if form?.sessionExpired}
+        <Alert.Root class="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
+          <Alert.Title>Session expired</Alert.Title>
+          <Alert.Description>
+            Your connection to the AT Protocol network has expired. Your entries
+            below are still here — sign in again to save them.
+            <a
+              href={`/auth/signin?returnTo=${encodeURIComponent(returnTo)}`}
+              onclick={stashDraft}
+              class="underline font-medium ml-1"
+            >
+              Sign in
+            </a>
+          </Alert.Description>
+        </Alert.Root>
+      {:else if form?.error}
         <Alert.Root variant="destructive">
           <Alert.Description>{form.error}</Alert.Description>
         </Alert.Root>

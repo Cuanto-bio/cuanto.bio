@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('$lib/server/pds', () => ({
   createRecord: vi.fn(),
+  PdsSessionExpiredError: class PdsSessionExpiredError extends Error {
+    constructor() {
+      super('AT Protocol session expired. Please sign in again.');
+    }
+  },
 }));
 
 vi.mock('$lib/server/db/survey-protocols', () => ({
@@ -13,7 +18,7 @@ vi.mock('$lib/server/db', () => ({
   default: vi.fn().mockResolvedValue([{ handle: 'user-test' }]),
 }));
 
-import { createRecord } from '$lib/server/pds';
+import { createRecord, PdsSessionExpiredError } from '$lib/server/pds';
 import { actions } from './+page.server';
 
 const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
@@ -250,6 +255,29 @@ describe('POST /protocols/new — locationOptions validation failures', () => {
     expect(result?.status).toBe(422);
     expect((result?.data as { error: string }).error).toContain(
       'Invalid location options',
+    );
+  });
+});
+
+describe('POST /protocols/new — PDS session expiry', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test('returns fail(401) with sessionExpired when createRecord throws PdsSessionExpiredError', async () => {
+    vi.mocked(createRecord).mockRejectedValueOnce(new PdsSessionExpiredError());
+
+    const result = await submitProtocol({
+      title: 'Test Protocol',
+      description: 'A test',
+      targets: '[]',
+      locationOptions: '[]',
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.status).toBe(401);
+    expect((result?.data as { sessionExpired?: boolean }).sessionExpired).toBe(
+      true,
     );
   });
 });

@@ -12,7 +12,12 @@ import {
   insertTarget,
 } from '$lib/server/db/survey-protocols';
 import { parseLocationOptions } from '$lib/server/locationOptions';
-import { createRecord, deleteRecord, putRecord } from '$lib/server/pds';
+import {
+  createRecord,
+  deleteRecord,
+  PdsSessionExpiredError,
+  putRecord,
+} from '$lib/server/pds';
 import type { Actions, PageServerLoad } from './$types';
 
 const log = logger.child({ component: 'edit-protocol' });
@@ -92,6 +97,9 @@ export const actions: Actions = {
         protocolRecord,
       ));
     } catch (err) {
+      if (err instanceof PdsSessionExpiredError) {
+        return fail(401, { sessionExpired: true });
+      }
       return fail(502, { error: `PDS error: ${String(err)}` });
     }
 

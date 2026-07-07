@@ -6,7 +6,7 @@ import * as SurveyProtocol from '$lib/lexicons/bio/cuanto/surveyProtocol';
 import sql from '$lib/server/db';
 import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
 import { parseLocationOptions } from '$lib/server/locationOptions';
-import { createRecord } from '$lib/server/pds';
+import { createRecord, PdsSessionExpiredError } from '$lib/server/pds';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -62,6 +62,9 @@ export const actions: Actions = {
         protocolRecord,
       ));
     } catch (err) {
+      if (err instanceof PdsSessionExpiredError) {
+        return fail(401, { sessionExpired: true });
+      }
       return fail(502, { error: `PDS error: ${String(err)}` });
     }
     const protocolRkey = protocolUri.split('/').at(-1) ?? '';
