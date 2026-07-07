@@ -594,6 +594,74 @@ describe('POST /api/tap/webhook', () => {
     expect(insertSurvey).toHaveBeenCalledTimes(2);
   });
 
+  test('does not backfill a protocol when the fetched record has an unexpected $type', async () => {
+    // Regression for #22: an eventID/protocol URI can resolve to a record from
+    // an unexpected (e.g. migrated) collection. backfillProtocol must not insert
+    // a non-surveyProtocol record as a protocol.
+    vi.mocked(insertSurvey).mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord).mockResolvedValueOnce({
+      uri: 'at://did:plc:abc123/bio.cuanto.surveyProtocol/3abc',
+      cid: TEST_CID,
+      value: {
+        // Wrong $type for a protocol URI.
+        $type: 'bio.cuanto.survey',
+        protocol: { uri: 'at://x', cid: TEST_CID },
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+    const resp = await POST({
+      request: makeRequest(surveyEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertProtocol).not.toHaveBeenCalled();
+  });
+
+  test('does not backfill a survey when the fetched record has an unexpected $type', async () => {
+    // Regression for #22: an occurrence eventID can point at a record from an
+    // unexpected collection. backfillSurvey must not insert a non-survey record
+    // as a survey (this is what duplicated every survey in production).
+    vi.mocked(insertOccurrence).mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord).mockResolvedValueOnce({
+      uri: 'at://did:plc:abc123/bio.cuanto.survey/3svy',
+      cid: TEST_CID,
+      value: {
+        // Wrong $type for a survey URI.
+        $type: 'bio.lexicons.temp.v0-1.occurrence',
+        eventID: 'at://did:plc:abc123/bio.cuanto.survey/3svy',
+      },
+    });
+    const resp = await POST({
+      request: makeRequest(occurrenceEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertSurvey).not.toHaveBeenCalled();
+    // The survey backfill was skipped, so the occurrence's survey FK can't be
+    // satisfied: insertOccurrence must not be retried and the occurrence is not
+    // ingested (only the initial failing attempt happened).
+    expect(insertOccurrence).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not backfill an occurrence when the fetched record has an unexpected $type', async () => {
+    // Regression for #22: an identification's occurrence.uri can resolve to a
+    // record from an unexpected collection. backfill must not insert a
+    // non-occurrence record into the occurrences table.
+    vi.mocked(insertIdentification).mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord).mockResolvedValueOnce({
+      uri: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.occurrence/3occ',
+      cid: TEST_CID,
+      value: {
+        // Wrong $type for an occurrence URI.
+        $type: 'bio.cuanto.survey',
+        protocol: { uri: 'at://x', cid: TEST_CID },
+      },
+    });
+    const resp = await POST({
+      request: makeRequest(identificationEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertOccurrence).not.toHaveBeenCalled();
+  });
+
   test('backfills missing survey when insertOccurrence gets FK violation', async () => {
     vi.mocked(insertOccurrence).mockRejectedValueOnce(fkError);
     vi.mocked(fetchAtRecord).mockResolvedValueOnce(fetchedSurveyRecord);

@@ -67,6 +67,16 @@ async function backfillProtocol(protocolUri: string): Promise<boolean> {
     log.warn({ protocolUri }, 'protocol not found on PDS; skipping backfill');
     return false;
   }
+  // A URI referenced from another record (e.g. an eventID) can resolve to a
+  // record from an unexpected or migrated collection. Only insert it as a
+  // protocol if it actually is one, or we'd corrupt the protocols table (#22).
+  if ((rec.value as { $type?: string }).$type !== PROTOCOL_NSID) {
+    log.warn(
+      { protocolUri, type: (rec.value as { $type?: string }).$type },
+      'fetched record has unexpected $type; skipping protocol backfill',
+    );
+    return false;
+  }
   const { did, rkey } = parseAtUri(protocolUri);
   await ensureUser(did);
   await insertProtocol(
@@ -112,6 +122,16 @@ async function backfillSurvey(surveyUri: string): Promise<boolean> {
   const rec = await fetchAtRecord(surveyUri);
   if (!rec) {
     log.warn({ surveyUri }, 'survey not found on PDS; skipping backfill');
+    return false;
+  }
+  // An occurrence's eventID can point at a record from an unexpected or migrated
+  // collection. Only insert it as a survey if it actually is one; blindly
+  // inserting mismatched records is what duplicated every survey in prod (#22).
+  if ((rec.value as { $type?: string }).$type !== SURVEY_NSID) {
+    log.warn(
+      { surveyUri, type: (rec.value as { $type?: string }).$type },
+      'fetched record has unexpected $type; skipping survey backfill',
+    );
     return false;
   }
   const { did, rkey } = parseAtUri(surveyUri);
@@ -275,16 +295,30 @@ export const POST: RequestHandler = async ({ request }) => {
   } else if (evt.collection === OCCURRENCE_NSID) {
     const occurrence = evt.record as unknown as Occurrence;
     const surveyUri = occurrence.eventID;
+    let inserted = false;
     try {
       await insertOccurrence(evt.did, evt.rkey, occurrence, atUri);
+      inserted = true;
     } catch (e) {
       if (isFkViolation(e) && surveyUri) {
         const backfilled = await backfillSurvey(surveyUri);
-        if (backfilled)
+        if (backfilled) {
           await insertOccurrence(evt.did, evt.rkey, occurrence, atUri);
+          inserted = true;
+        }
       } else throw e;
     }
-    log.info({ atUri }, 'ingested occurrence');
+    if (inserted) {
+      log.info({ atUri }, 'ingested occurrence');
+    } else {
+      // backfillSurvey returned false: the eventID resolved to a missing record
+      // or one from an unexpected collection (#22), so the occurrence's survey
+      // FK can't be satisfied and it was not ingested.
+      log.warn(
+        { atUri, surveyUri },
+        'occurrence references unknown survey; skipping ingestion',
+      );
+    }
   } else if (evt.collection === IDENTIFICATION_NSID) {
     const identification = evt.record as unknown as Identification;
     try {
@@ -304,6 +338,19 @@ export const POST: RequestHandler = async ({ request }) => {
             log.warn(
               { atUri, occurrenceUri },
               'occurrence not found on PDS; skipping identification',
+            );
+          } else if (
+            (occRec.value as { $type?: string }).$type !== OCCURRENCE_NSID
+          ) {
+            // The referenced URI resolved to a record from an unexpected or
+            // migrated collection; do not insert it as an occurrence (#22).
+            log.warn(
+              {
+                atUri,
+                occurrenceUri,
+                type: (occRec.value as { $type?: string }).$type,
+              },
+              'fetched record has unexpected $type; skipping occurrence backfill',
             );
           } else {
             const occ = occRec.value as Occurrence;
