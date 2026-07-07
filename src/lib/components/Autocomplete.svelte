@@ -11,6 +11,7 @@ type Props = Omit<HTMLInputAttributes, 'value' | 'onselect'> & {
   item: Snippet<[T, boolean]>;
   portalTarget?: HTMLElement;
   loading?: boolean;
+  ref?: HTMLInputElement | null;
 };
 
 let {
@@ -20,13 +21,13 @@ let {
   item,
   portalTarget,
   loading = false,
+  ref = $bindable(null),
   class: className,
   ...inputProps
 }: Props = $props();
 
 let activeIndex = $state(-1);
 let showDropdown = $state(false);
-let inputRef = $state<HTMLInputElement | null>(null);
 let dropdownStyle = $state('');
 
 $effect(() => {
@@ -49,8 +50,8 @@ function portal(node: HTMLElement) {
 }
 
 function updateDropdownPosition() {
-  if (!inputRef) return;
-  const rect = inputRef.getBoundingClientRect();
+  if (!ref) return;
+  const rect = ref.getBoundingClientRect();
   const spaceBelow = window.innerHeight - rect.bottom;
   const placeAbove = spaceBelow < 160 && rect.top > spaceBelow;
   if (portalTarget) {
@@ -103,7 +104,7 @@ function handleBlur() {
 
 <div class="relative">
   <Input
-    bind:ref={inputRef}
+    bind:ref
     bind:value
     class="{loading ? 'pr-8' : ''} {className ?? ''}"
     {...(inputProps as any)}

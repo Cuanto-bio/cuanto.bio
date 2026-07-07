@@ -29,6 +29,31 @@ export function targetLabel(
   return 'Unknown target';
 }
 
+/**
+ * Splits `incoming` taxa into those to add (whose `taxonID` is not already in
+ * `existingTaxonIDs`) and a count skipped as duplicates. Used to seed protocol
+ * targets from an iNat place/taxon query without adding a taxon that is already
+ * a target (issue #9). Duplicates within `incoming` are collapsed too, and a
+ * taxon with no `taxonID` is skipped (it cannot be de-duplicated safely).
+ */
+export function partitionNewTaxa<T extends { taxonID?: string }>(
+  existingTaxonIDs: Iterable<string>,
+  incoming: T[],
+): { toAdd: T[]; skipped: number } {
+  const seen = new Set(existingTaxonIDs);
+  const toAdd: T[] = [];
+  let skipped = 0;
+  for (const item of incoming) {
+    if (item.taxonID && !seen.has(item.taxonID)) {
+      seen.add(item.taxonID);
+      toAdd.push(item);
+    } else {
+      skipped++;
+    }
+  }
+  return { toAdd, skipped };
+}
+
 /** Extracts the taxon ID from a target's scope, or undefined for verbatim targets. */
 export function targetTaxonID(
   scope: (TaxonScope | VerbatimScope | unknown)[],

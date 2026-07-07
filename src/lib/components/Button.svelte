@@ -5,13 +5,19 @@ import { getContext } from 'svelte';
 import { SUBMITTING_CTX } from '$lib/components/Form.svelte';
 import { Button, type ButtonProps } from '$lib/components/ui/button';
 
-let { type = 'button', disabled, children, ...rest }: ButtonProps = $props();
+let {
+  type = 'button',
+  disabled,
+  children,
+  ref = $bindable(null),
+  ...rest
+}: ButtonProps = $props();
 
 const formCtx = getContext<{ value: boolean } | undefined>(SUBMITTING_CTX);
 const loading = $derived(type === 'submit' && (formCtx?.value ?? false));
 </script>
 
-<Button {type} disabled={disabled || loading} {...rest}>
+<Button {type} disabled={disabled || loading} bind:ref {...rest}>
   {#if loading}
     <LoaderCircle class="animate-spin" />
   {/if}

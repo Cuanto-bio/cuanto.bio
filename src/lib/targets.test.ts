@@ -3,6 +3,7 @@ import type { Target } from './offline/db';
 import {
   createTargetFilter,
   isTaxonScope,
+  partitionNewTaxa,
   targetLabel,
   targetTaxonID,
 } from './targets.svelte';
@@ -39,6 +40,43 @@ function verbatimTarget(atUri: string, verbatimTargetScope: string): Target {
     },
   };
 }
+
+describe('partitionNewTaxa', () => {
+  const t = (taxonID?: string) => ({ taxonID, scientificName: 'x' });
+
+  test('adds all taxa when none already exist', () => {
+    const { toAdd, skipped } = partitionNewTaxa(
+      [],
+      [t('https://inat/taxa/1'), t('https://inat/taxa/2')],
+    );
+    expect(toAdd).toHaveLength(2);
+    expect(skipped).toBe(0);
+  });
+
+  test('skips taxa whose taxonID is already a target', () => {
+    const { toAdd, skipped } = partitionNewTaxa(
+      ['https://inat/taxa/1'],
+      [t('https://inat/taxa/1'), t('https://inat/taxa/2')],
+    );
+    expect(toAdd.map((x) => x.taxonID)).toEqual(['https://inat/taxa/2']);
+    expect(skipped).toBe(1);
+  });
+
+  test('collapses duplicates within the incoming list', () => {
+    const { toAdd, skipped } = partitionNewTaxa(
+      [],
+      [t('https://inat/taxa/1'), t('https://inat/taxa/1')],
+    );
+    expect(toAdd).toHaveLength(1);
+    expect(skipped).toBe(1);
+  });
+
+  test('skips taxa with no taxonID (cannot be de-duplicated)', () => {
+    const { toAdd, skipped } = partitionNewTaxa([], [t(undefined)]);
+    expect(toAdd).toHaveLength(0);
+    expect(skipped).toBe(1);
+  });
+});
 
 describe('isTaxonScope', () => {
   test('returns true for a taxon scope entry', () => {

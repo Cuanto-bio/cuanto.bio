@@ -1,18 +1,22 @@
 <script lang="ts">
 import { l } from '@atproto/lex';
+import { onDestroy, tick } from 'svelte';
 import Button from '$lib/components/Button.svelte';
 import Form from '$lib/components/Form.svelte';
 import FormSection from '$lib/components/FormSection.svelte';
 import GeoMap from '$lib/components/GeoMap.svelte';
+import InatPlaceAutocomplete from '$lib/components/InatPlaceAutocomplete.svelte';
 import TaxonAutocomplete, {
   type TaxonResult,
 } from '$lib/components/TaxonAutocomplete.svelte';
 import * as Alert from '$lib/components/ui/alert';
+import { Badge } from '$lib/components/ui/badge';
 import * as Card from '$lib/components/ui/card';
 import { Input } from '$lib/components/ui/input';
 import { Label } from '$lib/components/ui/label';
 import { Textarea } from '$lib/components/ui/textarea';
 import { useOnline } from '$lib/composables/online.svelte';
+import { INAT_SPECIES_PAGE_CAP } from '$lib/inat';
 import {
   type TaxonScope,
   taxonScope as taxonScopeType,
@@ -22,7 +26,8 @@ import {
 import type { Main as AtAddress } from '$lib/lexicons/community/lexicon/location/address.defs';
 import type { Main as AtGeo } from '$lib/lexicons/community/lexicon/location/geo.defs';
 import type { Protocol } from '$lib/offline/db';
-import type { PlaceResult } from '$lib/places';
+import type { InatPlace, PlaceResult } from '$lib/places';
+import { partitionNewTaxa, targetTaxonID } from '$lib/targets.svelte';
 
 interface Props {
   protocol?: Protocol;
@@ -35,8 +40,12 @@ const onlineState = useOnline();
 
 // Not AtProtocolTarget: atUri is optional (new targets have none yet) and we don't
 // track protocol or $type here — those are only needed when writing to the PDS.
+// `key` is a client-only id (not persisted) used to key the target list and to
+// flash a target when it's added, regardless of which of the several ways of
+// adding a target (single search, bulk paste, iNat import) produced it.
 type Target = {
   atUri?: string;
+  key: string;
   scope: (l.$Typed<TaxonScope> | l.$Typed<VerbatimScope>)[];
 };
 
@@ -132,12 +141,35 @@ let targets = $state<Target[]>(
   savedDraft?.targets ??
     (protocol?.targets || []).map((t) => ({
       atUri: t.atUri,
+      // Persisted targets already have a stable, unique id in atUri; only
+      // targets with no atUri yet (added below) need a generated one.
+      key: t.atUri,
       scope: t.record.scope as (
         | l.$Typed<TaxonScope>
         | l.$Typed<VerbatimScope>
       )[],
     })),
 );
+
+// Keys of targets that were just added, so their row can flash. See Target.key.
+let flashKeys = $state<Set<string>>(new Set());
+const FLASH_DURATION_MS = 1000;
+const flashTimeouts = new Set<ReturnType<typeof setTimeout>>();
+
+function flashNewTargets(keys: string[]) {
+  flashKeys = new Set([...flashKeys, ...keys]);
+  const timeoutId = setTimeout(() => {
+    flashTimeouts.delete(timeoutId);
+    const next = new Set(flashKeys);
+    for (const key of keys) next.delete(key);
+    flashKeys = next;
+  }, FLASH_DURATION_MS);
+  flashTimeouts.add(timeoutId);
+}
+
+onDestroy(() => {
+  for (const timeoutId of flashTimeouts) clearTimeout(timeoutId);
+});
 
 // svelte-ignore state_referenced_locally -- intentional: initialize from server data
 let places = $state<PlaceEntry[]>(
@@ -182,42 +214,111 @@ let bulkMatching = $state(false);
 let bulkProgress = $state<{ current: number; total: number } | null>(null);
 let bulkUnmatched = $state<string[]>([]);
 
+// "Import targets from iNaturalist observations" (issue #9): pick an iNat place
+// (optionally a parent taxon), fetch the species observed there, and add each as
+// a target, skipping taxa already present.
+let inatImportOpen = $state(false);
+let inatSelectedPlace = $state<InatPlace | null>(null);
+let inatTaxon = $state<TaxonResult | null>(null);
+let inatPlaceInputRef = $state<HTMLInputElement | null>(null);
+let inatTaxonInputRef = $state<HTMLInputElement | null>(null);
+let inatImportButtonRef = $state<HTMLElement | null>(null);
+let inatImporting = $state(false);
+let inatImportResult = $state<{ added: number; skipped: number } | null>(null);
+let inatImportError = $state<string | null>(null);
+
+// The button is disabled until both a place and a taxon are chosen, so wait a
+// tick for that DOM update to land before focusing it (it may have just
+// become enabled).
+async function focusImportButton() {
+  await tick();
+  inatImportButtonRef?.focus();
+}
+
+// Both a place and a taxon are required before an import can run; referenced
+// by the button's disabled state and by importFromInat's own guard so the
+// requirement can't drift between the two.
+const canImportFromInat = $derived(!!inatSelectedPlace && !!inatTaxon);
+
+// Preview of how many species match the current place + taxon, fetched with
+// per_page=0 (?count=true) so it's cheap to request on every selection change.
+let inatCount = $state<number | null>(null);
+
+$effect(() => {
+  const place = inatSelectedPlace;
+  const taxon = inatTaxon;
+  inatCount = null;
+  if (!place || !taxon || !onlineState.value) return;
+
+  // Abort a superseded request outright (not just ignore its result) so a
+  // rapid re-selection doesn't leave a discarded call to the iNat API running.
+  const controller = new AbortController();
+  const params = new URLSearchParams({
+    place_id: String(place.id),
+    taxon_id: String(taxon.inatId),
+    count: 'true',
+  });
+  fetch(`/api/species-counts?${params}`, { signal: controller.signal })
+    .then((resp) => (resp.ok ? resp.json() : null))
+    .then((data: { total?: number } | null) => {
+      if (!controller.signal.aborted) inatCount = data?.total ?? null;
+    })
+    .catch(() => {
+      if (!controller.signal.aborted) inatCount = null;
+    });
+  return () => controller.abort();
+});
+
+const importButtonLabel = $derived(
+  inatImporting
+    ? 'Importing…'
+    : inatCount === null
+      ? 'Import research-grade species'
+      : inatCount > INAT_SPECIES_PAGE_CAP
+        ? `Import first ${INAT_SPECIES_PAGE_CAP} of ${inatCount} species`
+        : `Import ${inatCount} research-grade species`,
+);
+
 function targetsJson(): string {
   return JSON.stringify(
     targets.map((t) => ({ scope: t.scope, atUri: t.atUri })),
   );
 }
 
+function taxonTarget(result: TaxonResult): Target {
+  return {
+    key: crypto.randomUUID(),
+    scope: [
+      {
+        $type: 'bio.cuanto.protocolTarget#taxonScope' as const,
+        scientificName: result.scientificName,
+        taxonRank: result.taxonRank,
+        ...(result.taxonID ? { taxonID: result.taxonID as l.UriString } : {}),
+        ...(result.kingdom ? { kingdom: result.kingdom } : {}),
+        ...(result.commonName ? { vernacularName: result.commonName } : {}),
+      },
+    ],
+  };
+}
+
 function addTaxon(result: TaxonResult) {
-  targets = [
-    ...targets,
-    {
-      scope: [
-        {
-          $type: 'bio.cuanto.protocolTarget#taxonScope' as const,
-          scientificName: result.scientificName,
-          taxonRank: result.taxonRank,
-          ...(result.taxonID ? { taxonID: result.taxonID as l.UriString } : {}),
-          ...(result.kingdom ? { kingdom: result.kingdom } : {}),
-          ...(result.commonName ? { vernacularName: result.commonName } : {}),
-        },
-      ],
-    },
-  ];
+  const target = taxonTarget(result);
+  targets = [...targets, target];
+  flashNewTargets([target.key]);
 }
 
 function addVerbatim() {
-  targets = [
-    ...targets,
-    {
-      scope: [
-        {
-          $type: 'bio.cuanto.protocolTarget#verbatimScope' as const,
-          verbatimTargetScope: '',
-        },
-      ],
-    },
-  ];
+  const target: Target = {
+    key: crypto.randomUUID(),
+    scope: [
+      {
+        $type: 'bio.cuanto.protocolTarget#verbatimScope' as const,
+        verbatimTargetScope: '',
+      },
+    ],
+  };
+  targets = [...targets, target];
+  flashNewTargets([target.key]);
 }
 
 function removeTarget(i: number) {
@@ -348,6 +449,43 @@ async function matchBulkNames() {
   bulkPasteText = '';
 }
 
+async function importFromInat() {
+  if (!canImportFromInat) return;
+  // canImportFromInat just confirmed both are set.
+  const place = inatSelectedPlace as InatPlace;
+  const taxon = inatTaxon as TaxonResult;
+  inatImporting = true;
+  inatImportResult = null;
+  inatImportError = null;
+  try {
+    const params = new URLSearchParams({
+      place_id: String(place.id),
+      taxon_id: String(taxon.inatId),
+    });
+    const resp = await fetch(`/api/species-counts?${params}`);
+    if (!resp.ok) {
+      inatImportError = 'Could not fetch species from iNaturalist.';
+      return;
+    }
+    const data = (await resp.json()) as { results: TaxonResult[] };
+    const existingIds = targets
+      .map((t) => targetTaxonID(t.scope))
+      .filter((id): id is string => !!id);
+    const { toAdd, skipped } = partitionNewTaxa(
+      existingIds,
+      data.results ?? [],
+    );
+    const newTargets = toAdd.map(taxonTarget);
+    targets = [...targets, ...newTargets];
+    flashNewTargets(newTargets.map((t) => t.key));
+    inatImportResult = { added: toAdd.length, skipped };
+  } catch {
+    inatImportError = 'Could not fetch species from iNaturalist.';
+  } finally {
+    inatImporting = false;
+  }
+}
+
 function addAddress(i: number) {
   places[i].addresses = [
     ...places[i].addresses,
@@ -470,9 +608,15 @@ function removeAddress(i: number, j: number) {
 
         {#if targets.length > 0}
           <ul class="flex flex-col gap-4">
-            {#each targets as target, i (i)}
+            {#each targets as target, i (target.key)}
               {@const scope = target.scope[0]}
-              <li class="flex items-start justify-between rounded-lg border p-4 text-sm bg-background">
+              <li
+                class="flex items-start justify-between rounded-lg border p-4 text-sm bg-background {flashKeys.has(
+                  target.key,
+                )
+                  ? 'animate-target-flash'
+                  : ''}"
+              >
                 {#if scope && verbatimScopeType.isTypeOf(scope)}
                   <Input
                     placeholder="Describe what to look for…"
@@ -578,6 +722,90 @@ function removeAddress(i: number, j: number) {
                       {/each}
                     </ul>
                   </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
+          <div class="border-t pt-2">
+            <button
+              type="button"
+              onclick={() => { inatImportOpen = !inatImportOpen; inatImportResult = null; inatImportError = null; }}
+              class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+            >
+              {inatImportOpen ? '▾' : '▸'} Import taxa observed at an iNaturalist place
+            </button>
+            {#if inatImportOpen}
+              <div class="flex flex-col gap-2 mt-2">
+                <Label>Place</Label>
+                {#if inatSelectedPlace}
+                  <Badge variant="secondary" class="h-auto w-fit gap-1.5 py-1 pl-2.5 pr-1.5 text-sm">
+                    {inatSelectedPlace.displayName}
+                    <button
+                      type="button"
+                      onclick={() => { inatSelectedPlace = null; }}
+                      class="text-muted-foreground hover:text-foreground"
+                      aria-label="Clear place"
+                    >
+                      ✕
+                    </button>
+                  </Badge>
+                {:else}
+                  <InatPlaceAutocomplete
+                    bind:ref={inatPlaceInputRef}
+                    placeholder="Search iNaturalist places (e.g. California)"
+                    onSelectPlace={(place) => {
+                      inatSelectedPlace = place;
+                      if (!inatTaxon) inatTaxonInputRef?.focus();
+                      else focusImportButton();
+                    }}
+                  />
+                {/if}
+
+                <Label>Taxon filter</Label>
+                {#if inatTaxon}
+                  <Badge variant="secondary" class="h-auto w-fit gap-1.5 py-1 pl-2.5 pr-1.5 text-sm">
+                    {inatTaxon.scientificName}
+                    <button
+                      type="button"
+                      onclick={() => { inatTaxon = null; }}
+                      class="text-muted-foreground hover:text-foreground"
+                      aria-label="Clear taxon"
+                    >
+                      ✕
+                    </button>
+                  </Badge>
+                {:else}
+                  <TaxonAutocomplete
+                    bind:ref={inatTaxonInputRef}
+                    placeholder="Search iNaturalist taxa (e.g. Aves)"
+                    onSelectTaxon={(r) => {
+                      inatTaxon = r;
+                      if (!inatSelectedPlace) inatPlaceInputRef?.focus();
+                      else focusImportButton();
+                    }}
+                  />
+                {/if}
+
+                <Button
+                  bind:ref={inatImportButtonRef}
+                  type="button"
+                  variant="outline"
+                  class="w-fit text-xs"
+                  disabled={inatImporting || !canImportFromInat}
+                  onclick={importFromInat}
+                >
+                  {importButtonLabel}
+                </Button>
+                {#if inatImportResult}
+                  <p class="text-xs text-muted-foreground">
+                    Added {inatImportResult.added}
+                    {inatImportResult.added === 1 ? 'target' : 'targets'}{inatImportResult.skipped > 0
+                      ? `, skipped ${inatImportResult.skipped} already present`
+                      : ''}.
+                  </p>
+                {/if}
+                {#if inatImportError}
+                  <p class="text-xs text-destructive">{inatImportError}</p>
                 {/if}
               </div>
             {/if}

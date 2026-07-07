@@ -1,37 +1,37 @@
 <script lang="ts">
 import Autocomplete from '$lib/components/Autocomplete.svelte';
 import { useDebouncedSearch } from '$lib/composables/debouncedSearch.svelte';
-
-export type ProtocolResult = {
-  atUri: string;
-  handle: string;
-  title: string;
-};
+import { recheckConnectivity, useOnline } from '$lib/composables/online.svelte';
+import type { InatPlace } from '$lib/places';
 
 interface Props {
   placeholder?: string;
-  onSelectProtocol: (result: ProtocolResult) => void;
+  onSelectPlace: (result: InatPlace) => void;
   portalTarget?: HTMLElement;
+  ref?: HTMLInputElement | null;
 }
 
 let {
-  placeholder = 'Search protocols…',
-  onSelectProtocol,
+  placeholder,
+  onSelectPlace,
   portalTarget,
+  ref = $bindable(null),
 }: Props = $props();
 
-const search = useDebouncedSearch<ProtocolResult>({
-  minLength: 1,
-  clearResultsOnError: true,
+const online = useOnline();
+
+const search = useDebouncedSearch<InatPlace>({
+  online,
+  onError: recheckConnectivity,
   fetchResults: async (query) => {
-    const resp = await fetch(`/api/protocols?q=${encodeURIComponent(query)}`);
+    const resp = await fetch(`/api/inat-places?q=${encodeURIComponent(query)}`);
     const data = await resp.json();
     return data.results ?? [];
   },
 });
 
-function handleSelect(result: ProtocolResult) {
-  onSelectProtocol(result);
+function handleSelect(result: InatPlace) {
+  onSelectPlace(result);
   search.reset();
 }
 </script>
@@ -40,15 +40,13 @@ function handleSelect(result: ProtocolResult) {
   {placeholder}
   autocomplete="off"
   bind:value={search.query}
+  bind:ref
   items={search.results}
   onselect={handleSelect}
   {portalTarget}
   loading={search.searching}
 >
   {#snippet item(result)}
-    <span class="line-clamp-1 text-start">
-      {result.title}
-      <span class="text-muted-foreground text-xs">@{result.handle}</span>
-    </span>
+    <div class="line-clamp-1 text-start">{result.displayName}</div>
   {/snippet}
 </Autocomplete>
