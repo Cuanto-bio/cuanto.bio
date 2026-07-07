@@ -41,7 +41,7 @@ interface Props {
     string,
     { date: string; handle: string; rkey: string }
   >;
-  onAfterFollowChange?: () => void;
+  onAfterFollowChange?: (isFollowing: boolean, protocol: Protocol) => void;
 }
 
 let {
@@ -67,6 +67,19 @@ function formatDate(iso: string) {
 
 function formatSurveyDate(iso: string) {
   return new Date(iso).toLocaleDateString();
+}
+
+// Folds this protocol's per-target last-survey dates (already loaded for the
+// "Last Survey" column) into a single protocol-level lastSurveyAt, so a
+// caller that snapshots `protocol` for offline caching doesn't have to make a
+// second server round trip just to get it.
+function withLastSurveyAt(
+  p: Protocol,
+  lastSurveyMap?: Record<string, { date: string }>,
+): Protocol {
+  const dates = Object.values(lastSurveyMap ?? {}).map((v) => v.date);
+  if (dates.length === 0) return p;
+  return { ...p, lastSurveyAt: dates.reduce((max, d) => (d > max ? d : max)) };
 }
 
 // Edit/Export collapse into a kebab menu on narrow screens. Stats is kept out
@@ -180,13 +193,19 @@ const collapsibleActions = $derived.by(() => {
           action="?/unfollow"
           onEnhance={() => {
             const ogFollowerCount = followerCount;
+            // Captured now, synchronously, before any await: `protocol` is a
+            // reactive prop that can point at a different protocol by the
+            // time this form's POST resolves, if the user has since
+            // navigated to another protocol detail page reusing this same
+            // route component.
+            const unfollowedProtocol = protocol;
             isFollowing = false;
             followerCount = Math.max(0, followerCount - 1);
             return ({ result }) => {
               if (result.type === 'success') {
                 isFollowing = false;
                 followerCount = Math.max(0, ogFollowerCount - 1);
-                onAfterFollowChange();
+                onAfterFollowChange(false, unfollowedProtocol);
               } else{
                 isFollowing = true;
                 followerCount = ogFollowerCount;
@@ -205,13 +224,21 @@ const collapsibleActions = $derived.by(() => {
           action="?/follow"
           onEnhance={() => {
             const ogFollowerCount = followerCount;
+            // Captured now, synchronously, before any await: `protocol` is a
+            // reactive prop that can point at a different protocol by the
+            // time this form's POST resolves, if the user has since
+            // navigated to another protocol detail page reusing this same
+            // route component. lastSurveyByTargetUri is folded in here too,
+            // for the same reason, so the cache write below has the best
+            // available sort key instead of always looking "never surveyed".
+            const followedProtocol = withLastSurveyAt(protocol, lastSurveyByTargetUri);
             isFollowing = true;
             followerCount += 1;
             return ({ result }) => {
               if (result.type === 'success') {
                 isFollowing = true;
                 followerCount = ogFollowerCount + 1;
-                onAfterFollowChange();
+                onAfterFollowChange(true, followedProtocol);
                 // Nudge the user to install the PWA after they commit to a
                 // protocol (suppressed if not applicable or already dismissed).
                 install.maybeAutoPrompt();

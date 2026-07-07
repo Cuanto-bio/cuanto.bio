@@ -1,5 +1,12 @@
 import type { Sql } from 'postgres';
-import { expect, seedProtocol, teardownDid, test } from './fixtures.js';
+import {
+  expect,
+  seedOccurrence,
+  seedProtocol,
+  seedSurvey,
+  teardownDid,
+  test,
+} from './fixtures.js';
 
 const DID = 'did:test:follow-spec';
 const HANDLE = 'user-follow-spec';
@@ -179,7 +186,7 @@ test('/app/protocols/following requires auth', async ({ page }) => {
   await expect(page).toHaveURL(/\/auth\/signin/);
 });
 
-test('/app/protocols/following renders protocols in follow date DESC order', async ({
+test('/app/protocols/following sorts by follow date DESC when nothing has been surveyed', async ({
   page,
   sql,
   context,
@@ -218,6 +225,181 @@ test('/app/protocols/following renders protocols in follow date DESC order', asy
     const items = page.locator('main ul li');
     await expect(items.nth(0)).toContainText(handleB);
     await expect(items.nth(1)).toContainText(handleA);
+  } finally {
+    await teardownDid(sql, DID);
+    await teardownDid(sql, DID_A);
+    await teardownDid(sql, DID_B);
+  }
+});
+
+test('/app/protocols/following sorts by last survey date, overriding follow order', async ({
+  page,
+  sql,
+  context,
+}) => {
+  const DID_A = 'did:test:follow-lastsurvey-a';
+  const DID_B = 'did:test:follow-lastsurvey-b';
+
+  await context.addCookies([
+    {
+      name: 'did',
+      value: DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  await sql`INSERT INTO users (did, handle) VALUES (${DID}, ${HANDLE}) ON CONFLICT (did) DO NOTHING`;
+
+  const { protocolRkey: rKeyA, taxonTargetUri: targetA } = await seedProtocol(
+    sql,
+    DID_A,
+    'Protocol A',
+  );
+  const { protocolRkey: rKeyB } = await seedProtocol(sql, DID_B, 'Protocol B');
+  const uriA = `at://${DID_A}/bio.cuanto.surveyProtocol/${rKeyA}`;
+  const uriB = `at://${DID_B}/bio.cuanto.surveyProtocol/${rKeyB}`;
+
+  // Follow A first (older), then B (newer) — follow-date order would be B, A.
+  await seedFollow(sql, DID, uriA, new Date('2026-01-01T00:00:00.000Z'));
+  await seedFollow(sql, DID, uriB, new Date('2026-06-01T00:00:00.000Z'));
+
+  // A survey on protocol A after both follows makes A the most recently
+  // surveyed, so it should sort first by default despite being followed
+  // first.
+  const { surveyAtUri } = await seedSurvey(
+    sql,
+    DID,
+    uriA,
+    'Test Location',
+    '2026-07-01T00:00:00.000Z',
+  );
+  await seedOccurrence(sql, DID, surveyAtUri, uriA, targetA);
+
+  try {
+    await page.goto('/app/protocols/following');
+    await page.waitForLoadState('networkidle');
+
+    const items = page.locator('main ul li');
+    await expect(items.nth(0)).toContainText('Protocol A');
+    await expect(items.nth(1)).toContainText('Protocol B');
+  } finally {
+    await teardownDid(sql, DID);
+    await teardownDid(sql, DID_A);
+    await teardownDid(sql, DID_B);
+  }
+});
+
+test('/app/protocols/following can switch sort to follow date via the sort control', async ({
+  page,
+  sql,
+  context,
+}) => {
+  const DID_A = 'did:test:follow-sortctrl-a';
+  const DID_B = 'did:test:follow-sortctrl-b';
+
+  await context.addCookies([
+    {
+      name: 'did',
+      value: DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  await sql`INSERT INTO users (did, handle) VALUES (${DID}, ${HANDLE}) ON CONFLICT (did) DO NOTHING`;
+
+  const { protocolRkey: rKeyA, taxonTargetUri: targetA } = await seedProtocol(
+    sql,
+    DID_A,
+    'Protocol A',
+  );
+  const { protocolRkey: rKeyB } = await seedProtocol(sql, DID_B, 'Protocol B');
+  const uriA = `at://${DID_A}/bio.cuanto.surveyProtocol/${rKeyA}`;
+  const uriB = `at://${DID_B}/bio.cuanto.surveyProtocol/${rKeyB}`;
+
+  // Follow A first (older), then B (newer).
+  await seedFollow(sql, DID, uriA, new Date('2026-01-01T00:00:00.000Z'));
+  await seedFollow(sql, DID, uriB, new Date('2026-06-01T00:00:00.000Z'));
+
+  // A is most recently surveyed, so default (last survey) order is A, B.
+  const { surveyAtUri } = await seedSurvey(
+    sql,
+    DID,
+    uriA,
+    'Test Location',
+    '2026-07-01T00:00:00.000Z',
+  );
+  await seedOccurrence(sql, DID, surveyAtUri, uriA, targetA);
+
+  try {
+    await page.goto('/app/protocols/following');
+    await page.waitForLoadState('networkidle');
+
+    const items = page.locator('main ul li');
+    await expect(items.nth(0)).toContainText('Protocol A');
+
+    await page.getByRole('button', { name: 'Sort' }).click();
+    await page.getByRole('menuitemradio', { name: 'Follow date' }).click();
+
+    await expect(items.nth(0)).toContainText('Protocol B');
+    await expect(items.nth(1)).toContainText('Protocol A');
+  } finally {
+    await teardownDid(sql, DID);
+    await teardownDid(sql, DID_A);
+    await teardownDid(sql, DID_B);
+  }
+});
+
+test('/app/protocols/following search filters by title', async ({
+  page,
+  sql,
+  context,
+}) => {
+  const DID_A = 'did:test:follow-search-a';
+  const DID_B = 'did:test:follow-search-b';
+
+  await context.addCookies([
+    {
+      name: 'did',
+      value: DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  await sql`INSERT INTO users (did, handle) VALUES (${DID}, ${HANDLE}) ON CONFLICT (did) DO NOTHING`;
+
+  const { protocolRkey: rKeyA } = await seedProtocol(
+    sql,
+    DID_A,
+    'Coastal Bird Survey',
+  );
+  const { protocolRkey: rKeyB } = await seedProtocol(
+    sql,
+    DID_B,
+    'Vernal Pool Amphibians',
+  );
+  const uriA = `at://${DID_A}/bio.cuanto.surveyProtocol/${rKeyA}`;
+  const uriB = `at://${DID_B}/bio.cuanto.surveyProtocol/${rKeyB}`;
+
+  await seedFollow(sql, DID, uriA);
+  await seedFollow(sql, DID, uriB);
+
+  try {
+    await page.goto('/app/protocols/following');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByText('Coastal Bird Survey')).toBeVisible();
+    await expect(page.getByText('Vernal Pool Amphibians')).toBeVisible();
+
+    await page.getByPlaceholder('Search followed protocols…').fill('bird');
+
+    await expect(page.getByText('Coastal Bird Survey')).toBeVisible();
+    await expect(page.getByText('Vernal Pool Amphibians')).not.toBeVisible();
   } finally {
     await teardownDid(sql, DID);
     await teardownDid(sql, DID_A);

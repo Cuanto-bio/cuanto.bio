@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, test } from 'vitest';
 import {
+  addCachedFollowedProtocol,
   cacheProtocol,
   cacheSurvey,
   clearIdb,
@@ -16,6 +17,7 @@ import {
   getIdbUser,
   getPendingSurveyById,
   getPendingSurveys,
+  removeCachedFollowedProtocol,
   saveIdbUser,
   savePendingSurvey,
   setCachedFollowedProtocols,
@@ -196,6 +198,49 @@ describe('followed-protocols store', () => {
     await setCachedFollowedProtocols([protocol1]);
     const result = await getCachedFollowedProtocolByRkey('no-such-rkey');
     expect(result).toBeUndefined();
+  });
+
+  test('addCachedFollowedProtocol adds a single protocol to the store', async () => {
+    await setCachedFollowedProtocols([]);
+    await addCachedFollowedProtocol(protocol1);
+    const result = await getCachedFollowedProtocols();
+    expect(result.map((p) => p.atUri)).toEqual([protocol1.atUri]);
+  });
+
+  test('removeCachedFollowedProtocol removes a single protocol from the store', async () => {
+    await setCachedFollowedProtocols([protocol1, protocol2]);
+    await removeCachedFollowedProtocol(protocol1.atUri);
+    const result = await getCachedFollowedProtocols();
+    expect(result.map((p) => p.atUri)).toEqual([protocol2.atUri]);
+  });
+
+  test('setCachedFollowedProtocols applies normally when no fetchStartedAt is given', async () => {
+    await setCachedFollowedProtocols([]);
+    await setCachedFollowedProtocols([protocol1]);
+    const result = await getCachedFollowedProtocols();
+    expect(result.map((p) => p.atUri)).toEqual([protocol1.atUri]);
+  });
+
+  test('setCachedFollowedProtocols is skipped when a direct mutation landed after fetchStartedAt', async () => {
+    await setCachedFollowedProtocols([]);
+    // -1 makes this deterministic instead of racing millisecond resolution
+    // against the mutation below.
+    const fetchStartedAt = Date.now() - 1;
+    // Simulates a slower response: the sync's request started before this
+    // mutation, so its (stale) results must not clobber it.
+    await addCachedFollowedProtocol(protocol2);
+    await setCachedFollowedProtocols([protocol1], fetchStartedAt);
+    const result = await getCachedFollowedProtocols();
+    expect(result.map((p) => p.atUri)).toEqual([protocol2.atUri]);
+  });
+
+  test('setCachedFollowedProtocols applies when fetchStartedAt is after the last mutation', async () => {
+    await setCachedFollowedProtocols([]);
+    await addCachedFollowedProtocol(protocol2);
+    const fetchStartedAt = Date.now() + 1;
+    await setCachedFollowedProtocols([protocol1], fetchStartedAt);
+    const result = await getCachedFollowedProtocols();
+    expect(result.map((p) => p.atUri)).toEqual([protocol1.atUri]);
   });
 });
 

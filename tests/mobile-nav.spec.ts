@@ -161,3 +161,98 @@ test('highlights Explore (not Following) when signed in and viewing /protocols',
     await teardownDid(sql, DID);
   }
 });
+
+test('newly followed protocol appears in Following list immediately, without a reload', async ({
+  page,
+  sql,
+  context,
+}) => {
+  const EXISTING_DID = 'did:test:mobile-nav-immediate-follow-existing';
+  const NEW_DID = 'did:test:mobile-nav-immediate-follow-new';
+
+  await teardownDid(sql, DID);
+  await teardownDid(sql, EXISTING_DID);
+  await teardownDid(sql, NEW_DID);
+  await context.addCookies([
+    {
+      name: 'did',
+      value: DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  await sql`INSERT INTO users (did, handle) VALUES (${DID}, 'user-mobile-nav-spec') ON CONFLICT (did) DO NOTHING`;
+
+  // Suppress the auto-shown "install this app" dialog that a successful
+  // follow triggers on touch devices — it covers the bottom nav and blocks
+  // the later click on "Following", which is unrelated to what this test
+  // covers.
+  await page.addInitScript(() => {
+    localStorage.setItem('cuanto:install-prompt-dismissed', 'true');
+  });
+
+  // A protocol already followed before this test's actions, so the client
+  // IDB cache is non-empty by the time we follow a second one — that's what
+  // puts the Following page's loader on its cache-first (stale-while-
+  // revalidate) path instead of the empty-cache direct-fetch path.
+  const { protocolRkey: existingRkey } = await seedProtocol(
+    sql,
+    EXISTING_DID,
+    'Already Followed Protocol',
+  );
+  const existingUri = `at://${EXISTING_DID}/bio.cuanto.surveyProtocol/${existingRkey}`;
+  await seedFollow(sql, DID, existingUri);
+
+  const { protocolRkey: newRkey } = await seedProtocol(
+    sql,
+    NEW_DID,
+    'Newly Followed Protocol',
+  );
+  const newHandle = `user-${NEW_DID.split(':').pop()}`;
+
+  // Delay the background sync fired after following to force the race that
+  // caused the bug: the Following list must pick up the new follow from a
+  // synchronous local cache update, not depend on this round trip finishing
+  // before the user taps "Following". Registered before any navigation, per
+  // Playwright's recommended route-then-navigate ordering.
+  await page.route('**/api/sync', async (route) => {
+    await new Promise((r) => setTimeout(r, 3000));
+    await route.continue();
+  });
+
+  try {
+    // Populate the client-side IDB cache with the already-followed protocol.
+    await page.goto('/app/protocols/following');
+    await expect(page.getByText('Already Followed Protocol')).toBeVisible();
+
+    await page.goto(`/protocols/${newHandle}/${newRkey}`);
+    // The "Unfollow" button flips on optimistically, before the POST
+    // resolves, so wait for the actual ?/follow response (not just that
+    // button) to make sure the post-follow callback — which writes the local
+    // cache — has actually run before we navigate away. The app layout also
+    // fires its own unrelated /api/sync calls on every navigation, so we
+    // can't use that request as a signal here.
+    const followResponse = page.waitForResponse(
+      (res) =>
+        res.url().includes('?/follow') && res.request().method() === 'POST',
+    );
+    await page.getByRole('button', { name: 'Follow this protocol' }).click();
+    await followResponse;
+    await expect(page.getByRole('button', { name: 'Unfollow' })).toBeVisible();
+
+    await page.getByRole('link', { name: 'Following' }).click();
+    await page.waitForURL('**/app/protocols/following');
+    await expect(
+      page.getByRole('heading', { name: 'Followed Protocols' }),
+    ).toBeVisible();
+
+    await expect(page.getByText('Newly Followed Protocol')).toBeVisible();
+    await expect(page.getByText('Already Followed Protocol')).toBeVisible();
+  } finally {
+    await teardownDid(sql, DID);
+    await teardownDid(sql, EXISTING_DID);
+    await teardownDid(sql, NEW_DID);
+  }
+});

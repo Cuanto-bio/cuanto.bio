@@ -96,7 +96,7 @@ function sortTargets(targets: Target[], sort: TargetSort): Target[] {
 /**
  * Normalize text for search comparison
  * */
-function normalizeForSearch(text: string) {
+export function normalizeForSearch(text: string) {
   return (
     text
       // case insensitive

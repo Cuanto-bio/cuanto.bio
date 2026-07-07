@@ -28,6 +28,7 @@ export interface Protocol {
   record: AtSurveyProtocol;
   targets: Target[];
   followedAt?: string;
+  lastSurveyAt?: string;
 }
 
 export interface CachedProtocol extends Protocol {
@@ -329,9 +330,20 @@ export async function getCachedFollowedProtocolByRkey(
   return db.getFromIndex('followed-protocols', 'by-rkey', rkey);
 }
 
+// Tracks the most recent addCachedFollowedProtocol/removeCachedFollowedProtocol
+// call, so a slower background sync — started before that mutation but whose
+// response resolves after it — can tell its snapshot predates the mutation
+// and skip overwriting the store with stale data. Pass the caller's fetch
+// start time as `fetchStartedAt` to opt into this check.
+let lastFollowMutationAt = 0;
+
 export async function setCachedFollowedProtocols(
   protocols: Protocol[],
+  fetchStartedAt?: number,
 ): Promise<void> {
+  if (fetchStartedAt !== undefined && lastFollowMutationAt >= fetchStartedAt) {
+    return;
+  }
   const db = await getDB();
   const tx = db.transaction('followed-protocols', 'readwrite');
   await tx.store.clear();
@@ -340,6 +352,27 @@ export async function setCachedFollowedProtocols(
     protocols.map((p) => tx.store.put({ ...p, cachedAt: now })),
   );
   await tx.done;
+}
+
+// Writes a single protocol into the followed-protocols cache without waiting
+// on a network round trip, so a follow action shows up immediately if the
+// user navigates to the Following list right away (issue: the list otherwise
+// stayed stale until reload because the follow-triggered background sync
+// could still be in flight).
+export async function addCachedFollowedProtocol(
+  protocol: Protocol,
+): Promise<void> {
+  const db = await getDB();
+  await db.put('followed-protocols', { ...protocol, cachedAt: Date.now() });
+  lastFollowMutationAt = Date.now();
+}
+
+export async function removeCachedFollowedProtocol(
+  atUri: string,
+): Promise<void> {
+  const db = await getDB();
+  await db.delete('followed-protocols', atUri);
+  lastFollowMutationAt = Date.now();
 }
 
 export async function cacheSurvey(survey: Survey): Promise<void> {

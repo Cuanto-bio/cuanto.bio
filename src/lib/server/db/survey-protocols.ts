@@ -61,6 +61,7 @@ export interface ProtocolRow {
   avatar_url: string | null;
   record: AtSurveyProtocol;
   followed_at?: string;
+  last_survey_at?: string;
 }
 
 interface TargetRow {
@@ -120,6 +121,7 @@ function toProtocol(row: ProtocolRow, targets: TargetRow[]): Protocol {
     record: row.record,
     targets: targets.map(toTarget),
     ...(row.followed_at ? { followedAt: row.followed_at } : {}),
+    ...(row.last_survey_at ? { lastSurveyAt: row.last_survey_at } : {}),
   };
 }
 
@@ -152,12 +154,27 @@ export async function getProtocolDetailByHandleAndRkey(
 export async function getFollowedProtocolsByDid(
   did: string,
 ): Promise<Protocol[]> {
+  // last_survey_at is the most recent survey (by any user) of any of the
+  // protocol's targets — same "last survey" concept shown per-target on the
+  // protocol detail page, aggregated to protocol level for sorting here.
   const rows = await sql<ProtocolRow[]>`
     SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle, u.avatar_url,
-           pf.created_at AS followed_at
+           pf.created_at AS followed_at,
+           ls.last_survey_at
     FROM protocol_follows pf
     JOIN survey_protocols sp ON sp.at_uri = pf.protocol_uri
     JOIN users u ON u.did = sp.did
+    LEFT JOIN (
+      SELECT
+        s.protocol_uri,
+        MAX(COALESCE(s.event_date, s.created_at)) AS last_survey_at
+      FROM surveys s
+      WHERE s.protocol_uri IN (
+        SELECT protocol_uri FROM protocol_follows WHERE did = ${did}
+      )
+      AND s.did = ${did}
+      GROUP BY s.protocol_uri
+    ) ls ON ls.protocol_uri = sp.at_uri
     WHERE pf.did = ${did}
     ORDER BY pf.created_at DESC
   `;

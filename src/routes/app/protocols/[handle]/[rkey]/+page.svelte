@@ -2,6 +2,10 @@
 import { afterNavigate, replaceState } from '$app/navigation';
 import { page } from '$app/state';
 import ProtocolDetail from '$lib/components/ProtocolDetail.svelte';
+import {
+  addCachedFollowedProtocol,
+  removeCachedFollowedProtocol,
+} from '$lib/offline/db';
 import { syncOfflineData } from '$lib/offline/sync';
 
 let { data } = $props();
@@ -44,5 +48,24 @@ afterNavigate(() => {
   isOwner={data.isOwner}
   isSignedIn={!!data.did}
   {lastSurveyByTargetUri}
-  onAfterFollowChange={() => syncOfflineData(fetch)}
+  onAfterFollowChange={async (isFollowing, protocol) => {
+    // Update the followed-protocols cache directly (and wait for it to land)
+    // before kicking off syncOfflineData's network round trip: that fetch can
+    // still be in flight if the user taps "Following" in the bottom nav right
+    // after following, leaving the list stale until the next full load.
+    // `protocol` is what ProtocolDetail captured at click time, not
+    // data.protocol here, since this callback only runs after the follow/
+    // unfollow POST resolves — by then the user could have navigated to a
+    // different protocol that reuses this same route component, making
+    // data.protocol point at the wrong one.
+    if (isFollowing) {
+      await addCachedFollowedProtocol({
+        ...protocol,
+        followedAt: new Date().toISOString(),
+      });
+    } else {
+      await removeCachedFollowedProtocol(protocol.atUri);
+    }
+    syncOfflineData(fetch);
+  }}
 />

@@ -10,6 +10,7 @@ const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
 export async function seedProtocol(
   sql: Sql,
   did: string,
+  title = 'Test Protocol',
 ): Promise<{
   protocolRkey: string;
   taxonTargetUri: string;
@@ -21,12 +22,12 @@ export async function seedProtocol(
     ON CONFLICT (did) DO NOTHING
   `;
 
-  const rkey = `testproto${Date.now()}`;
+  const rkey = `testproto${Date.now()}${Math.floor(Math.random() * 1000)}`;
   const atUri = `at://${did}/bio.cuanto.surveyProtocol/${rkey}`;
 
   const protocolRecord = {
     $type: 'bio.cuanto.surveyProtocol',
-    title: 'Test Protocol',
+    title,
     description: 'A protocol for integration tests',
     createdAt: new Date().toISOString(),
     requiredFields: [],
