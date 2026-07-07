@@ -204,7 +204,13 @@ beforeEach(() => {
   vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
     FAKE_SURVEY as never,
   );
-  vi.mocked(putRecord).mockResolvedValue({ uri: SURVEY_URI, cid: FAKE_CID });
+  // Echo back at://did/collection/rkey (as the real PDS_MOCK does). The survey
+  // update lands at bio.cuanto.survey/RKEY = SURVEY_URI, and identifications are
+  // now putRecord'd at their occurrence's rkey (#13).
+  vi.mocked(putRecord).mockImplementation(async (did, collection, rkey) => ({
+    uri: `at://${did}/${collection}/${rkey}`,
+    cid: FAKE_CID,
+  }));
   vi.mocked(insertSurvey).mockResolvedValue(undefined);
   vi.mocked(getOccurrencesForSurveys).mockResolvedValue([]);
   vi.mocked(deleteOccurrencesBySurveyUri).mockResolvedValue([]);
@@ -408,7 +414,8 @@ describe('PUT /api/surveys/[handle]/[rkey]', () => {
 
   test('creates identification when new occurrence has a matching taxon scope', async () => {
     const newOccUri = `at://${DID}/bio.lexicons.temp.v0-1.occurrence/newOcc`;
-    const newIdentUri = `at://${DID}/bio.lexicons.temp.v0-1.identification/ident1`;
+    // Identification reuses the occurrence's rkey (#13).
+    const newIdentUri = `at://${DID}/bio.lexicons.temp.v0-1.identification/newOcc`;
     vi.mocked(getProtocolTargetsByUri).mockResolvedValueOnce([
       {
         at_uri: TARGET_URI,
@@ -425,18 +432,21 @@ describe('PUT /api/surveys/[handle]/[rkey]', () => {
         },
       },
     ] as never);
-    vi.mocked(createRecord)
-      .mockResolvedValueOnce({ uri: newOccUri, cid: FAKE_CID })
-      .mockResolvedValueOnce({ uri: newIdentUri, cid: FAKE_CID });
+    vi.mocked(createRecord).mockResolvedValueOnce({
+      uri: newOccUri,
+      cid: FAKE_CID,
+    });
     const body = {
       ...basePutBody,
       occurrences: [{ surveyTargetUri: TARGET_URI, organismQuantity: '2' }],
     };
     const resp = await callPut(DID, body);
     expect(resp.status).toBe(200);
-    expect(createRecord).toHaveBeenCalledWith(
+    // Identification is now written via putRecord at the occurrence's rkey (#13).
+    expect(putRecord).toHaveBeenCalledWith(
       DID,
       'bio.lexicons.temp.v0-1.identification',
+      'newOcc',
       expect.objectContaining({ scientificName: 'Quercus agrifolia' }),
     );
     expect(putRecord).toHaveBeenCalledWith(
@@ -465,10 +475,10 @@ describe('PUT /api/surveys/[handle]/[rkey]', () => {
       FAKE_SURVEY as never,
     );
     const newOccUri = `at://${DID}/bio.lexicons.temp.v0-1.occurrence/incOcc1`;
-    const newIdentUri = `at://${DID}/bio.lexicons.temp.v0-1.identification/ident1`;
-    vi.mocked(createRecord)
-      .mockResolvedValueOnce({ uri: newOccUri, cid: FAKE_CID })
-      .mockResolvedValueOnce({ uri: newIdentUri, cid: FAKE_CID });
+    vi.mocked(createRecord).mockResolvedValueOnce({
+      uri: newOccUri,
+      cid: FAKE_CID,
+    });
     const body = {
       ...basePutBody,
       incidentals: [
@@ -492,9 +502,10 @@ describe('PUT /api/surveys/[handle]/[rkey]', () => {
         organismQuantity: '1',
       }),
     );
-    expect(createRecord).toHaveBeenCalledWith(
+    expect(putRecord).toHaveBeenCalledWith(
       DID,
       'bio.lexicons.temp.v0-1.identification',
+      'incOcc1',
       expect.objectContaining({ scientificName: 'Quercus agrifolia' }),
     );
     expect(insertOccurrence).toHaveBeenCalledTimes(2); // initial + updated with acceptedIdentificationID

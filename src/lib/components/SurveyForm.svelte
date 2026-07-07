@@ -71,6 +71,7 @@ import {
   targetLabel,
   targetTaxonID,
 } from '$lib/targets.svelte';
+import { generateTid } from '$lib/tid';
 
 interface Props {
   protocol: CachedProtocol;
@@ -284,6 +285,10 @@ const track = isEdit ? null : useGpsTrack(initialResumeState?.gpsTrack ?? []);
 
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
 let pendingSurveyId = $state<number | null>(initialPendingSurveyId ?? null);
+// Stable record key for this survey's PDS write. Preserved when resuming a draft
+// so a retried upload reuses the same rkey and stays idempotent (#13).
+// svelte-ignore state_referenced_locally -- intentional: initialize from props
+const surveyRkey = initialResumeState?.surveyRkey ?? generateTid();
 let navigatingAway = $state(false);
 let sessionExpired = $state(false);
 let saving = false;
@@ -509,6 +514,7 @@ function buildNewSurveyPayload(complete: boolean): PendingSurvey {
     );
   }
   return {
+    surveyRkey,
     protocolUri: protocol.atUri,
     protocolRkey: protocol.rkey,
     protocolTitle: protocol.record.title,

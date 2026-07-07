@@ -12,6 +12,7 @@ import {
 } from './upload';
 
 const baseSurvey: Omit<import('./db').PendingSurvey, 'id'> = {
+  surveyRkey: 'bbbbbbbbbbbbb',
   protocolUri: 'at://did:test:1/bio.cuanto.surveyProtocol/p1',
   protocolRkey: 'p1',
   protocolTitle: 'Test Protocol',

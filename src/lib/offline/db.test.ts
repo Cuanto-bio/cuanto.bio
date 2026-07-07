@@ -202,6 +202,7 @@ describe('followed-protocols store', () => {
 // ── pending-surveys store ─────────────────────────────────────────────────────
 
 const pendingSurvey1: Omit<import('./db').PendingSurvey, 'id'> = {
+  surveyRkey: 'aaaaaaaaaaaaa',
   protocolUri: 'at://did:test:1/bio.cuanto.surveyProtocol/p1',
   protocolRkey: 'p1',
   protocolTitle: 'whatever',

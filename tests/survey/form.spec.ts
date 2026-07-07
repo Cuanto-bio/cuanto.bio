@@ -486,6 +486,85 @@ test('does not leave an orphaned in-progress draft when auto-save fires during n
   expect(pending).toHaveLength(0);
 });
 
+// ── Idempotent retry after a lost response (#13) ──────────────────────────────
+
+test('retrying an upload after a lost response does not duplicate the survey', async ({
+  page,
+  protocolRkey,
+  sql,
+}) => {
+  // Let the first POST really reach the server and complete (so the survey +
+  // occurrence are actually written), then drop the response so the client
+  // sees it as a failure. This reproduces "server wrote the record, client
+  // never found out" rather than just simulating a network error.
+  let firstAttemptServed = false;
+  await page.route('**/api/surveys', async (route) => {
+    if (route.request().method() !== 'POST' || firstAttemptServed) {
+      return route.continue();
+    }
+    firstAttemptServed = true;
+    await route.fetch();
+    await route.abort('failed');
+  });
+
+  // Ensure the test db is clean
+  const [{ count: preTestCount }] = await sql<{ count: number }[]>`
+    SELECT count(*)::int AS count FROM surveys
+    WHERE did = 'did:test:survey-spec'
+      AND record->'location'->>'name' = 'Lost Response Park'
+  `;
+  expect(preTestCount).toBe(0);
+
+  await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+  await page.fill(
+    '[placeholder="e.g. Mission Dolores Park"]',
+    'Lost Response Park',
+  );
+  await page.locator('[aria-label="Increase count"]').first().click();
+  await confirmFinishSurvey(page);
+
+  // Upload "failed" from the client's perspective, so the survey stays pending
+  // — even though the server already wrote it, so it also shows up in the
+  // completed-surveys section, hence scoping this locator to the pending alert.
+  await page.waitForURL(/\/app\/surveys$/);
+  const pendingUploadAlert = page
+    .getByRole('alert')
+    .filter({ hasText: 'Pending upload' });
+  await expect(pendingUploadAlert).toBeVisible();
+  await expect(
+    pendingUploadAlert.getByText('Lost Response Park'),
+  ).toBeVisible();
+
+  // The server actually wrote the survey (and its occurrence) already.
+  const [{ count: preRetryCount }] = await sql<{ count: number }[]>`
+    SELECT count(*)::int AS count FROM surveys
+    WHERE did = 'did:test:survey-spec'
+      AND record->'location'->>'name' = 'Lost Response Park'
+  `;
+  expect(preRetryCount).toBe(1);
+
+  // Retry the upload; the client resubmits with the same client-generated
+  // surveyRkey, so the server's putRecord + ON CONFLICT should overwrite the
+  // existing rows instead of creating duplicates.
+  await page.getByRole('button', { name: 'Upload all' }).click();
+  await expect(pendingUploadAlert).not.toBeVisible();
+
+  const [{ count: afterRetryCount }] = await sql<{ count: number }[]>`
+    SELECT count(*)::int AS count FROM surveys
+    WHERE did = 'did:test:survey-spec'
+      AND record->'location'->>'name' = 'Lost Response Park'
+  `;
+  expect(afterRetryCount).toBe(1);
+
+  const [{ count: occCount }] = await sql<{ count: number }[]>`
+    SELECT count(*)::int AS count FROM occurrences o
+    JOIN surveys s ON s.at_uri = o.survey_uri
+    WHERE s.did = 'did:test:survey-spec'
+      AND s.record->'location'->>'name' = 'Lost Response Park'
+  `;
+  expect(occCount).toBe(1);
+});
+
 // ── Counted targets indicator ─────────────────────────────────────────────────
 
 test.describe('counted targets indicator', () => {

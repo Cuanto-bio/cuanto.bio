@@ -24,7 +24,7 @@ import type { TaxonScope } from '$lib/lexicons/bio/cuanto/protocolTarget.defs';
 import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
 import { insertIdentification } from '$lib/server/db/identifications';
 import { insertOccurrence } from '$lib/server/db/surveys';
-import { createRecord, putRecord } from '$lib/server/pds';
+import { putRecord } from '$lib/server/pds';
 import { attachIdentificationToOccurrence } from './survey-records';
 
 const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
@@ -53,8 +53,14 @@ function makeOccRecord() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(createRecord).mockResolvedValue({ uri: IDENT_URI, cid: FAKE_CID });
-  vi.mocked(putRecord).mockResolvedValue({ uri: OCC_URI, cid: FAKE_CID });
+  // Both the identification and the occurrence update go through putRecord now
+  // (idempotent writes, #13); route by collection so the identification call
+  // returns the ident URI and the occurrence update returns the occ URI.
+  vi.mocked(putRecord).mockImplementation(async (_did, collection) =>
+    collection.endsWith('identification')
+      ? { uri: IDENT_URI, cid: FAKE_CID }
+      : { uri: OCC_URI, cid: FAKE_CID },
+  );
   vi.mocked(insertIdentification).mockResolvedValue(undefined);
   vi.mocked(insertOccurrence).mockResolvedValue(undefined);
 });
@@ -71,9 +77,12 @@ describe('attachIdentificationToOccurrence', () => {
       TAXON_SCOPE,
     );
 
-    expect(createRecord).toHaveBeenCalledWith(
+    // Identification written at the occurrence's rkey (reused, different
+    // collection) via putRecord.
+    expect(putRecord).toHaveBeenCalledWith(
       DID,
       'bio.lexicons.temp.v0-1.identification',
+      OCC_RKEY,
       expect.objectContaining({ scientificName: TAXON_SCOPE.scientificName }),
     );
     expect(putRecord).toHaveBeenCalledWith(
@@ -95,7 +104,10 @@ describe('attachIdentificationToOccurrence', () => {
   });
 
   test('skips occurrence update when identification creation fails', async () => {
-    vi.mocked(createRecord).mockRejectedValueOnce(new Error('PDS unavailable'));
+    // First putRecord (the identification) fails; the occurrence update must
+    // not run.
+    vi.mocked(putRecord).mockReset();
+    vi.mocked(putRecord).mockRejectedValueOnce(new Error('PDS unavailable'));
     const occRecord = makeOccRecord();
     await attachIdentificationToOccurrence(
       DID,
@@ -106,7 +118,7 @@ describe('attachIdentificationToOccurrence', () => {
       TAXON_SCOPE,
     );
 
-    expect(putRecord).not.toHaveBeenCalled();
+    expect(putRecord).toHaveBeenCalledTimes(1);
     expect(insertOccurrence).not.toHaveBeenCalled();
   });
 });

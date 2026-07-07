@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@atproto/common-web':
+        specifier: ^0.4.20
+        version: 0.4.20
       '@atproto/identity':
         specifier: ^0.4.12
         version: 0.4.12

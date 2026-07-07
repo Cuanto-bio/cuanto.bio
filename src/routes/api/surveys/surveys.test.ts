@@ -82,6 +82,7 @@ const protocol = {
 };
 
 const baseSurveyBody = {
+  surveyRkey: 'aaaaaaaaaaaaa',
   protocolUri: protocol.at_uri,
   protocolRkey: 'proto1',
   locationName: 'Test Park',
@@ -118,10 +119,12 @@ beforeEach(() => {
   vi.mocked(getProtocolByUri).mockResolvedValue(
     protocol as unknown as Awaited<ReturnType<typeof getProtocolByUri>>,
   );
-  vi.mocked(createRecord).mockResolvedValue({
-    uri: `at://${DID}/bio.cuanto.survey/survey1`,
+  // All survey/occurrence/identification writes go through putRecord now (#13);
+  // mirror the real PDS_MOCK by echoing back at://did/collection/rkey.
+  vi.mocked(putRecord).mockImplementation(async (did, collection, rkey) => ({
+    uri: `at://${did}/${collection}/${rkey}`,
     cid: FAKE_CID,
-  });
+  }));
   // protocol_targets query returns no rows; users query returns the handle
   // biome-ignore lint/suspicious/noExplicitAny: sql mock needs any cast for mockResolvedValueOnce
   vi.mocked(sql as any)
@@ -130,8 +133,8 @@ beforeEach(() => {
 });
 
 describe('POST /api/surveys — PDS session expiry', () => {
-  test('returns 401 with pds_session_expired when createRecord throws PdsSessionExpiredError', async () => {
-    vi.mocked(createRecord).mockRejectedValueOnce(new PdsSessionExpiredError());
+  test('returns 401 with pds_session_expired when the survey write throws PdsSessionExpiredError', async () => {
+    vi.mocked(putRecord).mockRejectedValueOnce(new PdsSessionExpiredError());
     const resp = await callPost({
       request: makeRequest(baseSurveyBody),
       locals: { did: DID },
@@ -168,11 +171,6 @@ describe('POST /api/surveys — surveyorCount validation', () => {
   });
 
   test('saves surveyorCount to survey record when valid', async () => {
-    const surveyUri = `at://${DID}/bio.cuanto.survey/svy1`;
-    vi.mocked(createRecord).mockResolvedValueOnce({
-      uri: surveyUri,
-      cid: FAKE_CID,
-    });
     vi.mocked(insertSurvey).mockResolvedValue(undefined);
     const resp = await callPost({
       request: makeRequest({ ...baseSurveyBody, surveyorCount: 2 }),
@@ -238,16 +236,8 @@ describe('POST /api/surveys — incidentals', () => {
   });
 
   test('creates occurrence and identification for a valid incidental', async () => {
-    const surveyUri = `at://${DID}/bio.cuanto.survey/s1`;
-    const occUri = `at://${DID}/bio.lexicons.temp.v0-1.occurrence/occ1`;
-    const identUri = `at://${DID}/bio.lexicons.temp.v0-1.identification/ident1`;
-    vi.mocked(createRecord)
-      .mockResolvedValueOnce({ uri: surveyUri, cid: FAKE_CID }) // survey
-      .mockResolvedValueOnce({ uri: occUri, cid: FAKE_CID }) // occurrence
-      .mockResolvedValueOnce({ uri: identUri, cid: FAKE_CID }); // identification
     vi.mocked(insertOccurrence).mockResolvedValue(undefined);
     vi.mocked(insertIdentification).mockResolvedValue(undefined);
-    vi.mocked(putRecord).mockResolvedValue({ uri: occUri, cid: FAKE_CID });
 
     const body = {
       ...baseSurveyBody,
@@ -269,8 +259,15 @@ describe('POST /api/surveys — incidentals', () => {
     expect(resp.status).toBe(200);
     // identification created
     expect(insertIdentification).toHaveBeenCalledOnce();
-    // occurrence updated with acceptedIdentificationID
-    expect(putRecord).toHaveBeenCalledOnce();
+    // occurrence updated with acceptedIdentificationID via putRecord
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      'bio.lexicons.temp.v0-1.occurrence',
+      expect.any(String),
+      expect.objectContaining({
+        acceptedIdentificationID: expect.anything(),
+      }),
+    );
     // insertOccurrence called twice: once for create, once for update
     expect(insertOccurrence).toHaveBeenCalledTimes(2);
     // survey-derived metadata copied onto the incidental occurrence record;
@@ -296,6 +293,72 @@ describe('POST /api/surveys — incidentals', () => {
     expect(resp.status).toBe(200);
     expect(insertOccurrence).not.toHaveBeenCalled();
     expect(insertIdentification).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/surveys — idempotency (#13)', () => {
+  test('rejects a survey with a missing or invalid surveyRkey', async () => {
+    const { surveyRkey: _omit, ...noRkey } = baseSurveyBody;
+    const missing = await callPost({
+      request: makeRequest(noRkey),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(missing.status).toBe(422);
+
+    const invalid = await callPost({
+      request: makeRequest({ ...baseSurveyBody, surveyRkey: 'not-a-tid!' }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(invalid.status).toBe(422);
+  });
+
+  test('a retried POST reuses the same record keys (no duplicates)', async () => {
+    const body = {
+      ...baseSurveyBody,
+      occurrences: [
+        {
+          surveyTargetUri: `at://${DID}/bio.cuanto.protocolTarget/t1`,
+          organismQuantity: '3',
+        },
+        {
+          surveyTargetUri: `at://${DID}/bio.cuanto.protocolTarget/t2`,
+          organismQuantity: '1',
+        },
+      ],
+      incidentals: [
+        {
+          taxonID: 'https://www.inaturalist.org/taxa/12345',
+          scientificName: 'Lupinus chamissonis',
+          taxonRank: 'species',
+          organismQuantity: '2',
+        },
+      ],
+    };
+
+    const keysFor = async () => {
+      vi.mocked(putRecord).mockClear();
+      const resp = await callPost({
+        request: makeRequest(body),
+        locals: { did: DID },
+      } as unknown as Parameters<typeof POST>[0]);
+      expect(resp.status).toBe(200);
+      return vi
+        .mocked(putRecord)
+        .mock.calls.map(([, collection, rkey]) => `${collection}/${rkey}`)
+        .sort();
+    };
+
+    const first = await keysFor();
+    const second = await keysFor();
+    // Same survey + occurrence + incidental keys both times → putRecord
+    // overwrites instead of creating duplicates.
+    expect(second).toEqual(first);
+    expect(first.some((k) => k.startsWith('bio.cuanto.survey/'))).toBe(true);
+    // Three distinct occurrence records (2 targets + 1 incidental); the
+    // incidental's is written twice (create + acceptedIdentificationID update)
+    // at the same key, which is exactly the idempotent overwrite we want.
+    const occKeys = new Set(first.filter((k) => k.includes('.occurrence/')));
+    expect(occKeys.size).toBe(3);
   });
 });
 

@@ -5,13 +5,14 @@ import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
 import { insertIdentification } from '$lib/server/db/identifications';
 import { insertOccurrence } from '$lib/server/db/surveys';
 import logger from '$lib/server/logger';
-import { createRecord, putRecord } from '$lib/server/pds';
+import { putRecord } from '$lib/server/pds';
 
 const log = logger.child({ component: 'survey-records' });
 
 async function createIdentification(
   occUri: string,
   occCid: string,
+  occRkey: string,
   taxonScope: TaxonScope,
   did: string,
 ) {
@@ -30,13 +31,16 @@ async function createIdentification(
       ? { vernacularName: taxonScope.vernacularName }
       : {}),
   });
-  const { uri: identUri, cid: identCid } = await createRecord(
+  // Reuse the occurrence's (stable) rkey for its 1:1 identification — a
+  // different collection, so no key collision — and putRecord so a retried
+  // survey POST overwrites instead of creating a duplicate identification (#13).
+  const { uri: identUri, cid: identCid } = await putRecord(
     did,
     Identification.$nsid,
+    occRkey,
     identRecord,
   );
-  const identRkey = identUri.split('/').at(-1) ?? '';
-  await insertIdentification(did, identRkey, identRecord, identUri);
+  await insertIdentification(did, occRkey, identRecord, identUri);
   return { uri: identUri, cid: identCid };
 }
 
@@ -53,7 +57,13 @@ export async function attachIdentificationToOccurrence(
 ): Promise<void> {
   let ident: { uri: string; cid: string } | undefined;
   try {
-    ident = await createIdentification(occUri, occCid, taxonScope, did);
+    ident = await createIdentification(
+      occUri,
+      occCid,
+      occRkey,
+      taxonScope,
+      did,
+    );
   } catch (err) {
     log.error({ err, occUri }, 'Failed to create identification');
     return;

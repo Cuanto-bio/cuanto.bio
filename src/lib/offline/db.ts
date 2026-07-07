@@ -6,6 +6,7 @@ import type { Main as AtSurvey } from '$lib/lexicons/bio/cuanto/survey.defs.js';
 import type { Main as AtSurveyProtocol } from '$lib/lexicons/bio/cuanto/surveyProtocol.defs.js';
 import type { Main as AtOccurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs.js';
 import type { IncidentalOccurrence } from '$lib/surveys';
+import { generateTid } from '$lib/tid';
 import { CUANTO_IDB_VERSION } from './constants';
 
 export type {
@@ -66,6 +67,11 @@ export interface CachedSurvey extends Survey {
 
 export interface PendingSurvey {
   id?: number;
+  // Client-generated TID used as the survey record's rkey, so a timed-out POST
+  // can be retried idempotently (the server putRecords this key instead of
+  // creating a fresh one each time). Set at creation; lazy-migrated for older
+  // rows in migratePendingSurvey.
+  surveyRkey: string;
   protocolUri: string;
   protocolRkey: string;
   protocolTitle: string;
@@ -255,16 +261,22 @@ function migratePendingSurvey(survey: PendingSurvey): PendingSurvey {
     legacy.publishBbox === undefined ||
     legacy.publishTrack === undefined ||
     legacy.publishGeo !== undefined;
+  // Lazy migration: rows saved before idempotent uploads (#13) have no
+  // surveyRkey; assign one so the retry key stays stable from here on.
+  const needsRkeyMigration =
+    (survey as { surveyRkey?: string }).surveyRkey === undefined;
   if (
     !needsOccMigration &&
     !needsCompleteMigration &&
     !needsIncidentalsMigration &&
-    !needsPublishMigration
+    !needsPublishMigration &&
+    !needsRkeyMigration
   )
     return survey;
   const publishDefault = legacy.publishGeo ?? true;
   const migrated: PendingSurvey = {
     ...survey,
+    surveyRkey: needsRkeyMigration ? generateTid() : survey.surveyRkey,
     complete: needsCompleteMigration ? true : survey.complete,
     incidentals: needsIncidentalsMigration ? [] : survey.incidentals,
     publishPoint: legacy.publishPoint ?? publishDefault,

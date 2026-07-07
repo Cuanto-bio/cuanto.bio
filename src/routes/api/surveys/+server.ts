@@ -1,4 +1,5 @@
 import type { l } from '@atproto/lex';
+import { isValidTid } from '@atproto/syntax';
 import { error, json } from '@sveltejs/kit';
 import {
   type TaxonScope,
@@ -28,11 +29,12 @@ import {
 } from '$lib/server/db/surveys';
 import logger from '$lib/server/logger';
 import { materializeSurveyTargets } from '$lib/server/materialize-targets';
-import { createRecord, PdsSessionExpiredError } from '$lib/server/pds';
+import { PdsSessionExpiredError, putRecord } from '$lib/server/pds';
 import { attachIdentificationToOccurrence } from '$lib/server/survey-records';
 import { eventDateIsInFuture } from '$lib/server/survey-validation';
 import type { IncidentalInput } from '$lib/surveys';
 import { surveyTargetUriFor } from '$lib/surveyTargets';
+import { deterministicTid } from '$lib/tid';
 import type { RequestHandler } from './$types';
 
 const log = logger.child({ component: 'api-surveys' });
@@ -70,6 +72,7 @@ type TrackInput = {
 };
 
 type SurveyInput = {
+  surveyRkey: string;
   protocolUri: string;
   protocolRkey: string;
   locationName: string;
@@ -140,17 +143,22 @@ async function createSurvey(
       : {}),
   });
 
+  // putRecord (not createRecord) at the client-chosen rkey so a retried POST
+  // overwrites the same record instead of creating a duplicate (#13).
   let surveyUri: string;
   try {
-    ({ uri: surveyUri } = await createRecord(did, Survey.$nsid, surveyRecord));
+    ({ uri: surveyUri } = await putRecord(
+      did,
+      Survey.$nsid,
+      body.surveyRkey,
+      surveyRecord,
+    ));
   } catch (err) {
     if (err instanceof PdsSessionExpiredError) throw err;
     throw error(502, `PDS error: ${String(err)}`);
   }
 
-  const surveyRkey = surveyUri.split('/').at(-1) ?? '';
-
-  await insertSurvey(did, surveyRkey, surveyRecord, surveyUri);
+  await insertSurvey(did, body.surveyRkey, surveyRecord, surveyUri);
 
   return surveyUri;
 }
@@ -158,6 +166,7 @@ async function createSurvey(
 async function createOccurrence(
   inputOcc: OccurrenceInput,
   surveyUri: string,
+  surveyRkey: string,
   did: string,
   occMeta: OccurrenceMetadata,
 ) {
@@ -174,12 +183,16 @@ async function createOccurrence(
     organismQuantity: inputOcc.organismQuantity,
     organismQuantityType: 'individuals',
   });
-  const { uri: occUri, cid: occCid } = await createRecord(
+  // Deterministic rkey (stable per survey + target) so a retried POST reuses it
+  // and putRecord overwrites instead of duplicating the occurrence (#13). Each
+  // target appears at most once per survey, so the seed is unique.
+  const occRkey = deterministicTid(`${surveyRkey}/${inputOcc.surveyTargetUri}`);
+  const { uri: occUri, cid: occCid } = await putRecord(
     did,
     Occurrence.$nsid,
+    occRkey,
     occurrenceRecord,
   );
-  const occRkey = occUri.split('/').at(-1) ?? '';
   await insertOccurrence(did, occRkey, occurrenceRecord, occUri);
 
   return { occUri, occCid, occRkey, occurrenceRecord };
@@ -187,7 +200,9 @@ async function createOccurrence(
 
 async function createIncidentalOccurrence(
   input: IncidentalInput,
+  index: number,
   surveyUri: string,
+  surveyRkey: string,
   did: string,
   occMeta: OccurrenceMetadata,
 ) {
@@ -198,12 +213,18 @@ async function createIncidentalOccurrence(
     organismQuantity: input.organismQuantity,
     organismQuantityType: 'individuals',
   });
-  const { uri: occUri, cid: occCid } = await createRecord(
+  // Incidentals have no unique target, so seed the deterministic rkey with the
+  // incidental's stable position in the (unchanging) pending survey. A retry of
+  // the same survey reuses the same rkey and putRecord overwrites (#13).
+  const occRkey = deterministicTid(
+    `${surveyRkey}/incidental/${index}/${input.taxonID}`,
+  );
+  const { uri: occUri, cid: occCid } = await putRecord(
     did,
     Occurrence.$nsid,
+    occRkey,
     occurrenceRecord,
   );
-  const occRkey = occUri.split('/').at(-1) ?? '';
   await insertOccurrence(did, occRkey, occurrenceRecord, occUri);
   return { occUri, occCid, occRkey, occurrenceRecord };
 }
@@ -227,6 +248,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 async function postSurvey(request: Request, did: string) {
   const body = (await request.json()) as SurveyInput;
+
+  // The survey rkey is a client-generated TID; reject anything that is not a
+  // valid record key so a malformed value can't reach the PDS.
+  if (!body.surveyRkey || !isValidTid(body.surveyRkey)) {
+    throw error(422, 'surveyRkey must be a valid TID');
+  }
 
   if (body.surveyorCount != null) {
     if (!Number.isInteger(body.surveyorCount) || body.surveyorCount < 1) {
@@ -309,7 +336,7 @@ async function postSurvey(request: Request, did: string) {
       continue;
 
     const { occUri, occCid, occRkey, occurrenceRecord } =
-      await createOccurrence(input, surveyUri, did, occMeta);
+      await createOccurrence(input, surveyUri, body.surveyRkey, did, occMeta);
 
     // If target has taxon scope, create an Identification and update the Occurrence
     // to indicate that this is the Occurrence user's accepted ident
@@ -333,9 +360,18 @@ async function postSurvey(request: Request, did: string) {
     }
   }
 
-  for (const incidental of body.incidentals ?? []) {
+  const incidentals = body.incidentals ?? [];
+  for (let i = 0; i < incidentals.length; i++) {
+    const incidental = incidentals[i];
     const { occUri, occCid, occRkey, occurrenceRecord } =
-      await createIncidentalOccurrence(incidental, surveyUri, did, occMeta);
+      await createIncidentalOccurrence(
+        incidental,
+        i,
+        surveyUri,
+        body.surveyRkey,
+        did,
+        occMeta,
+      );
 
     // taxonID validated above; cast bridges string → branded l.UriString
     await attachIdentificationToOccurrence(

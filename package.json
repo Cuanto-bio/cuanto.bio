@@ -78,6 +78,7 @@
     }
   },
   "dependencies": {
+    "@atproto/common-web": "^0.4.20",
     "@atproto/identity": "^0.4.12",
     "@atproto/lexicon": "^0.6.2",
     "@atproto/oauth-client-node": "^0.3.17",
