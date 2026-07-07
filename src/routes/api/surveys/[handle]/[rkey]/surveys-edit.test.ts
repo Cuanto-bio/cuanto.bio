@@ -357,24 +357,52 @@ describe('PUT /api/surveys/[handle]/[rkey]', () => {
     expect(insertOccurrence).toHaveBeenCalled();
   });
 
-  test('deletes existing occurrence when count is zero', async () => {
+  test('preserves an existing occurrence at zero count when not explicitly deleted (#24)', async () => {
     vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
       FAKE_SURVEY_WITH_OCC as never,
     );
     const body = {
       ...basePutBody,
       occurrences: [
-        {
-          atUri: OCC_URI,
-          surveyTargetUri: TARGET_URI,
-          organismQuantity: '0',
-        },
+        { atUri: OCC_URI, surveyTargetUri: TARGET_URI, organismQuantity: '0' },
       ],
+    };
+    const resp = await callPut(DID, body);
+    expect(resp.status).toBe(200);
+    // Zero count no longer deletes; only an explicit deletedOccurrenceUris does.
+    expect(deleteOccurrenceByAtUri).not.toHaveBeenCalled();
+    expect(deleteRecord).not.toHaveBeenCalledWith(OCC_URI);
+  });
+
+  test('deletes an occurrence named in deletedOccurrenceUris (#24)', async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      FAKE_SURVEY_WITH_OCC as never,
+    );
+    const body = {
+      ...basePutBody,
+      occurrences: [],
+      deletedOccurrenceUris: [OCC_URI],
     };
     const resp = await callPut(DID, body);
     expect(resp.status).toBe(200);
     expect(deleteOccurrenceByAtUri).toHaveBeenCalledWith(OCC_URI);
     expect(deleteRecord).toHaveBeenCalledWith(OCC_URI);
+  });
+
+  test('ignores a delete request for an occurrence not in the survey (#24)', async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      FAKE_SURVEY_WITH_OCC as never,
+    );
+    const body = {
+      ...basePutBody,
+      occurrences: [],
+      deletedOccurrenceUris: [
+        'at://did:test:someone-else/bio.lexicons.temp.v0-1.occurrence/xyz',
+      ],
+    };
+    const resp = await callPut(DID, body);
+    expect(resp.status).toBe(200);
+    expect(deleteOccurrenceByAtUri).not.toHaveBeenCalled();
   });
 
   test('creates new occurrence for target with count when no prior occurrence', async () => {
@@ -459,11 +487,28 @@ describe('PUT /api/surveys/[handle]/[rkey]', () => {
     );
   });
 
-  test('deletes existing incidental occurrence when omitted from incidentals list', async () => {
+  test('preserves an existing incidental omitted from the payload (#24)', async () => {
     vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
       FAKE_SURVEY_WITH_INCIDENTAL as never,
     );
+    // Omitting the incidental used to silently delete it; now it is preserved
+    // unless named in deletedIncidentalUris.
     const body = { ...basePutBody, incidentals: [] };
+    const resp = await callPut(DID, body);
+    expect(resp.status).toBe(200);
+    expect(deleteOccurrenceByAtUri).not.toHaveBeenCalled();
+    expect(deleteRecord).not.toHaveBeenCalledWith(INC_URI);
+  });
+
+  test('deletes an incidental named in deletedIncidentalUris (#24)', async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      FAKE_SURVEY_WITH_INCIDENTAL as never,
+    );
+    const body = {
+      ...basePutBody,
+      incidentals: [],
+      deletedIncidentalUris: [INC_URI],
+    };
     const resp = await callPut(DID, body);
     expect(resp.status).toBe(200);
     expect(deleteOccurrenceByAtUri).toHaveBeenCalledWith(INC_URI);

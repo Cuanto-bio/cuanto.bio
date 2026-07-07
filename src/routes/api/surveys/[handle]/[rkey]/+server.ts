@@ -139,7 +139,36 @@ type SurveyEditInput = {
   track?: { gpx: l.BlobRef; source: string } | null;
   occurrences: OccurrenceEditInput[];
   incidentals: IncidentalEditInput[];
+  // Explicit deletions (#24). Only occurrences/incidentals whose at-uri appears
+  // here are removed; anything omitted from the payload is preserved. This
+  // replaces the previous implicit "zero count or absent means delete", which
+  // could silently destroy data on a partial or buggy payload.
+  deletedOccurrenceUris?: string[];
+  deletedIncidentalUris?: string[];
 };
+
+// Deletes an occurrence and its identification(s) from both the local DB and the
+// PDS. Identifications go first, or the occurrence delete can trip the
+// identifications_occurrence_uri_fkey constraint. PDS delete failures are logged
+// but non-fatal (the local record is already gone).
+async function deleteOccurrenceAndIdentifications(
+  atUri: string,
+): Promise<void> {
+  const identRows = await deleteIdentificationsByOccurrenceUris([atUri]);
+  for (const { at_uri } of identRows) {
+    try {
+      await deleteRecord(at_uri);
+    } catch (err) {
+      log.error({ err, at_uri }, 'Failed to delete identification from PDS');
+    }
+  }
+  await deleteOccurrenceByAtUri(atUri);
+  try {
+    await deleteRecord(atUri);
+  } catch (err) {
+    log.error({ err, atUri }, 'Failed to delete occurrence from PDS');
+  }
+}
 
 export const PUT: RequestHandler = async ({ params, locals, request }) => {
   if (!locals.did) return json({ error: 'Unauthorized' }, { status: 401 });
@@ -283,12 +312,23 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
     }
   }
 
-  // Process protocol-target occurrences
+  // Deletions are explicit (#24): only these at-uris are removed. Restrict to
+  // occurrences that actually belong to this survey so a bad payload can't ask
+  // us to delete arbitrary records.
+  const ownOccurrenceUris = new Set(survey.occurrences.map((o) => o.atUri));
+  const deletedOccurrenceUris = new Set(body.deletedOccurrenceUris ?? []);
+  const deletedIncidentalUris = new Set(body.deletedIncidentalUris ?? []);
+
+  // Process protocol-target occurrences (create/update only; deletes below).
   for (const occ of body.occurrences) {
     const hasCount = occ.organismQuantity && Number(occ.organismQuantity) > 0;
 
+    // Skip anything queued for explicit deletion; it's removed in the pass below.
+    if (occ.atUri && deletedOccurrenceUris.has(occ.atUri)) continue;
+
     if (occ.atUri) {
-      // Existing occurrence
+      // Existing occurrence. A zero count no longer deletes it — omitting it
+      // from deletedOccurrenceUris preserves it.
       if (hasCount) {
         const occRkey = occ.atUri.split('/').at(-1) ?? '';
         // Fill-but-don't-clobber survey metadata and preserve the existing
@@ -316,26 +356,8 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
           : occRecord;
         await putRecord(did, Occurrence.$type, occRkey, withIdent);
         await insertOccurrence(did, occRkey, withIdent, occ.atUri);
-      } else {
-        // Zero count — delete the occurrence (and its identification)
-        await deleteIdentificationsByOccurrenceUris([occ.atUri]).then(
-          async (rows) => {
-            for (const { at_uri } of rows) {
-              try {
-                await deleteRecord(at_uri);
-              } catch (err) {
-                log.error({ err }, 'Failed to delete identification from PDS');
-              }
-            }
-          },
-        );
-        await deleteOccurrenceByAtUri(occ.atUri);
-        try {
-          await deleteRecord(occ.atUri);
-        } catch (err) {
-          log.error({ err }, 'Failed to delete occurrence from PDS');
-        }
       }
+      // else: zero count and not explicitly deleted — preserve as-is.
     } else if (hasCount) {
       // New occurrence
       const occRecord = Occurrence.$build({
@@ -371,12 +393,15 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
     }
   }
 
-  // Process incidental occurrences
+  // Process incidental occurrences (create/update only; deletes below).
   for (const inc of body.incidentals) {
     const hasCount = inc.organismQuantity && Number(inc.organismQuantity) > 0;
 
+    // Skip anything queued for explicit deletion; it's removed in the pass below.
+    if (inc.atUri && deletedIncidentalUris.has(inc.atUri)) continue;
+
     if (inc.atUri) {
-      // Existing incidental
+      // Existing incidental. Omitting it from the payload no longer deletes it.
       if (hasCount) {
         const occRkey = inc.atUri.split('/').at(-1) ?? '';
         const existingOcc = survey.occurrences.find(
@@ -398,26 +423,8 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
           : occRecord;
         await putRecord(did, Occurrence.$type, occRkey, withIdent);
         await insertOccurrence(did, occRkey, withIdent, inc.atUri);
-      } else {
-        // Zero count — delete
-        await deleteIdentificationsByOccurrenceUris([inc.atUri]).then(
-          async (rows) => {
-            for (const { at_uri } of rows) {
-              try {
-                await deleteRecord(at_uri);
-              } catch (err) {
-                log.error({ err }, 'Failed to delete identification from PDS');
-              }
-            }
-          },
-        );
-        await deleteOccurrenceByAtUri(inc.atUri);
-        try {
-          await deleteRecord(inc.atUri);
-        } catch (err) {
-          log.error({ err }, 'Failed to delete incidental occurrence from PDS');
-        }
       }
+      // else: zero count and not explicitly deleted — preserve as-is.
     } else if (hasCount) {
       // New incidental
       const occRecord = Occurrence.$build({
@@ -453,36 +460,21 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
     }
   }
 
-  // Delete existing incidental occurrences that were removed from the payload
-  const payloadIncidentalUris = new Set(
-    body.incidentals.map((i) => i.atUri).filter((u): u is string => !!u),
-  );
-  for (const occ of survey.occurrences) {
-    if (!occ.record.surveyTargetID && !payloadIncidentalUris.has(occ.atUri)) {
-      await deleteIdentificationsByOccurrenceUris([occ.atUri]).then(
-        async (rows) => {
-          for (const { at_uri } of rows) {
-            try {
-              await deleteRecord(at_uri);
-            } catch (err) {
-              log.error(
-                { err, at_uri },
-                'Failed to delete identification from PDS',
-              );
-            }
-          }
-        },
+  // Explicit deletion pass (#24): remove exactly the occurrences and incidentals
+  // the client named, and only if they belong to this survey. Nothing is deleted
+  // by absence or by zero count.
+  for (const atUri of new Set([
+    ...deletedOccurrenceUris,
+    ...deletedIncidentalUris,
+  ])) {
+    if (!ownOccurrenceUris.has(atUri)) {
+      log.warn(
+        { atUri },
+        'delete requested for an occurrence not in this survey; skipping',
       );
-      await deleteOccurrenceByAtUri(occ.atUri);
-      try {
-        await deleteRecord(occ.atUri);
-      } catch (err) {
-        log.error(
-          { err },
-          'Failed to delete removed incidental occurrence from PDS',
-        );
-      }
+      continue;
     }
+    await deleteOccurrenceAndIdentifications(atUri);
   }
 
   const updated = await getSurveyDetailByHandleAndRkey(

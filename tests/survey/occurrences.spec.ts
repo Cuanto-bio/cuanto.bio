@@ -1,6 +1,7 @@
 import {
   expect,
   seedIncidentalOccurrence,
+  seedOccurrence,
   seedProtocol,
   seedSurvey,
   teardownDid,
@@ -603,5 +604,179 @@ test('deleting an incidental occurrence in edit mode removes it from the DB', as
     expect(identRows).toHaveLength(0);
   } finally {
     await teardownDid(sql, INC_EDIT_DID);
+  }
+});
+
+// ── Edit mode: protocol-target occurrence deletion (#24) ──────────────────────
+
+const TARGET_DEL_DID = 'did:test:survey-target-del';
+const TARGET_DEL_HANDLE = 'user-survey-target-del';
+
+// Both the "Reset" button and manually clearing the count to zero should mark an
+// existing protocol-target occurrence for explicit deletion (#24), so the server
+// removes it from the DB on save.
+
+test('resetting a protocol-target occurrence in edit mode deletes it from the DB', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: 'did',
+      value: TARGET_DEL_DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  const { protocolRkey, taxonTargetUri } = await seedProtocol(
+    sql,
+    TARGET_DEL_DID,
+  );
+  const protocolUri = `at://${TARGET_DEL_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+  const { surveyRkey, surveyAtUri } = await seedSurvey(
+    sql,
+    TARGET_DEL_DID,
+    protocolUri,
+    'Target Reset Test',
+  );
+  const { occUri } = await seedOccurrence(
+    sql,
+    TARGET_DEL_DID,
+    surveyAtUri,
+    protocolUri,
+    taxonTargetUri,
+    '3',
+  );
+
+  try {
+    await page.goto(`/app/protocols/${TARGET_DEL_HANDLE}/${protocolRkey}`);
+    await page.waitForLoadState('networkidle');
+    await page.goto(`/app/surveys/${TARGET_DEL_HANDLE}/${surveyRkey}/edit`);
+    await page.waitForSelector('[placeholder="e.g. Mission Dolores Park"]', {
+      state: 'visible',
+    });
+
+    // The seeded occurrence shows its count on the target row.
+    const targetRow = page
+      .locator('li')
+      .filter({ hasText: 'Quercus agrifolia' });
+    await expect(
+      targetRow.getByRole('button', { name: 'Increase count' }),
+    ).toHaveText('3');
+
+    // Open the occurrence modal (the target-name button) and click Reset.
+    await targetRow.getByRole('button').first().click();
+    await page.getByRole('button', { name: 'Reset' }).click();
+
+    // The count returns to zero on the target row.
+    await expect(
+      targetRow.getByRole('button', { name: 'Increase count' }),
+    ).toHaveText('0');
+
+    // Fill in required date and duration before saving.
+    await page.fill('#pastDate', '2026-01-15T10:00');
+    await page.fill('#pastDuration', '30');
+
+    await page.getByRole('button', { name: 'Save Survey' }).click();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+    await expect(page).toHaveURL(
+      new RegExp(`/app/surveys/${TARGET_DEL_HANDLE}/${surveyRkey}(?!/edit)`),
+    );
+
+    // The occurrence was deleted from the DB.
+    const occRows = await sql`
+      SELECT at_uri FROM occurrences WHERE at_uri = ${occUri}
+    `;
+    expect(occRows).toHaveLength(0);
+  } finally {
+    await teardownDid(sql, TARGET_DEL_DID);
+  }
+});
+
+test('setting a protocol-target occurrence count to zero in edit mode deletes it from the DB', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: 'did',
+      value: TARGET_DEL_DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  const { protocolRkey, taxonTargetUri } = await seedProtocol(
+    sql,
+    TARGET_DEL_DID,
+  );
+  const protocolUri = `at://${TARGET_DEL_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+  const { surveyRkey, surveyAtUri } = await seedSurvey(
+    sql,
+    TARGET_DEL_DID,
+    protocolUri,
+    'Target Zero Test',
+  );
+  const { occUri } = await seedOccurrence(
+    sql,
+    TARGET_DEL_DID,
+    surveyAtUri,
+    protocolUri,
+    taxonTargetUri,
+    '3',
+  );
+
+  try {
+    await page.goto(`/app/protocols/${TARGET_DEL_HANDLE}/${protocolRkey}`);
+    await page.waitForLoadState('networkidle');
+    await page.goto(`/app/surveys/${TARGET_DEL_HANDLE}/${surveyRkey}/edit`);
+    await page.waitForSelector('[placeholder="e.g. Mission Dolores Park"]', {
+      state: 'visible',
+    });
+
+    // The seeded occurrence shows its count on the target row.
+    const targetRow = page
+      .locator('li')
+      .filter({ hasText: 'Quercus agrifolia' });
+    await expect(
+      targetRow.getByRole('button', { name: 'Increase count' }),
+    ).toHaveText('3');
+
+    // Open the occurrence modal, set the count to zero, and click Done.
+    await targetRow.getByRole('button').first().click();
+    await page.fill('#organism-qty', '0');
+    await page.getByRole('button', { name: 'Done' }).click();
+
+    // The count shows zero on the target row.
+    await expect(
+      targetRow.getByRole('button', { name: 'Increase count' }),
+    ).toHaveText('0');
+
+    // Fill in required date and duration before saving.
+    await page.fill('#pastDate', '2026-01-15T10:00');
+    await page.fill('#pastDuration', '30');
+
+    await page.getByRole('button', { name: 'Save Survey' }).click();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+    await expect(page).toHaveURL(
+      new RegExp(`/app/surveys/${TARGET_DEL_HANDLE}/${surveyRkey}(?!/edit)`),
+    );
+
+    // The occurrence was deleted from the DB.
+    const occRows = await sql`
+      SELECT at_uri FROM occurrences WHERE at_uri = ${occUri}
+    `;
+    expect(occRows).toHaveLength(0);
+  } finally {
+    await teardownDid(sql, TARGET_DEL_DID);
   }
 });

@@ -257,7 +257,7 @@ export async function seedOccurrence(
   // The protocol author's protocolTarget URI.
   protocolTargetUri: string,
   organismQuantity?: string,
-): Promise<void> {
+): Promise<{ occUri: string }> {
   const rkey = `testocc${Date.now()}${Math.floor(Math.random() * 1000)}`;
   const atUri = `at://${did}/bio.lexicons.temp.v0-1.occurrence/${rkey}`;
   const targetRkey = protocolTargetUri.split('/').at(-1) ?? '';
@@ -285,6 +285,7 @@ export async function seedOccurrence(
     INSERT INTO occurrences (at_uri, did, rkey, survey_uri, record, indexed_at)
     VALUES (${atUri}, ${did}, ${rkey}, ${surveyUri}, ${sql.json(record)}, now())
   `;
+  return { occUri: atUri };
 }
 
 // Seeds a survey_target without an occurrence, so it shows up as notDetected in

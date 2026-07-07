@@ -589,6 +589,25 @@ async function buildEditPayload() {
     track = { gpx: blob, source: 'uploaded' };
   }
 
+  // Explicit deletions (#24): the server only deletes what we name here, so
+  // compute the removals ourselves instead of relying on zero-count / absence.
+  // A protocol-target occurrence that existed but is now at zero count:
+  const deletedOccurrenceUris = protocol.targets
+    .map((t) => existingOccurrenceUris[t.atUri])
+    .filter((atUri, i): atUri is string => {
+      const t = protocol.targets[i];
+      return !!atUri && !(Number(organismQuantities[t.atUri]) > 0);
+    });
+  // An existing incidental that is no longer in the list:
+  const keptIncidentalUris = new Set(
+    incidentals
+      .map((inc) => existingIncidentalUris[inc.localId])
+      .filter((u): u is string => !!u),
+  );
+  const deletedIncidentalUris = Object.values(existingIncidentalUris).filter(
+    (atUri): atUri is string => !!atUri && !keptIncidentalUris.has(atUri),
+  );
+
   return {
     eventDate,
     eventDurationValue,
@@ -608,6 +627,8 @@ async function buildEditPayload() {
       ...inc,
       atUri: existingIncidentalUris[inc.localId],
     })),
+    deletedOccurrenceUris,
+    deletedIncidentalUris,
   };
 }
 
