@@ -1415,7 +1415,7 @@ function displayCount(qty: undefined | string | number) {
         type="number"
         bind:value={
           () => editingQuantity,
-          (newVal) => editingQuantity = String(newVal)
+          (newVal) => editingQuantity = newVal == null ? '' : String(newVal)
         }
         onkeydown={(e) => {
           if (e.key === 'Enter') {
@@ -1480,7 +1480,7 @@ function displayCount(qty: undefined | string | number) {
         type="number"
         bind:value={
           () => incidentalOrganismQty,
-          (v) => (incidentalOrganismQty = String(v))
+          (v) => (incidentalOrganismQty = v == null ? '' : String(v))
         }
       />
     </div>

@@ -698,6 +698,171 @@ test('resetting a protocol-target occurrence in edit mode deletes it from the DB
   }
 });
 
+test('clearing a protocol-target occurrence count in edit mode deletes it from the DB (#26)', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: 'did',
+      value: TARGET_DEL_DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  const { protocolRkey, taxonTargetUri } = await seedProtocol(
+    sql,
+    TARGET_DEL_DID,
+  );
+  const protocolUri = `at://${TARGET_DEL_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+  const { surveyRkey, surveyAtUri } = await seedSurvey(
+    sql,
+    TARGET_DEL_DID,
+    protocolUri,
+    'Target Clear Test',
+  );
+  const { occUri } = await seedOccurrence(
+    sql,
+    TARGET_DEL_DID,
+    surveyAtUri,
+    protocolUri,
+    taxonTargetUri,
+    '3',
+  );
+
+  try {
+    await page.goto(`/app/protocols/${TARGET_DEL_HANDLE}/${protocolRkey}`);
+    await page.waitForLoadState('networkidle');
+    await page.goto(`/app/surveys/${TARGET_DEL_HANDLE}/${surveyRkey}/edit`);
+    await page.waitForSelector('[placeholder="e.g. Mission Dolores Park"]', {
+      state: 'visible',
+    });
+
+    // The seeded occurrence shows its count on the target row.
+    const targetRow = page
+      .locator('li')
+      .filter({ hasText: 'Quercus agrifolia' });
+    await expect(
+      targetRow.getByRole('button', { name: 'Increase count' }),
+    ).toHaveText('3');
+
+    // Open the occurrence modal, clear the count field (not Reset), and click Done.
+    await targetRow.getByRole('button').first().click();
+    await page.locator('#organism-qty').fill('');
+    await page.getByRole('button', { name: 'Done' }).click();
+
+    // The count shows zero on the target row, not "null".
+    await expect(
+      targetRow.getByRole('button', { name: 'Increase count' }),
+    ).toHaveText('0');
+
+    // Fill in required date and duration before saving.
+    await page.fill('#pastDate', '2026-01-15T10:00');
+    await page.fill('#pastDuration', '30');
+
+    await page.getByRole('button', { name: 'Save Survey' }).click();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+    await expect(page).toHaveURL(
+      new RegExp(`/app/surveys/${TARGET_DEL_HANDLE}/${surveyRkey}(?!/edit)`),
+    );
+
+    // The occurrence was deleted from the DB.
+    const occRows = await sql`
+      SELECT at_uri FROM occurrences WHERE at_uri = ${occUri}
+    `;
+    expect(occRows).toHaveLength(0);
+  } finally {
+    await teardownDid(sql, TARGET_DEL_DID);
+  }
+});
+
+test('leaving a bare "-" in a protocol-target occurrence count in edit mode deletes it from the DB', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: 'did',
+      value: TARGET_DEL_DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  const { protocolRkey, taxonTargetUri } = await seedProtocol(
+    sql,
+    TARGET_DEL_DID,
+  );
+  const protocolUri = `at://${TARGET_DEL_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+  const { surveyRkey, surveyAtUri } = await seedSurvey(
+    sql,
+    TARGET_DEL_DID,
+    protocolUri,
+    'Target Bare Dash Test',
+  );
+  const { occUri } = await seedOccurrence(
+    sql,
+    TARGET_DEL_DID,
+    surveyAtUri,
+    protocolUri,
+    taxonTargetUri,
+    '3',
+  );
+
+  try {
+    await page.goto(`/app/protocols/${TARGET_DEL_HANDLE}/${protocolRkey}`);
+    await page.waitForLoadState('networkidle');
+    await page.goto(`/app/surveys/${TARGET_DEL_HANDLE}/${surveyRkey}/edit`);
+    await page.waitForSelector('[placeholder="e.g. Mission Dolores Park"]', {
+      state: 'visible',
+    });
+
+    const targetRow = page
+      .locator('li')
+      .filter({ hasText: 'Quercus agrifolia' });
+    await expect(
+      targetRow.getByRole('button', { name: 'Increase count' }),
+    ).toHaveText('3');
+
+    // A bare "-" is a valid in-progress value for <input type="number"> and
+    // parses to NaN, not null or "" -- it should be treated as no count.
+    await targetRow.getByRole('button').first().click();
+    const qtyInput = page.locator('#organism-qty');
+    await qtyInput.fill('');
+    await qtyInput.pressSequentially('-');
+    await page.getByRole('button', { name: 'Done' }).click();
+
+    await expect(
+      targetRow.getByRole('button', { name: 'Increase count' }),
+    ).toHaveText('0');
+
+    await page.fill('#pastDate', '2026-01-15T10:00');
+    await page.fill('#pastDuration', '30');
+
+    await page.getByRole('button', { name: 'Save Survey' }).click();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+    await expect(page).toHaveURL(
+      new RegExp(`/app/surveys/${TARGET_DEL_HANDLE}/${surveyRkey}(?!/edit)`),
+    );
+
+    const occRows = await sql`
+      SELECT at_uri FROM occurrences WHERE at_uri = ${occUri}
+    `;
+    expect(occRows).toHaveLength(0);
+  } finally {
+    await teardownDid(sql, TARGET_DEL_DID);
+  }
+});
+
 test('setting a protocol-target occurrence count to zero in edit mode deletes it from the DB', async ({
   page,
   sql,
