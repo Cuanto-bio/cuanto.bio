@@ -1,4 +1,4 @@
-import { error } from '@sveltejs/kit';
+import { error, fail } from '@sveltejs/kit';
 import sql from '$lib/server/db';
 import {
   createFollow,
@@ -9,7 +9,12 @@ import {
   gcSurveyTargetsIfUnused,
   materializeSurveyTargets,
 } from '$lib/server/materialize-targets';
-import { createRecord, deleteRecord } from '$lib/server/pds';
+import {
+  createRecord,
+  deleteRecord,
+  PdsScopeInsufficientError,
+  PdsSessionExpiredError,
+} from '$lib/server/pds';
 import type { Actions } from './$types';
 
 export const actions: Actions = {
@@ -35,15 +40,26 @@ export const actions: Actions = {
     if (existing) return { isFollowing: true };
 
     const createdAt = new Date().toISOString();
-    const { uri } = await createRecord(
-      locals.did,
-      'bio.cuanto.surveyProtocol.follow',
-      {
-        $type: 'bio.cuanto.surveyProtocol.follow',
-        subject: protocol.at_uri,
-        createdAt,
-      },
-    );
+    let uri: string;
+    try {
+      ({ uri } = await createRecord(
+        locals.did,
+        'bio.cuanto.surveyProtocol.follow',
+        {
+          $type: 'bio.cuanto.surveyProtocol.follow',
+          subject: protocol.at_uri,
+          createdAt,
+        },
+      ));
+    } catch (err) {
+      if (err instanceof PdsScopeInsufficientError) {
+        return fail(403, { permissionRequired: true });
+      }
+      if (err instanceof PdsSessionExpiredError) {
+        return fail(401, { sessionExpired: true });
+      }
+      return fail(502, { error: `PDS error: ${String(err)}` });
+    }
 
     await createFollow({
       atUri: uri,
@@ -79,7 +95,17 @@ export const actions: Actions = {
     if (!follow) return { isFollowing: false };
 
     await deleteFollow(follow.at_uri);
-    await deleteRecord(follow.at_uri);
+    try {
+      await deleteRecord(follow.at_uri);
+    } catch (err) {
+      if (err instanceof PdsScopeInsufficientError) {
+        return fail(403, { permissionRequired: true });
+      }
+      if (err instanceof PdsSessionExpiredError) {
+        return fail(401, { sessionExpired: true });
+      }
+      return fail(502, { error: `PDS error: ${String(err)}` });
+    }
 
     // Clean up materialized surveyTargets if the user is no longer engaged with
     // the protocol (no remaining surveys).

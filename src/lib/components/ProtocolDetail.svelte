@@ -10,6 +10,7 @@ import PlusIcon from '@lucide/svelte/icons/plus';
 import type { Component } from 'svelte';
 import Button from '$lib/components/Button.svelte';
 import Form from '$lib/components/Form.svelte';
+import * as Alert from '$lib/components/ui/alert';
 import ButtonGroup from '$lib/components/ui/button-group/button-group.svelte';
 import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 import type { Main as LocationAddress } from '$lib/lexicons/community/lexicon/location/address.defs';
@@ -60,6 +61,26 @@ let isFollowing = $state(!!initialIsFollowing);
 // svelte-ignore state_referenced_locally -- intentional: local optimistic state
 let followerCount = $state(initialFollowerCount);
 let showAllPlaces = $state(false);
+let authIssue = $state<'expired' | 'permission' | null>(null);
+
+// svelte-ignore state_referenced_locally -- intentional: derived once from the prop this component was mounted with
+const returnTo = `/app/protocols/${protocol.handle}/${protocol.rkey}`;
+
+// Distinguishes a dead session from a live one that's simply missing a scope
+// this action needs, since the two need different explanations: "sign in
+// again" reads as untrue when the token still works fine for everything else.
+function authIssueFromResult(result: {
+  type: string;
+  data?: unknown;
+}): 'expired' | 'permission' | null {
+  if (result.type !== 'failure') return null;
+  const data = result.data as
+    | { sessionExpired?: boolean; permissionRequired?: boolean }
+    | undefined;
+  if (data?.permissionRequired) return 'permission';
+  if (data?.sessionExpired) return 'expired';
+  return null;
+}
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString();
@@ -205,10 +226,12 @@ const collapsibleActions = $derived.by(() => {
               if (result.type === 'success') {
                 isFollowing = false;
                 followerCount = Math.max(0, ogFollowerCount - 1);
+                authIssue = null;
                 onAfterFollowChange(false, unfollowedProtocol);
-              } else{
+              } else {
                 isFollowing = true;
                 followerCount = ogFollowerCount;
+                authIssue = authIssueFromResult(result);
               }
             };
           }}
@@ -238,6 +261,7 @@ const collapsibleActions = $derived.by(() => {
               if (result.type === 'success') {
                 isFollowing = true;
                 followerCount = ogFollowerCount + 1;
+                authIssue = null;
                 onAfterFollowChange(true, followedProtocol);
                 // Nudge the user to install the PWA after they commit to a
                 // protocol (suppressed if not applicable or already dismissed).
@@ -245,6 +269,7 @@ const collapsibleActions = $derived.by(() => {
               } else {
                 isFollowing = false;
                 followerCount = ogFollowerCount;
+                authIssue = authIssueFromResult(result);
               }
             };
           }}
@@ -261,6 +286,35 @@ const collapsibleActions = $derived.by(() => {
       {followerCount === 1 ? 'follower' : 'followers'}
     </span>
   </div>
+
+  {#if authIssue === 'permission'}
+    <Alert.Root class="border-yellow-500 bg-yellow-50 dark:bg-yellow-950 my-2">
+      <Alert.Title>Additional permission needed</Alert.Title>
+      <Alert.Description>
+        Cuanto needs an additional permission to follow protocols. Sign in
+        again to grant it.
+        <a
+          href={`/auth/signin?returnTo=${encodeURIComponent(returnTo)}`}
+          class="underline font-medium ml-1"
+        >
+          Sign in
+        </a>
+      </Alert.Description>
+    </Alert.Root>
+  {:else if authIssue === 'expired'}
+    <Alert.Root class="border-yellow-500 bg-yellow-50 dark:bg-yellow-950 my-2">
+      <Alert.Title>Session expired</Alert.Title>
+      <Alert.Description>
+        Your session has expired. Sign in again to continue.
+        <a
+          href={`/auth/signin?returnTo=${encodeURIComponent(returnTo)}`}
+          class="underline font-medium ml-1"
+        >
+          Sign in
+        </a>
+      </Alert.Description>
+    </Alert.Root>
+  {/if}
 
   <Table.Root class="my-2">
     <Table.Body>
