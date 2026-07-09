@@ -43,6 +43,8 @@ export async function uploadPendingSurvey(
     publishPoint,
     publishBbox,
     publishTrack,
+    // A local view preference for resuming drafts; nothing to publish.
+    targetFilter: _targetFilter,
     ...rest
   } = survey;
 

@@ -3,6 +3,15 @@ import type { Target, TaxonScope, VerbatimScope } from '$lib/offline/db';
 /** Sort order for a target list. `default` preserves protocol order. */
 export type TargetSort = 'default' | 'scientific' | 'common';
 
+/**
+ * The parts of a target filter worth persisting across sessions. The search
+ * query is deliberately excluded: it's transient typing, not a view preference.
+ */
+export interface TargetFilterState {
+  targetSort?: TargetSort;
+  onlyCounted?: boolean;
+}
+
 /** Returns true if the scope entry is a taxon scope (vs. verbatim). */
 export function isTaxonScope(s: Record<string, string> | undefined): boolean {
   return !!s?.$type?.endsWith('#taxonScope');
@@ -131,17 +140,29 @@ export function normalizeForSearch(text: string) {
  * (checks `organismQuantities`) and survey detail (checks `survey.occurrences`),
  * so it's injected as a predicate.
  *
- * `opts.initialOnlyCounted` sets the starting state of the filter toggle —
+ * `opts.initialOnlyCounted` sets the default state of the filter toggle —
  * pass `true` on the detail page to hide unrecorded targets by default.
+ *
+ * `opts.restoredState` overrides those defaults with values persisted from an
+ * earlier session, e.g. a resumed survey draft (issue #31). `reset()` still
+ * returns to the defaults above, not to the restored values.
  */
 export function createTargetFilter(
   getTargets: () => Target[],
   isCounted: (t: Target) => boolean,
-  opts?: { initialOnlyCounted?: boolean },
+  opts?: {
+    initialOnlyCounted?: boolean;
+    restoredState?: TargetFilterState;
+  },
 ) {
+  const defaultOnlyCounted = opts?.initialOnlyCounted ?? false;
   let filterQuery = $state('');
-  let targetSort = $state<TargetSort>('default');
-  let onlyCounted = $state(opts?.initialOnlyCounted ?? false);
+  let targetSort = $state<TargetSort>(
+    opts?.restoredState?.targetSort ?? 'default',
+  );
+  let onlyCounted = $state(
+    opts?.restoredState?.onlyCounted ?? defaultOnlyCounted,
+  );
 
   const hasCounted = $derived(getTargets().some(isCounted));
   const countedCount = $derived(getTargets().filter(isCounted).length);
@@ -160,7 +181,7 @@ export function createTargetFilter(
   function reset() {
     filterQuery = '';
     targetSort = 'default';
-    onlyCounted = opts?.initialOnlyCounted ?? false;
+    onlyCounted = defaultOnlyCounted;
   }
 
   return {

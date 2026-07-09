@@ -377,12 +377,19 @@ const incidentalPortalTarget = $derived(
 
 // ─── derived ────────────────────────────────────────────────────────────────
 
+// svelte-ignore state_referenced_locally -- intentional: a resumed draft seeds
+// the filter once; later prop changes shouldn't yank the view out from the user
+const restoredTargetFilter = isEdit
+  ? undefined
+  : initialResumeState?.targetFilter;
+
 const targetFilter = createTargetFilter(
   () => protocol?.targets ?? [],
   (t) => {
     const qty = parseInt(organismQuantities[t.atUri] ?? '0', 10);
     return !Number.isNaN(qty) && qty > 0;
   },
+  { restoredState: restoredTargetFilter },
 );
 
 const nonZeroOccurrences = $derived(
@@ -546,6 +553,10 @@ function buildNewSurveyPayload(complete: boolean): PendingSurvey {
     publishPoint,
     publishBbox,
     publishTrack,
+    targetFilter: {
+      targetSort: targetFilter.targetSort,
+      onlyCounted: targetFilter.onlyCounted,
+    },
     createdAt: Date.now(),
     complete,
   };

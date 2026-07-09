@@ -382,4 +382,46 @@ describe('createTargetFilter', () => {
     tf.reset();
     expect(tf.onlyCounted).toBe(true);
   });
+
+  test('restoredState seeds targetSort', () => {
+    const tf = createTargetFilter(
+      () => targets,
+      () => false,
+      { restoredState: { targetSort: 'scientific' } },
+    );
+    expect(tf.targetSort).toBe('scientific');
+    // Bubo virginianus sorts ahead of every other scientific name
+    expect(tf.filtered[0].atUri).toBe(owl.atUri);
+  });
+
+  test('restoredState seeds onlyCounted', () => {
+    const tf = createTargetFilter(
+      () => targets,
+      (t) => t.atUri === hawk.atUri,
+      { restoredState: { onlyCounted: true } },
+    );
+    expect(tf.onlyCounted).toBe(true);
+    expect(tf.filtered.map((t) => t.atUri)).toEqual([hawk.atUri]);
+  });
+
+  test('restoredState omitted fields fall back to the defaults', () => {
+    const tf = createTargetFilter(
+      () => targets,
+      () => false,
+      { initialOnlyCounted: true, restoredState: { targetSort: 'common' } },
+    );
+    expect(tf.targetSort).toBe('common');
+    expect(tf.onlyCounted).toBe(true);
+  });
+
+  test('reset returns to the defaults, not to restoredState', () => {
+    const tf = createTargetFilter(
+      () => targets,
+      () => true,
+      { restoredState: { targetSort: 'scientific', onlyCounted: true } },
+    );
+    tf.reset();
+    expect(tf.targetSort).toBe('default');
+    expect(tf.onlyCounted).toBe(false);
+  });
 });

@@ -6,6 +6,7 @@ import type { Main as AtSurvey } from '$lib/lexicons/bio/cuanto/survey.defs.js';
 import type { Main as AtSurveyProtocol } from '$lib/lexicons/bio/cuanto/surveyProtocol.defs.js';
 import type { Main as AtOccurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs.js';
 import type { IncidentalOccurrence } from '$lib/surveys';
+import type { TargetFilterState } from '$lib/targets.svelte';
 import { generateTid } from '$lib/tid';
 import { CUANTO_IDB_VERSION } from './constants';
 
@@ -101,6 +102,10 @@ export interface PendingSurvey {
   publishPoint: boolean;
   publishBbox: boolean;
   publishTrack: boolean;
+  // How the target list was sorted and filtered when the draft was saved, so
+  // resuming lands on the same view instead of the defaults (#31). Purely a
+  // view preference: never uploaded to the PDS.
+  targetFilter?: TargetFilterState;
   createdAt: number;
   complete: boolean;
 }

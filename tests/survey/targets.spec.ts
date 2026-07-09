@@ -214,6 +214,38 @@ test.describe('target sort and filter dropdown', () => {
     await expect(page.getByText('All birds')).toBeVisible();
     await expect(page.getByPlaceholder('Search targets…')).toHaveValue('');
   });
+
+  test('sort and "Only counted" survive leaving and resuming the survey', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    // Count "All birds" so "Only counted" is enabled, then turn it on.
+    await page
+      .locator('li')
+      .filter({ hasText: 'All birds' })
+      .getByRole('button', { name: 'Increase count' })
+      .click();
+    await openDropdown(page);
+    await page.getByRole('menuitemradio', { name: 'Scientific name' }).click();
+    await page.getByRole('button', { name: /Only counted/ }).click();
+    await expect(page.getByText('Coast live oak')).not.toBeVisible();
+
+    // Leave the survey (auto-saves the draft) and resume it.
+    await page.getByRole('link', { name: 'Your Surveys' }).click();
+    await page.waitForURL(/\/app\/surveys$/);
+    await page.getByRole('link', { name: 'Resume', exact: true }).click();
+    await page.waitForSelector('text=Finish Survey', { state: 'visible' });
+
+    await expect(
+      page.getByRole('button', { name: /Only counted/ }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByText('Coast live oak')).not.toBeVisible();
+    await openDropdown(page);
+    await expect(
+      page.getByRole('menuitemradio', { name: 'Scientific name' }),
+    ).toBeChecked();
+  });
 });
 
 // ── Target flash on search clear ──────────────────────────────────────────────

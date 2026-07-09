@@ -194,6 +194,24 @@ describe('uploadPendingSurvey — track publishing', () => {
   });
 });
 
+describe('uploadPendingSurvey — local-only fields', () => {
+  test('omits the target filter view preference from the survey POST', async () => {
+    let body: string | undefined;
+    global.fetch = vi.fn((_url: string | URL | Request, init?: RequestInit) => {
+      body = init?.body as string | undefined;
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ surveyUri: 'at://x/y/z', handle: 'a' }),
+      });
+    }) as unknown as typeof fetch;
+    await uploadPendingSurvey({
+      ...baseSurveyRaw,
+      targetFilter: { targetSort: 'scientific', onlyCounted: true },
+    });
+    expect(JSON.parse(body ?? '{}')).not.toHaveProperty('targetFilter');
+  });
+});
+
 describe('uploadPendingSurvey — PdsSessionExpiredError', () => {
   test('throws PdsSessionExpiredError when server returns 401 with pds_session_expired', async () => {
     global.fetch = vi.fn().mockResolvedValue({
