@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import { CUANTO_IDB_VERSION } from '../../src/lib/offline/constants';
 import {
   expect,
@@ -7,6 +8,32 @@ import {
   test,
 } from '../fixtures.js';
 import { cacheAndOpenNewSurvey } from './helpers.js';
+
+// Geolocation mock that counts watchPosition calls, so resume tests can assert
+// whether track recording restarted without pushing real fixes.
+async function mockWatchPosition(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __watchCount?: number };
+    w.__watchCount = 0;
+    Object.defineProperty(navigator, 'geolocation', {
+      value: {
+        watchPosition: () => {
+          w.__watchCount = (w.__watchCount ?? 0) + 1;
+          return 1;
+        },
+        clearWatch: () => {},
+        getCurrentPosition: () => {},
+      },
+      configurable: true,
+    });
+  });
+}
+
+function watchCount(page: Page) {
+  return page.evaluate(
+    () => (window as unknown as { __watchCount?: number }).__watchCount ?? 0,
+  );
+}
 
 // ── GPS location button ───────────────────────────────────────────────────────
 
@@ -128,6 +155,119 @@ test('recording a GPS track accumulates points from watchPosition fixes', async 
   // Stopping shows the saved-point summary.
   await page.getByRole('button', { name: 'Stop recording' }).click();
   await expect(page.getByText(/\d+\s+points?\s+saved/)).toBeVisible();
+});
+
+// ── Resuming a survey in progress (#30) ──────────────────────────────────────
+
+test('resuming a survey restarts a track that was recording when navigating away', async ({
+  page,
+  protocolRkey,
+}) => {
+  await mockWatchPosition(page);
+  await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+
+  // Selecting Track auto-starts recording.
+  await page.getByRole('radio', { name: 'Track' }).click();
+  await expect(page.getByText('Recording:', { exact: false })).toBeVisible();
+
+  // Navigate away; beforeNavigate auto-saves the draft.
+  await page.getByRole('link', { name: 'Your Surveys' }).click();
+  await page.waitForURL(/\/app\/surveys$/);
+
+  await page.getByRole('link', { name: 'Resume', exact: true }).click();
+  await page.waitForSelector('text=Finish Survey', { state: 'visible' });
+
+  await expect(page.getByText('Recording:', { exact: false })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Stop recording' }),
+  ).toBeVisible();
+});
+
+test('resuming a survey does not restart a track that was stopped', async ({
+  page,
+  protocolRkey,
+}) => {
+  await mockWatchPosition(page);
+  await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+
+  await page.getByRole('radio', { name: 'Track' }).click();
+  await page.getByRole('button', { name: 'Stop recording' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Record GPS track' }),
+  ).toBeVisible();
+
+  await page.getByRole('link', { name: 'Your Surveys' }).click();
+  await page.waitForURL(/\/app\/surveys$/);
+
+  const beforeResume = await watchCount(page);
+
+  await page.getByRole('link', { name: 'Resume', exact: true }).click();
+  await page.waitForSelector('text=Finish Survey', { state: 'visible' });
+
+  await expect(
+    page.getByRole('button', { name: 'Record GPS track' }),
+  ).toBeVisible();
+  await expect(page.getByText('Recording:', { exact: false })).toHaveCount(0);
+  expect(await watchCount(page)).toBe(beforeResume);
+});
+
+test('editing an un-uploaded survey does not start GPS track recording', async ({
+  page,
+  protocolRkey,
+}) => {
+  await mockWatchPosition(page);
+  // Cache the protocol so the resumed form can render offline.
+  await page.goto(`/app/protocols/user-survey-spec/${protocolRkey}`);
+  await page.waitForLoadState('networkidle');
+
+  // A finished-but-un-uploaded survey whose track was still recording when it
+  // was saved must not resume recording when opened for editing.
+  const resumeId = await page.evaluate(
+    ({ protocolRkey, version }) => {
+      return new Promise<number>((resolve, reject) => {
+        const req = indexedDB.open('cuanto', version);
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('pending-surveys', 'readwrite');
+          const add = tx.objectStore('pending-surveys').add({
+            surveyRkey: 'testtrackrkey',
+            protocolUri: `at://did:test:survey-spec/bio.cuanto.surveyProtocol/${protocolRkey}`,
+            protocolRkey,
+            protocolTitle: 'Test Protocol',
+            locationName: 'Un-uploaded Park',
+            latitude: '37.77',
+            longitude: '-122.41',
+            eventDate: new Date().toISOString(),
+            eventDurationValue: 5,
+            eventDurationUnit: 'minutes',
+            occurrences: [],
+            incidentals: [],
+            gpsTrack: [{ lat: 37.77, lng: -122.41, timestamp: 1700000000000 }],
+            gpsMode: 'track',
+            trackSource: 'device',
+            trackRecording: true,
+            publishPoint: true,
+            publishBbox: true,
+            publishTrack: false,
+            createdAt: Date.now(),
+            complete: true,
+          });
+          // Resolve on commit, not on add.onsuccess: navigating away before the
+          // transaction commits would abort the write.
+          tx.oncomplete = () => resolve(add.result as number);
+          tx.onerror = () => reject(tx.error);
+        };
+        req.onerror = () => reject(req.error);
+      });
+    },
+    { protocolRkey, version: CUANTO_IDB_VERSION },
+  );
+
+  await page.goto(`/app/surveys/new/${protocolRkey}?resumeId=${resumeId}`);
+  await page.waitForSelector('text=Finish Survey', { state: 'visible' });
+
+  expect(await watchCount(page)).toBe(0);
+  await expect(page.getByText('Recording:', { exact: false })).toHaveCount(0);
 });
 
 test('past survey shows the map picker, not live GPS recording', async ({

@@ -5,6 +5,7 @@ import {
   calcElapsed,
   formatElapsed,
   hasUnresolvedIncidentals,
+  shouldResumeTrackRecording,
   validatePastTiming,
   validateSurveyorCount,
 } from './surveys';
@@ -200,5 +201,33 @@ describe('hasUnresolvedIncidentals', () => {
       { localId: '2', placeholder: 'mystery fern' },
     ];
     expect(hasUnresolvedIncidentals(incidentals)).toBe(true);
+  });
+});
+
+describe('shouldResumeTrackRecording', () => {
+  test('returns true for an in-progress draft that was recording', () => {
+    expect(
+      shouldResumeTrackRecording({ trackRecording: true, complete: false }),
+    ).toBe(true);
+  });
+
+  test('returns false when the draft was not recording', () => {
+    expect(
+      shouldResumeTrackRecording({ trackRecording: false, complete: false }),
+    ).toBe(false);
+  });
+
+  test('returns false for a draft saved before trackRecording existed', () => {
+    expect(shouldResumeTrackRecording({ complete: false })).toBe(false);
+  });
+
+  test('returns false when editing an un-uploaded (complete) survey', () => {
+    expect(
+      shouldResumeTrackRecording({ trackRecording: true, complete: true }),
+    ).toBe(false);
+  });
+
+  test('returns false with no resume state', () => {
+    expect(shouldResumeTrackRecording(undefined)).toBe(false);
   });
 });

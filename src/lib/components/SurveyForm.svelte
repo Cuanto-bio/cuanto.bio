@@ -63,6 +63,7 @@ import {
   formatElapsed,
   hasUnresolvedIncidentals,
   type IncidentalOccurrence,
+  shouldResumeTrackRecording,
   validatePastTiming,
   validateSurveyorCount,
 } from '$lib/surveys';
@@ -414,6 +415,10 @@ onMount(() => {
   // If we weren't given a startedAt from resume state, reset to now
   if (!initialResumeState?.eventDate) startedAt = Date.now();
 
+  // Pick GPS track recording back up when the draft was still recording as the
+  // user navigated away, so resuming doesn't silently leave the track stopped.
+  if (shouldResumeTrackRecording(initialResumeState)) track?.start();
+
   const tick = () => {
     elapsedSeconds = calcElapsed(startedAt);
   };
@@ -535,6 +540,9 @@ function buildNewSurveyPayload(complete: boolean): PendingSurvey {
         ? 'device'
         : (trackSource ?? 'uploaded')
       : undefined,
+    // A finished survey never resumes recording, even though the composable is
+    // still running at this point (it stops when the form unmounts).
+    trackRecording: isLive && !complete && !!track?.isRecording,
     publishPoint,
     publishBbox,
     publishTrack,

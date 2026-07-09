@@ -94,6 +94,10 @@ export interface PendingSurvey {
   gpsMode?: 'none' | 'point' | 'bbox' | 'track';
   // 'device' for a live-recorded track, 'uploaded' for a track from a GPX file
   trackSource?: 'device' | 'uploaded';
+  // True when a live track was still recording as this draft was saved, so
+  // resuming the survey picks recording back up. Absent on drafts saved before
+  // this field existed, which resume with recording stopped.
+  trackRecording?: boolean;
   publishPoint: boolean;
   publishBbox: boolean;
   publishTrack: boolean;

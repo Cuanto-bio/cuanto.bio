@@ -85,6 +85,22 @@ export function hasUnresolvedIncidentals(
   return incidentals.some((i) => !i.taxonID);
 }
 
+/**
+ * Whether resuming a saved draft should pick live GPS track recording back up.
+ * Only a survey still in progress that was actively recording when it was saved
+ * resumes; a track the user stopped, and a finished (complete) survey being
+ * edited before upload, both stay stopped.
+ *
+ * Takes a structural type rather than PendingSurvey so this module stays free of
+ * an import cycle with offline/db, which imports IncidentalOccurrence from here.
+ */
+export function shouldResumeTrackRecording(
+  resumeState: { trackRecording?: boolean; complete?: boolean } | undefined,
+): boolean {
+  if (!resumeState || resumeState.complete) return false;
+  return resumeState.trackRecording === true;
+}
+
 export interface SurveyParams {
   protocolUris?: string[];
   startDate?: string;
