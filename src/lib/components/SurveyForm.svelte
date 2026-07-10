@@ -31,12 +31,7 @@ import {
   recheckConnectivity,
   useOnline,
 } from '$lib/composables/online.svelte';
-import {
-  type GpsBbox,
-  type GpsTrackPoint,
-  generateGpx,
-  trackToBbox,
-} from '$lib/gpx';
+import { type GpsBbox, type GpsTrackPoint, generateGpx } from '$lib/gpx';
 import type { Main as AtgeoPlaceMain } from '$lib/lexicons/org/atgeo/place.defs';
 import {
   type CachedProtocol,
@@ -61,9 +56,11 @@ import {
   buildSurveyTiming,
   calcElapsed,
   formatElapsed,
+  type GpsMode,
   hasUnresolvedIncidentals,
   type IncidentalOccurrence,
   shouldResumeTrackRecording,
+  surveyGeometry,
   validatePastTiming,
   validateSurveyorCount,
 } from '$lib/surveys';
@@ -166,6 +163,8 @@ let modeOverride = $state<'now' | 'past' | null>(
 
 // In edit mode the mode is always 'past'; in new mode it follows modeOverride or the URL param.
 const mode = $derived(modeOverride ?? defaultMode);
+// "now" surveys record a live track; "past"/edit surveys draw or upload geometry.
+const isLive = $derived(mode === 'now');
 
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
 let resumingComplete = $state(!!initialResumeState?.complete && !isEdit);
@@ -301,7 +300,6 @@ let surveyorCountError = $state<string | null>(null);
 let locationError = $state<string | null>(null);
 let locationFieldEl = $state<HTMLElement | null>(null);
 let gpsLoading = $state(false);
-type GpsMode = 'none' | 'point' | 'bbox' | 'track';
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
 let gpsMode = $state<GpsMode>(
   !isEdit
@@ -362,6 +360,33 @@ let publishPoint = $state(initialResumeState?.publishPoint ?? true);
 let publishBbox = $state(initialResumeState?.publishBbox ?? true);
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
 let publishTrack = $state(initialResumeState?.publishTrack ?? false);
+
+const hasLocationOptions = $derived(
+  (protocol.record.locationOptions?.length ?? 0) > 0,
+);
+
+// Which publish checkboxes the finish dialog offers, mirroring the geometry the
+// payload will carry. Not snapshotted: this only reads the state.
+const finishGeometry = $derived(
+  surveyGeometry({
+    isLive,
+    gpsMode,
+    latitude,
+    longitude,
+    bbox: gpsBbox,
+    trackPoints: isLive ? (track?.points ?? null) : pickerTrack,
+  }),
+);
+
+// A predetermined place's coordinates are the place's, not a point the surveyor
+// took, so name it rather than calling it "the point".
+const publishPointLabel = $derived(
+  hasLocationOptions
+    ? `Publish ${locationName} coordinates`
+    : gpsMode === 'track'
+      ? 'Publish point (centroid of track)'
+      : 'Publish point',
+);
 
 let incidentals_sheetOpen = $state(false);
 let editingIncidentalId = $state<string | null>(null);
@@ -487,44 +512,27 @@ function buildNewSurveyPayload(complete: boolean): PendingSurvey {
       };
   // "now" mode records into the live GPS composable; "past" mode draws/uploads
   // geometry through the map picker (pickerTrack / gpsBbox).
-  const isLive = mode === 'now';
-  let trackSnapshot: GpsTrackPoint[] | undefined;
-  let derivedBbox: GpsBbox | undefined;
-  let effectiveLat: string | null;
-  let effectiveLon: string | null;
-  if (isLive) {
-    trackSnapshot = track ? $state.snapshot(track.points) : undefined;
-    derivedBbox = trackSnapshot?.length
-      ? (trackToBbox(trackSnapshot) ?? undefined)
-      : undefined;
-    effectiveLat = latitude;
-    effectiveLon = longitude;
-  } else {
-    trackSnapshot =
-      gpsMode === 'track' && pickerTrack?.length
+  // snapshot: these are $state proxies and go to IndexedDB, which
+  // structured-clones them (a raw proxy throws "could not be cloned")
+  const {
+    latitude: effectiveLat,
+    longitude: effectiveLon,
+    bbox: derivedBbox,
+    track: trackSnapshot,
+  } = surveyGeometry({
+    isLive,
+    gpsMode,
+    latitude,
+    longitude,
+    bbox: gpsBbox ? $state.snapshot(gpsBbox) : null,
+    trackPoints: isLive
+      ? track
+        ? $state.snapshot(track.points)
+        : null
+      : pickerTrack
         ? $state.snapshot(pickerTrack)
-        : undefined;
-    derivedBbox =
-      gpsMode === 'bbox'
-        ? // snapshot: gpsBbox is a $state proxy and goes to IndexedDB, which
-          // structured-clones it (a raw proxy throws "could not be cloned")
-          gpsBbox
-          ? $state.snapshot(gpsBbox)
-          : undefined
-        : gpsMode === 'track' && trackSnapshot?.length
-          ? (trackToBbox(trackSnapshot) ?? undefined)
-          : undefined;
-    effectiveLat = gpsMode === 'point' ? latitude : null;
-    effectiveLon = gpsMode === 'point' ? longitude : null;
-  }
-  if (gpsMode === 'track' && derivedBbox) {
-    effectiveLat = String(
-      (parseFloat(derivedBbox.north) + parseFloat(derivedBbox.south)) / 2,
-    );
-    effectiveLon = String(
-      (parseFloat(derivedBbox.east) + parseFloat(derivedBbox.west)) / 2,
-    );
-  }
+        : null,
+  });
   return {
     surveyRkey,
     protocolUri: protocol.atUri,
@@ -1271,7 +1279,10 @@ function displayCount(qty: undefined | string | number) {
     {/if}
   </div>
 
-  {#if track && (protocol.record.locationOptions?.length ?? 0) > 0}
+  <!-- Live recording only makes sense for a survey happening now; a past
+       survey's geometry comes from the picker, which buildNewSurveyPayload
+       reads instead of the live recorder. -->
+  {#if track && mode === 'now' && hasLocationOptions}
     <div class="mb-6 flex items-center gap-3">
       {#if track.isRecording}
         <Button type="button" variant="outline" size="sm" onclick={track.stop}>
@@ -1553,32 +1564,26 @@ function displayCount(qty: undefined | string | number) {
           {unresolvedCount} incidental{unresolvedCount === 1 ? '' : 's'} without taxa. You can resolve them before uploading.
         </p>
       {/if}
-      {#if !isEdit && gpsMode === 'point' && latitude && longitude}
-        <label class="mt-2 flex items-center gap-2 text-sm">
-          <Checkbox bind:checked={publishPoint} />
-          Publish point
-        </label>
-      {/if}
-      {#if !isEdit && gpsMode === 'bbox' && gpsBbox}
-        <label class="mt-2 flex items-center gap-2 text-sm">
-          <Checkbox bind:checked={publishBbox} />
-          Publish bounding box
-        </label>
-      {/if}
-      {#if !isEdit && gpsMode === 'track' && (mode === 'now' ? (track?.points.length ?? 0) > 0 : (pickerTrack?.length ?? 0) > 0)}
+      {#if !isEdit && (finishGeometry.latitude || finishGeometry.bbox || finishGeometry.track)}
         <div class="mt-2 flex flex-col gap-2 text-sm">
-          <label class="flex items-center gap-2">
-            <Checkbox bind:checked={publishPoint} />
-            Publish point (centroid of track)
-          </label>
-          <label class="flex items-center gap-2">
-            <Checkbox bind:checked={publishBbox} />
-            Publish bounding box
-          </label>
-          <label class="flex items-center gap-2">
-            <Checkbox bind:checked={publishTrack} />
-            Publish GPS track (GPX file)
-          </label>
+          {#if finishGeometry.latitude && finishGeometry.longitude}
+            <label class="flex items-center gap-2">
+              <Checkbox bind:checked={publishPoint} />
+              {publishPointLabel}
+            </label>
+          {/if}
+          {#if finishGeometry.bbox}
+            <label class="flex items-center gap-2">
+              <Checkbox bind:checked={publishBbox} />
+              Publish bounding box
+            </label>
+          {/if}
+          {#if finishGeometry.track}
+            <label class="flex items-center gap-2">
+              <Checkbox bind:checked={publishTrack} />
+              Publish GPS track (GPX file)
+            </label>
+          {/if}
         </div>
       {/if}
     </AlertDialog.Header>

@@ -1,3 +1,68 @@
+import { type GpsBbox, type GpsTrackPoint, trackToBbox } from '$lib/gpx';
+
+export type GpsMode = 'none' | 'point' | 'bbox' | 'track';
+
+export interface SurveyGeometryInput {
+  /** "now" surveys record a live track; "past" surveys draw or upload geometry. */
+  isLive: boolean;
+  gpsMode: GpsMode;
+  latitude: string | null;
+  longitude: string | null;
+  bbox: GpsBbox | null;
+  /** Live recorder points when isLive, otherwise the drawn/uploaded track. */
+  trackPoints: GpsTrackPoint[] | null;
+}
+
+export interface SurveyGeometry {
+  latitude: string | null;
+  longitude: string | null;
+  bbox: GpsBbox | undefined;
+  track: GpsTrackPoint[] | undefined;
+}
+
+/**
+ * The geometry a survey will actually carry, given the form's location state.
+ * Both the payload builder and the finish dialog's publish checkboxes derive
+ * from this, so the user is never offered a toggle for geometry that isn't
+ * there (or denied one for geometry that is).
+ */
+export function surveyGeometry(input: SurveyGeometryInput): SurveyGeometry {
+  const { isLive, gpsMode, trackPoints } = input;
+  let latitude: string | null;
+  let longitude: string | null;
+  let track: GpsTrackPoint[] | undefined;
+  let bbox: GpsBbox | undefined;
+
+  if (isLive) {
+    // A live track is independent of gpsMode: protocols with predetermined
+    // places show no mode selector, yet still let the surveyor record one.
+    track = trackPoints?.length ? trackPoints : undefined;
+    bbox = track ? (trackToBbox(track) ?? undefined) : undefined;
+    latitude = input.latitude;
+    longitude = input.longitude;
+  } else {
+    track =
+      gpsMode === 'track' && trackPoints?.length ? trackPoints : undefined;
+    bbox =
+      gpsMode === 'bbox'
+        ? (input.bbox ?? undefined)
+        : track
+          ? (trackToBbox(track) ?? undefined)
+          : undefined;
+    latitude = gpsMode === 'point' ? input.latitude : null;
+    longitude = gpsMode === 'point' ? input.longitude : null;
+  }
+
+  // Freehand track surveys have no point of their own, so use the bbox centre.
+  // Place-based surveys keep the place's coordinates.
+  if (gpsMode === 'track' && bbox) {
+    latitude = String((parseFloat(bbox.north) + parseFloat(bbox.south)) / 2);
+    longitude = String((parseFloat(bbox.east) + parseFloat(bbox.west)) / 2);
+  }
+
+  return { latitude, longitude, bbox, track };
+}
+
 export function validatePastTiming(
   pastDate: string,
   pastDurationMinutes: string,

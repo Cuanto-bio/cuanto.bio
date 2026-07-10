@@ -6,6 +6,7 @@ import {
   formatElapsed,
   hasUnresolvedIncidentals,
   shouldResumeTrackRecording,
+  surveyGeometry,
   validatePastTiming,
   validateSurveyorCount,
 } from './surveys';
@@ -229,5 +230,117 @@ describe('shouldResumeTrackRecording', () => {
 
   test('returns false with no resume state', () => {
     expect(shouldResumeTrackRecording(undefined)).toBe(false);
+  });
+});
+
+describe('surveyGeometry', () => {
+  const trackPoints = [
+    { lat: 37.0, lng: -122.0, timestamp: 1 },
+    { lat: 37.2, lng: -122.4, timestamp: 2 },
+  ];
+
+  test('live survey keeps the place coordinates alongside a recorded track', () => {
+    const geom = surveyGeometry({
+      isLive: true,
+      // Protocols with predetermined places pin gpsMode to 'point'.
+      gpsMode: 'point',
+      latitude: '38.004',
+      longitude: '-122.4978',
+      bbox: null,
+      trackPoints,
+    });
+    expect(geom.latitude).toBe('38.004');
+    expect(geom.longitude).toBe('-122.4978');
+    expect(geom.track).toEqual(trackPoints);
+    expect(geom.bbox).toEqual({
+      north: '37.2',
+      south: '37',
+      east: '-122',
+      west: '-122.4',
+    });
+  });
+
+  test('live survey for a name-only place offers the track but no point', () => {
+    // A name-only predetermined place has no coordinates, so selectLocation
+    // leaves gpsMode 'none' and latitude/longitude null. A recorded track still
+    // yields a bbox and track, but there is no point to publish.
+    const geom = surveyGeometry({
+      isLive: true,
+      gpsMode: 'none',
+      latitude: null,
+      longitude: null,
+      bbox: null,
+      trackPoints,
+    });
+    expect(geom.latitude).toBeNull();
+    expect(geom.longitude).toBeNull();
+    expect(geom.track).toEqual(trackPoints);
+    expect(geom.bbox).toEqual({
+      north: '37.2',
+      south: '37',
+      east: '-122',
+      west: '-122.4',
+    });
+  });
+
+  test('live survey with no track and no point has no geometry', () => {
+    const geom = surveyGeometry({
+      isLive: true,
+      gpsMode: 'none',
+      latitude: null,
+      longitude: null,
+      bbox: null,
+      trackPoints: [],
+    });
+    expect(geom).toEqual({
+      latitude: null,
+      longitude: null,
+      bbox: undefined,
+      track: undefined,
+    });
+  });
+
+  test('track mode derives the point from the bbox centre', () => {
+    const geom = surveyGeometry({
+      isLive: false,
+      gpsMode: 'track',
+      latitude: null,
+      longitude: null,
+      bbox: null,
+      trackPoints,
+    });
+    expect(geom.latitude).toBe('37.1');
+    expect(geom.longitude).toBe('-122.2');
+    expect(geom.track).toEqual(trackPoints);
+  });
+
+  test('bbox mode keeps the drawn bbox and drops point and track', () => {
+    const bbox = { north: '38', south: '37', east: '-122', west: '-123' };
+    const geom = surveyGeometry({
+      isLive: false,
+      gpsMode: 'bbox',
+      latitude: '37.5',
+      longitude: '-122.5',
+      bbox,
+      trackPoints,
+    });
+    expect(geom.bbox).toBe(bbox);
+    expect(geom.latitude).toBeNull();
+    expect(geom.longitude).toBeNull();
+    expect(geom.track).toBeUndefined();
+  });
+
+  test('point mode drops a stale drawn bbox and track', () => {
+    const geom = surveyGeometry({
+      isLive: false,
+      gpsMode: 'point',
+      latitude: '37.5',
+      longitude: '-122.5',
+      bbox: { north: '38', south: '37', east: '-122', west: '-123' },
+      trackPoints,
+    });
+    expect(geom.latitude).toBe('37.5');
+    expect(geom.bbox).toBeUndefined();
+    expect(geom.track).toBeUndefined();
   });
 });

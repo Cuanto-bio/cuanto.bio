@@ -5,7 +5,13 @@ import {
   teardownDid,
   test,
 } from '../fixtures.js';
-import { cacheAndOpenNewSurvey, confirmFinishSurvey } from './helpers.js';
+import {
+  cacheAndOpenNewSurvey,
+  confirmFinishSurvey,
+  mockWatchPosition,
+  pushTrackFixes,
+  waitForRecordedPoint,
+} from './helpers.js';
 
 // ── Survey page with locationOptions ─────────────────────────────────────────
 
@@ -99,6 +105,84 @@ test.describe('survey with locationOptions', () => {
     expect(location.locations).toHaveLength(1);
     expect(location.locations![0].latitude).toBe('38.004');
     expect(location.locations![0].longitude).toBe('-122.4978');
+  });
+
+  test('finish dialog names the selected place instead of offering "Publish point"', async ({
+    page,
+  }) => {
+    await cacheAndOpenNewSurvey(page, LOC_SURVEY_HANDLE, locProtocolRkey);
+
+    await page.getByRole('radio', { name: 'China Camp' }).click();
+    await page.getByRole('button', { name: 'Finish Survey' }).click();
+
+    await expect(
+      page.getByText('Publish China Camp coordinates'),
+    ).toBeVisible();
+    await expect(page.getByText('Publish point', { exact: true })).toHaveCount(
+      0,
+    );
+  });
+
+  test('finish dialog offers bbox and track when a track was recorded for a predetermined place', async ({
+    page,
+  }) => {
+    await mockWatchPosition(page);
+    await cacheAndOpenNewSurvey(page, LOC_SURVEY_HANDLE, locProtocolRkey);
+
+    await page.getByRole('radio', { name: 'China Camp' }).click();
+    await page.getByRole('button', { name: 'Record GPS track' }).click();
+    await pushTrackFixes(page);
+    await waitForRecordedPoint(page);
+    await page.getByRole('button', { name: 'Stop GPS track' }).click();
+
+    await page.getByRole('button', { name: 'Finish Survey' }).click();
+
+    // The point still comes from the place, not the track's centroid.
+    await expect(
+      page.getByText('Publish China Camp coordinates'),
+    ).toBeVisible();
+    await expect(page.getByText('Publish bounding box')).toBeVisible();
+    await expect(page.getByText('Publish GPS track (GPX file)')).toBeVisible();
+  });
+
+  test('finish dialog offers bbox and track but no point for a name-only place with a track', async ({
+    page,
+  }) => {
+    await mockWatchPosition(page);
+    await cacheAndOpenNewSurvey(page, LOC_SURVEY_HANDLE, locProtocolRkey);
+
+    // Mission Creek is a name-only option: no coordinates, so nothing to
+    // publish as a point, but a recorded track still yields bbox and GPX.
+    await page.getByRole('radio', { name: 'Mission Creek' }).click();
+    await page.getByRole('button', { name: 'Record GPS track' }).click();
+    await pushTrackFixes(page);
+    await waitForRecordedPoint(page);
+    await page.getByRole('button', { name: 'Stop GPS track' }).click();
+
+    await page.getByRole('button', { name: 'Finish Survey' }).click();
+
+    await expect(page.getByText('Publish bounding box')).toBeVisible();
+    await expect(page.getByText('Publish GPS track (GPX file)')).toBeVisible();
+    await expect(page.getByText(/Publish .* coordinates/)).toHaveCount(0);
+    await expect(page.getByText('Publish point', { exact: true })).toHaveCount(
+      0,
+    );
+  });
+
+  // A past survey can't be recorded live, and buildNewSurveyPayload reads the
+  // picker's track (not the live recorder) in past mode, so points collected
+  // here would never reach the survey record.
+  test('past survey does not offer live GPS track recording', async ({
+    page,
+  }) => {
+    await page.goto(`/app/protocols/${LOC_SURVEY_HANDLE}/${locProtocolRkey}`);
+    await page.waitForLoadState('networkidle');
+    await page.goto(`/app/surveys/new/${locProtocolRkey}?past=1`);
+    await page.waitForSelector('text=Finish Survey', { state: 'visible' });
+
+    await expect(
+      page.getByRole('button', { name: /record gps track/i }),
+    ).toHaveCount(0);
   });
 
   test('switching from a geo option to a name-only option clears coordinates', async ({
