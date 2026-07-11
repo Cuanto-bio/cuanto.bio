@@ -1,4 +1,31 @@
 import { expect, type Page } from '@playwright/test';
+import type { GpsTrackPoint } from '../../src/lib/gpx';
+import { CUANTO_IDB_VERSION } from '../../src/lib/offline/constants';
+
+// Writes a device-local GPS track straight into IndexedDB, as recording a
+// survey would. The page must already have visited the app so the DB exists.
+export async function seedLocalTrack(
+  page: Page,
+  surveyAtUri: string,
+  points: GpsTrackPoint[],
+) {
+  await page.evaluate(
+    ({ surveyAtUri, points, version }) => {
+      return new Promise<void>((resolve, reject) => {
+        const req = indexedDB.open('cuanto', version);
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('gps-tracks', 'readwrite');
+          tx.objectStore('gps-tracks').put({ atUri: surveyAtUri, points });
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+        };
+        req.onerror = () => reject(req.error);
+      });
+    },
+    { surveyAtUri, points, version: CUANTO_IDB_VERSION },
+  );
+}
 
 export async function cacheAndOpenNewSurvey(
   page: Page,

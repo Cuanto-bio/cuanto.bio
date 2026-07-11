@@ -11,6 +11,7 @@ import {
   cacheAndOpenNewSurvey,
   mockWatchPosition,
   pushTrackFixes,
+  seedLocalTrack,
   waitForRecordedPoint,
 } from './helpers.js';
 
@@ -209,6 +210,74 @@ test('editing an un-uploaded survey does not start GPS track recording', async (
   await expect(page.getByText('Recording:', { exact: false })).toHaveCount(0);
 });
 
+test('recording a GPS track reports distance traveled in the chosen unit', async ({
+  page,
+  protocolRkey,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'geolocation', {
+      value: {
+        watchPosition: (success: PositionCallback) => {
+          (window as unknown as Record<string, unknown>).__geoPush = (
+            lat: number,
+            lng: number,
+            accuracy: number,
+            timestamp: number,
+          ) =>
+            success({
+              coords: { latitude: lat, longitude: lng, accuracy },
+              timestamp,
+            } as GeolocationPosition);
+          return 1;
+        },
+        clearWatch: () => {},
+      },
+      configurable: true,
+    });
+  });
+
+  await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+  await page.getByRole('radio', { name: 'Track' }).click();
+  await expect(page.getByText('Recording:', { exact: false })).toBeVisible();
+
+  // Warm-up converges after a stable seed plus three fixes, then each fix past a
+  // 10s steady window commits another point. Two committed points a tenth of a
+  // degree apart give a distance well clear of zero.
+  await page.evaluate(() => {
+    const push = (window as unknown as Record<string, unknown>).__geoPush as (
+      lat: number,
+      lng: number,
+      accuracy: number,
+      timestamp: number,
+    ) => void;
+    const t = Date.now();
+    push(37.0, -122.0, 5, t);
+    push(37.0, -122.0, 5, t + 1_000);
+    push(37.0, -122.0, 5, t + 2_000);
+    push(37.0, -122.0, 5, t + 3_000);
+    push(37.1, -122.0, 5, t + 14_000);
+    push(37.2, -122.0, 5, t + 25_000);
+  });
+
+  // Distance shows only once there are at least two points to measure between.
+  const kmReadout = page.getByText(/^[\d,.]+ km$/);
+  await expect(kmReadout).toBeVisible();
+  const kmText = (await kmReadout.textContent()) ?? '';
+  const km = Number(kmText.replace(/[^\d.]/g, ''));
+  expect(km).toBeGreaterThan(0);
+
+  // Switching units reruns the conversion against the same underlying metres.
+  const unitPicker = page.getByRole('button', { name: 'Distance units' });
+  await expect(unitPicker).toHaveText('km');
+  await unitPicker.click();
+  await page.getByRole('option', { name: 'miles' }).click();
+  await expect(unitPicker).toHaveText('mi');
+
+  const miText = (await page.getByText(/^[\d,.]+ mi$/).textContent()) ?? '';
+  const mi = Number(miText.replace(/[^\d.]/g, ''));
+  expect(mi).toBeCloseTo(km / 1.609344, 1);
+});
+
 test('past survey shows the map picker, not live GPS recording', async ({
   page,
   protocolRkey,
@@ -303,29 +372,10 @@ test('survey detail shows Export GPX button and downloads GPX when local track e
     await page.goto(`/app/protocols/${TRACK_HANDLE}/${protocolRkey}`);
     await page.waitForLoadState('networkidle');
 
-    await page.evaluate(
-      ({ surveyAtUri, points, version }) => {
-        return new Promise<void>((resolve, reject) => {
-          const req = indexedDB.open('cuanto', version);
-          req.onsuccess = () => {
-            const db = req.result;
-            const tx = db.transaction('gps-tracks', 'readwrite');
-            tx.objectStore('gps-tracks').put({ atUri: surveyAtUri, points });
-            tx.oncomplete = () => resolve();
-            tx.onerror = () => reject(tx.error);
-          };
-          req.onerror = () => reject(req.error);
-        });
-      },
-      {
-        surveyAtUri,
-        points: [
-          { lat: 37.77, lng: -122.41, timestamp: 1700000000000 },
-          { lat: 37.78, lng: -122.42, timestamp: 1700000010000 },
-        ],
-        version: CUANTO_IDB_VERSION,
-      },
-    );
+    await seedLocalTrack(page, surveyAtUri, [
+      { lat: 37.77, lng: -122.41, timestamp: 1700000000000 },
+      { lat: 37.78, lng: -122.42, timestamp: 1700000010000 },
+    ]);
 
     await page.goto(`/app/surveys/${TRACK_HANDLE}/${surveyRkey}`);
     await page.waitForLoadState('networkidle');
@@ -337,6 +387,60 @@ test('survey detail shows Export GPX button and downloads GPX when local track e
     await exportButton.click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe(`survey-${surveyRkey}.gpx`);
+  } finally {
+    await teardownDid(sql, TRACK_DID);
+  }
+});
+
+test('survey detail reports the distance traveled along a local track', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: 'did',
+      value: TRACK_DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  const { protocolRkey } = await seedProtocol(sql, TRACK_DID);
+  const protocolUri = `at://${TRACK_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+  const { surveyRkey } = await seedSurvey(
+    sql,
+    TRACK_DID,
+    protocolUri,
+    'Track Test Park',
+  );
+  const surveyAtUri = `at://${TRACK_DID}/bio.cuanto.survey/${surveyRkey}`;
+
+  try {
+    await page.goto(`/app/protocols/${TRACK_HANDLE}/${protocolRkey}`);
+    await page.waitForLoadState('networkidle');
+
+    // Two fixes 0.01° apart in each axis near 37.8°N: ~1.42 km.
+    await seedLocalTrack(page, surveyAtUri, [
+      { lat: 37.77, lng: -122.41, timestamp: 1700000000000 },
+      { lat: 37.78, lng: -122.42, timestamp: 1700000010000 },
+    ]);
+
+    await page.goto(`/app/surveys/${TRACK_HANDLE}/${surveyRkey}`);
+    await page.waitForLoadState('networkidle');
+
+    await expect(
+      page.getByRole('rowheader', { name: 'Distance' }),
+    ).toBeVisible();
+    await expect(page.getByText('1.42 km', { exact: true })).toBeVisible();
+
+    // The unit picker converts the same track to miles.
+    const unitPicker = page.getByRole('button', { name: 'Distance units' });
+    await unitPicker.click();
+    await page.getByRole('option', { name: 'miles' }).click();
+    await expect(page.getByText('0.88 mi', { exact: true })).toBeVisible();
   } finally {
     await teardownDid(sql, TRACK_DID);
   }

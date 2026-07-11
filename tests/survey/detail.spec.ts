@@ -405,6 +405,97 @@ test('edit form removes an existing track and persists its absence', async ({
   }
 });
 
+const TRKDIST_DID = 'did:test:survey-loc-edit-dist';
+const TRKDIST_HANDLE = 'user-survey-loc-edit-dist';
+
+test('edit form shows track distance and drops it when the track is removed', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: 'did',
+      value: TRKDIST_DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  // Serve a real GPX body for the published blob so the editor loads points.
+  // Two fixes 0.01° apart in each axis near 37.8°N: ~1.42 km.
+  await page.route('**/api/blobs/gpx*', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/gpx+xml',
+      body: [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<gpx version="1.1" creator="cuanto.bio">',
+        '<trk><trkseg>',
+        '<trkpt lat="37.77" lon="-122.41"><time>2026-05-01T10:00:00.000Z</time></trkpt>',
+        '<trkpt lat="37.78" lon="-122.42"><time>2026-05-01T10:00:10.000Z</time></trkpt>',
+        '</trkseg></trk>',
+        '</gpx>',
+      ].join('\n'),
+    }),
+  );
+
+  const { protocolRkey } = await seedProtocol(sql, TRKDIST_DID);
+  const protocolUri = `at://${TRKDIST_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+  const surveyRkey = `trkdist${Date.now()}`;
+  const atUri = `at://${TRKDIST_DID}/bio.cuanto.survey/${surveyRkey}`;
+  const record = {
+    $type: 'bio.cuanto.survey',
+    protocol: {
+      uri: protocolUri,
+      cid: 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34',
+    },
+    createdAt: new Date().toISOString(),
+    eventDate: '2026-05-01T10:00:00.000Z',
+    location: {
+      $type: 'org.atgeo.place',
+      name: 'Track Distance Park',
+      locations: [],
+    },
+    track: {
+      gpx: {
+        $type: 'blob',
+        ref: { $link: 'bafkreigpxfaketrackcidfordistanceflowxxxxxxxxxxx' },
+        mimeType: 'application/gpx+xml',
+        size: 128,
+      },
+      source: 'device',
+    },
+  };
+  await sql`
+    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, created_at, record, indexed_at)
+    VALUES (${atUri}, ${TRKDIST_DID}, ${surveyRkey}, ${protocolUri}, now(), ${sql.json(record)}, now())
+  `;
+
+  try {
+    await page.goto(`/app/protocols/${TRKDIST_HANDLE}/${protocolRkey}`);
+    await page.waitForLoadState('networkidle');
+    await page.goto(`/app/surveys/${TRKDIST_HANDLE}/${surveyRkey}/edit`);
+    await page.waitForSelector('[placeholder="e.g. Mission Dolores Park"]', {
+      state: 'visible',
+    });
+
+    await expect(page.getByText('1.42 km', { exact: true })).toBeVisible();
+
+    // Removing the track drops the readout rather than leaving a stale distance.
+    await page.getByTestId('loc-remove-track').click();
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: 'Remove' })
+      .click();
+    await expect(page.getByText('1.42 km', { exact: true })).toHaveCount(0);
+  } finally {
+    await teardownDid(sql, TRKDIST_DID);
+  }
+});
+
 // ── Survey detail: coordinates and map ────────────────────────────────────────
 
 const COORDS_DID = 'did:test:survey-spec-coords';

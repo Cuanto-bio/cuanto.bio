@@ -15,6 +15,7 @@ import Taxon from '$lib/components/Taxon.svelte';
 import TaxonAutocomplete, {
   type TaxonResult,
 } from '$lib/components/TaxonAutocomplete.svelte';
+import TrackDistance from '$lib/components/TrackDistance.svelte';
 import * as AlertDialog from '$lib/components/ui/alert-dialog';
 import { Checkbox } from '$lib/components/ui/checkbox';
 import * as Command from '$lib/components/ui/command';
@@ -342,6 +343,14 @@ let editTrackPoints = $state<GpsTrackPoint[] | null>(null);
 // props are complete (the editor reads them once at mount).
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
 let editTrackLoaded = $state(!isEdit || !sv.record.track);
+
+// The track a save would leave behind, so the distance readout tracks a pending
+// replace/remove rather than the points that happened to load.
+const editDistanceTrack = $derived.by(() => {
+  if (editTrack.action === 'replace') return editTrack.points;
+  if (editTrack.action === 'remove') return null;
+  return editTrackPoints;
+});
 
 let locationPickerOpen = $state(false);
 
@@ -1012,6 +1021,13 @@ function displayCount(qty: undefined | string | number) {
 }
 </script>
 
+<!-- A lone fix has no distance to report; only show the readout once there's a leg. -->
+{#snippet trackDistance(points: GpsTrackPoint[])}
+  {#if points.length > 1}
+    <TrackDistance {points} class="text-muted-foreground text-xs" />
+  {/if}
+{/snippet}
+
 <main>
   <div class="flex min-h-dvh flex-col pt-8">
 
@@ -1202,6 +1218,9 @@ function displayCount(qty: undefined | string | number) {
             trackPresent={!!sv.record.track}
             onchange={onLocationEditChange}
           />
+          {#if editDistanceTrack}
+            {@render trackDistance(editDistanceTrack)}
+          {/if}
         {/if}
       {:else if mode === 'past'}
         <LocationPicker
@@ -1212,6 +1231,9 @@ function displayCount(qty: undefined | string | number) {
           track={pickerTrack}
           onchange={onLocationChange}
         />
+        {#if pickerTrack}
+          {@render trackDistance(pickerTrack)}
+        {/if}
       {:else}
         <Field.Set>
           <Field.Legend variant="label">Coordinates</Field.Legend>
@@ -1242,7 +1264,7 @@ function displayCount(qty: undefined | string | number) {
               {/if}
             </div>
           {:else if gpsMode === 'track'}
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center gap-3">
               {#if track?.isRecording}
                 <Button type="button" variant="outline" size="sm" onclick={track.stop}>
                   Stop recording
@@ -1252,6 +1274,7 @@ function displayCount(qty: undefined | string | number) {
                   Recording: {track.points.length}
                   {track.points.length === 1 ? 'point' : 'points'}
                 </span>
+                {@render trackDistance(track.points)}
               {:else}
                 <Button
                   type="button"
@@ -1267,6 +1290,7 @@ function displayCount(qty: undefined | string | number) {
                     {track.points.length}
                     {track.points.length === 1 ? 'point' : 'points'} saved
                   </span>
+                  {@render trackDistance(track.points)}
                 {/if}
               {/if}
             </div>
@@ -1283,7 +1307,7 @@ function displayCount(qty: undefined | string | number) {
        survey's geometry comes from the picker, which buildNewSurveyPayload
        reads instead of the live recorder. -->
   {#if track && mode === 'now' && hasLocationOptions}
-    <div class="mb-6 flex items-center gap-3">
+    <div class="mb-6 flex flex-wrap items-center gap-3">
       {#if track.isRecording}
         <Button type="button" variant="outline" size="sm" onclick={track.stop}>
           Stop GPS track
@@ -1293,6 +1317,7 @@ function displayCount(qty: undefined | string | number) {
           Recording: {track.points.length}
           {track.points.length === 1 ? 'point' : 'points'}
         </span>
+        {@render trackDistance(track.points)}
       {:else}
         <Button
           type="button"
@@ -1308,6 +1333,7 @@ function displayCount(qty: undefined | string | number) {
             {track.points.length}
             {track.points.length === 1 ? 'point' : 'points'} saved
           </span>
+          {@render trackDistance(track.points)}
         {/if}
       {/if}
     </div>

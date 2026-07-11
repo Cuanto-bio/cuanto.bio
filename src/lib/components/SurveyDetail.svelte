@@ -12,6 +12,7 @@ import GeoMap from '$lib/components/GeoMap.svelte';
 import TargetFilterControls from '$lib/components/TargetFilterControls.svelte';
 import type { TaxonProp } from '$lib/components/Taxon.svelte';
 import Taxon from '$lib/components/Taxon.svelte';
+import TrackDistance from '$lib/components/TrackDistance.svelte';
 import * as Card from '$lib/components/ui/card';
 import * as Dialog from '$lib/components/ui/dialog';
 import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -245,6 +246,14 @@ const externalLinkProps =
                     <Table.Cell>
                       {survey.record.eventDurationValue}
                       {survey.record.eventDurationUnit ?? 'min'}
+                    </Table.Cell>
+                  </Table.Row>
+                {/if}
+                {#if displayTrack && displayTrack.length > 1}
+                  <Table.Row>
+                    <Table.Head>Distance</Table.Head>
+                    <Table.Cell>
+                      <TrackDistance points={displayTrack} />
                     </Table.Cell>
                   </Table.Row>
                 {/if}
