@@ -1,6 +1,7 @@
 <script lang="ts">
 import { l } from '@atproto/lex';
 import { onDestroy, tick } from 'svelte';
+import { beforeNavigate, goto } from '$app/navigation';
 import Button from '$lib/components/Button.svelte';
 import Form from '$lib/components/Form.svelte';
 import FormSection from '$lib/components/FormSection.svelte';
@@ -10,6 +11,7 @@ import TaxonAutocomplete, {
   type TaxonResult,
 } from '$lib/components/TaxonAutocomplete.svelte';
 import * as Alert from '$lib/components/ui/alert';
+import * as AlertDialog from '$lib/components/ui/alert-dialog';
 import { Badge } from '$lib/components/ui/badge';
 import * as Card from '$lib/components/ui/card';
 import { Input } from '$lib/components/ui/input';
@@ -110,45 +112,69 @@ function readAndClearDraft(): Draft | null {
 // svelte-ignore state_referenced_locally -- intentional: read once at init
 const savedDraft = readAndClearDraft();
 
-// svelte-ignore state_referenced_locally -- intentional: initialize from server data
-let title = $state(savedDraft?.title ?? protocol?.record?.title ?? '');
-// svelte-ignore state_referenced_locally -- intentional: initialize from server data
-let description = $state(
-  savedDraft?.description ?? protocol?.record?.description ?? '',
-);
+// Serialized rather than compared field by field so added/removed/reordered
+// targets and places all register, without hand-writing a deep equality check.
+function formSnapshot(state: {
+  title: string;
+  description: string;
+  requiredFieldDate: boolean;
+  requiredFieldDuration: boolean;
+  requiredFieldSurveyorCount: boolean;
+  targets: Target[];
+  places: PlaceEntry[];
+}): string {
+  return JSON.stringify(state);
+}
 
-// svelte-ignore state_referenced_locally -- intentional: initialize from server data
+// What the server currently holds. Doubles as the baseline the unsaved-changes
+// guard compares against, so a restored draft still counts as unsaved work.
+// svelte-ignore state_referenced_locally -- intentional: derived once from the prop this form was mounted with
+const pristine = {
+  title: protocol?.record?.title ?? '',
+  description: protocol?.record?.description ?? '',
+  requiredFieldDate:
+    protocol?.record?.requiredFields?.includes('eventDate') ?? false,
+  requiredFieldDuration:
+    protocol?.record?.requiredFields?.includes('eventDuration') ?? false,
+  requiredFieldSurveyorCount:
+    protocol?.record?.requiredFields?.includes('surveyorCount') ?? false,
+  targets: (protocol?.targets || []).map((t) => ({
+    atUri: t.atUri,
+    // Persisted targets already have a stable, unique id in atUri; only
+    // targets with no atUri yet (added below) need a generated one.
+    key: t.atUri,
+    scope: t.record.scope as (l.$Typed<TaxonScope> | l.$Typed<VerbatimScope>)[],
+  })),
+  places: (protocol?.record?.locationOptions ?? []).map((place) => ({
+    name: place.name,
+    geos: (place.locations ?? []).filter(
+      (loc) => loc.$type === 'community.lexicon.location.geo',
+    ) as AtGeo[],
+    addresses: (place.locations ?? []).filter(
+      (loc) => loc.$type === 'community.lexicon.location.address',
+    ) as AtAddress[],
+  })),
+};
+
+const pristineSnapshot = formSnapshot(pristine);
+
+let title = $state(savedDraft?.title ?? pristine.title);
+let description = $state(savedDraft?.description ?? pristine.description);
+
 let requiredFieldDate = $state(
-  savedDraft?.requiredFieldDate ??
-    protocol?.record?.requiredFields?.includes('eventDate') ??
-    false,
+  savedDraft?.requiredFieldDate ?? pristine.requiredFieldDate,
 );
-// svelte-ignore state_referenced_locally -- intentional: initialize from server data
 let requiredFieldDuration = $state(
-  savedDraft?.requiredFieldDuration ??
-    protocol?.record?.requiredFields?.includes('eventDuration') ??
-    false,
+  savedDraft?.requiredFieldDuration ?? pristine.requiredFieldDuration,
 );
-// svelte-ignore state_referenced_locally -- intentional: initialize from server data
 let requiredFieldSurveyorCount = $state(
-  savedDraft?.requiredFieldSurveyorCount ??
-    protocol?.record?.requiredFields?.includes('surveyorCount') ??
-    false,
+  savedDraft?.requiredFieldSurveyorCount ?? pristine.requiredFieldSurveyorCount,
 );
 
-// svelte-ignore state_referenced_locally -- intentional: initialize from server data
+// structuredClone, not pristine.targets directly: $state deep-proxies the array
+// it's handed, so editing the form would otherwise mutate `pristine` through it.
 let targets = $state<Target[]>(
-  savedDraft?.targets ??
-    (protocol?.targets || []).map((t) => ({
-      atUri: t.atUri,
-      // Persisted targets already have a stable, unique id in atUri; only
-      // targets with no atUri yet (added below) need a generated one.
-      key: t.atUri,
-      scope: t.record.scope as (
-        | l.$Typed<TaxonScope>
-        | l.$Typed<VerbatimScope>
-      )[],
-    })),
+  savedDraft?.targets ?? structuredClone(pristine.targets),
 );
 
 // Keys of targets that were just added, so their row can flash. See Target.key.
@@ -171,18 +197,8 @@ onDestroy(() => {
   for (const timeoutId of flashTimeouts) clearTimeout(timeoutId);
 });
 
-// svelte-ignore state_referenced_locally -- intentional: initialize from server data
 let places = $state<PlaceEntry[]>(
-  savedDraft?.places ??
-    (protocol?.record?.locationOptions ?? []).map((place) => ({
-      name: place.name,
-      geos: (place.locations ?? []).filter(
-        (loc) => loc.$type === 'community.lexicon.location.geo',
-      ) as AtGeo[],
-      addresses: (place.locations ?? []).filter(
-        (loc) => loc.$type === 'community.lexicon.location.address',
-      ) as AtAddress[],
-    })),
+  savedDraft?.places ?? structuredClone(pristine.places),
 );
 
 // Stashes the in-progress draft to sessionStorage before following the "Sign
@@ -201,6 +217,76 @@ function stashDraft() {
     savedAt: Date.now(),
   };
   sessionStorage.setItem(draftKey, JSON.stringify(draft));
+}
+
+// ─── unsaved changes guard ──────────────────────────────────────────────────
+
+const dirty = $derived(
+  formSnapshot({
+    title,
+    description,
+    requiredFieldDate,
+    requiredFieldDuration,
+    requiredFieldSurveyorCount,
+    targets: $state.snapshot(targets),
+    places: $state.snapshot(places),
+  }) !== pristineSnapshot,
+);
+
+// Set while the form is being submitted and left set through the redirect the
+// action responds with, so a successful save doesn't trip the guard on its way
+// out. Reset if the submission comes back without navigating (validation error,
+// expired session) and the user is still sitting on their unsaved work.
+let saving = $state(false);
+// Set when the user has already answered the prompt, so the goto below isn't
+// intercepted by the same guard that asked the question.
+let leaving = $state(false);
+let pendingUrl = $state<string | null>(null);
+
+const confirmOpen = $derived(pendingUrl !== null);
+
+beforeNavigate((nav) => {
+  if (!dirty || saving || leaving) return;
+
+  // A full page unload (tab close, reload, external link) can't be replaced with
+  // our own dialog; cancelling asks the browser to show its native one instead.
+  if (nav.willUnload) {
+    nav.cancel();
+    return;
+  }
+  if (!nav.to) return;
+
+  nav.cancel();
+  pendingUrl = nav.to.url.href;
+});
+
+// The sign-in round trip stashes the entries and brings them back, so the guard
+// would be asking about work that isn't actually at risk.
+function signInWithDraft() {
+  stashDraft();
+  leaving = true;
+}
+
+function keepEditing() {
+  pendingUrl = null;
+}
+
+async function discardChanges() {
+  const url = pendingUrl;
+  pendingUrl = null;
+  if (!url) return;
+  leaving = true;
+  await goto(url);
+}
+
+function handleEnhance() {
+  saving = true;
+  return async (opts: { update: () => Promise<void> }) => {
+    await opts.update();
+    // Reached only when the action returned instead of redirecting, which means
+    // nothing was saved and the guard should arm again.
+    saving = false;
+  };
 }
 
 let placeQuery = $state('');
@@ -505,8 +591,17 @@ function removeAddress(i: number, j: number) {
 }
 </script>
 
-<Card.Root>
-  <Card.Header>
+<!--
+  overflow-visible: Card clips by default, which would trap the sticky save bar.
+  Below sm the card chrome (rounding, shadow, ring, fill) is stripped and the
+  content padding drops to zero so the form goes flush with the page on mobile,
+  matching the survey form: sections and the save bar then bleed to the screen
+  edge (see -mx-4 below). The chrome and card padding return at sm+.
+-->
+<Card.Root
+  class="overflow-visible rounded-none bg-transparent shadow-none ring-0 sm:rounded-4xl sm:bg-card sm:shadow-md sm:ring-1"
+>
+  <Card.Header class="px-0 sm:px-6">
     <Card.Title>
       {protocol ? 'Edit Protocol' : 'New Protocol'}
     </Card.Title>
@@ -518,13 +613,13 @@ function removeAddress(i: number, j: number) {
       }
     </Card.Description>
   </Card.Header>
-  <Card.Content>
+  <Card.Content class="px-0 sm:px-6">
     {#if !onlineState.value}
       <p class="text-muted-foreground text-sm">
         Editing a protocol requires an internet connection. Please reconnect and try again.
       </p>
     {:else}
-    <Form method="POST" class="flex flex-col gap-6">
+    <Form method="POST" class="flex flex-col gap-6" onEnhance={handleEnhance}>
       {#if form?.sessionExpired}
         <Alert.Root class="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
           <Alert.Title>Session expired</Alert.Title>
@@ -533,7 +628,7 @@ function removeAddress(i: number, j: number) {
             below are still here — sign in again to save them.
             <a
               href={`/auth/signin?returnTo=${encodeURIComponent(returnTo)}`}
-              onclick={stashDraft}
+              onclick={signInWithDraft}
               class="underline font-medium ml-1"
             >
               Sign in
@@ -996,8 +1091,42 @@ function removeAddress(i: number, j: number) {
       <input type="hidden" name="targets" value={targetsJson()} />
       <input type="hidden" name="locationOptions" value={placesJson()} />
 
-      <Button type="submit">{protocol ? 'Save changes' : 'Create protocol'}</Button>
+      <!--
+        Pinned to the bottom of the scrollport so the save button is reachable
+        from anywhere in this long form. On mobile it bleeds to the screen edge
+        (-mx-4 px-4) over the page background so its top rule matches the
+        full-width section lines, staying opaque as content scrolls under it. At
+        sm+ it instead spans the card's horizontal padding (-mx-6 px-6) and
+        carries the card background; it's deliberately not pulled flush to the
+        card's bottom edge, since the card no longer clips (see overflow-visible
+        above) and a square bar on the edge would paint over its rounded corners.
+      -->
+      <div
+        class="bg-background border-border sticky bottom-0 -mx-4 border-t px-4 py-6 sm:-mx-6 sm:bg-card sm:px-6"
+      >
+        <Button class="w-full" type="submit">{protocol ? 'Save changes' : 'Create protocol'}</Button>
+      </div>
     </Form>
     {/if}
   </Card.Content>
 </Card.Root>
+
+<AlertDialog.Root
+  open={confirmOpen}
+  onOpenChange={(open) => {
+    if (!open) keepEditing();
+  }}
+>
+  <AlertDialog.Content>
+    <AlertDialog.Header>
+      <AlertDialog.Title>Discard unsaved changes?</AlertDialog.Title>
+      <AlertDialog.Description>
+        This protocol hasn't been saved. If you leave now, your changes will be lost.
+      </AlertDialog.Description>
+    </AlertDialog.Header>
+    <AlertDialog.Footer>
+      <AlertDialog.Cancel>Keep editing</AlertDialog.Cancel>
+      <AlertDialog.Action onclick={discardChanges}>Discard changes</AlertDialog.Action>
+    </AlertDialog.Footer>
+  </AlertDialog.Content>
+</AlertDialog.Root>

@@ -118,7 +118,13 @@ onMount(() => {
         </Collapsible.Trigger>
       </Collapsible.Root>
     </div>
-    <div class="mobile-scroll flex-1 overflow-y-auto" bind:this={scrollContainer}>
+    <!--
+      Scrolling is deliberately NOT set here: layout.css gives .mobile-scroll
+      `overflow-y: auto` only on narrow/touch viewports. Applying it at every
+      width would make this an overflow container that never actually scrolls on
+      desktop, which silently breaks `position: sticky` for anything inside it.
+    -->
+    <div class="mobile-scroll flex-1" bind:this={scrollContainer}>
       <div class="mx-auto max-w-4xl px-4 pb-8 flex flex-col min-h-full">
         {@render children()}
         <InstallFooter />
