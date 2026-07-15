@@ -1,13 +1,10 @@
 import { error, json } from '@sveltejs/kit';
+import { getProtocolActivity } from '$lib/server/db/protocol-activity';
 import {
   getFollowByDidAndProtocol,
   getFollowerCount,
 } from '$lib/server/db/protocol-follows';
 import { getProtocolDetailByHandleAndRkey } from '$lib/server/db/survey-protocols';
-import {
-  getLastSurveyByTargetUris,
-  toLastSurveyMap,
-} from '$lib/server/db/surveys';
 import type { RequestHandler } from './$types';
 
 // Protocols are publicly readable — no auth required.
@@ -20,8 +17,9 @@ export const GET: RequestHandler = async ({ params, locals }) => {
 
   const followerCount = await getFollowerCount(protocol.atUri);
 
-  const lastSurveyByTargetUri = toLastSurveyMap(
-    await getLastSurveyByTargetUris(protocol.targets.map((t) => t.atUri)),
+  const activity = await getProtocolActivity(
+    protocol.atUri,
+    protocol.targets.map((t) => t.atUri),
   );
 
   let isFollowing = false;
@@ -35,6 +33,6 @@ export const GET: RequestHandler = async ({ params, locals }) => {
     handle: params.handle,
     followerCount,
     isFollowing,
-    lastSurveyByTargetUri,
+    activity,
   });
 };

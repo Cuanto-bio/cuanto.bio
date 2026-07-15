@@ -96,6 +96,42 @@ test('follow flow', async ({ page, sql, context }) => {
   }
 });
 
+test('follower count survives a reload (cached page load path)', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: 'did',
+      value: DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  const { protocolRkey } = await seedProtocol(sql, DID);
+  const protocolUri = `at://${DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+  const FOLLOWER_DID = 'did:test:follow-spec-other-follower';
+  await seedFollow(sql, FOLLOWER_DID, protocolUri);
+
+  try {
+    // First visit caches the protocol client-side and shows the real count.
+    await page.goto(`/protocols/${HANDLE}/${protocolRkey}`);
+    await expect(page.getByText('1 follower')).toBeVisible();
+
+    // Reloading now hits the offline-first "serve cached protocol" load path,
+    // which streams the real count in from a fresh fetch (previously it was
+    // hardcoded to 0 and never corrected).
+    await page.reload();
+    await expect(page.getByText('1 follower')).toBeVisible();
+  } finally {
+    await sql`DELETE FROM protocol_follows WHERE did = ${FOLLOWER_DID}`;
+    await teardownDid(sql, DID);
+  }
+});
+
 test('unfollow flow', async ({ page, sql, context }) => {
   await context.addCookies([
     {

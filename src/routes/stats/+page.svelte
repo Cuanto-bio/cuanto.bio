@@ -10,6 +10,7 @@ import * as Card from '$lib/components/ui/card';
 import { Input } from '$lib/components/ui/input';
 import { Label } from '$lib/components/ui/label';
 import * as Table from '$lib/components/ui/table';
+import * as Tabs from '$lib/components/ui/tabs';
 import type { Bbox } from '$lib/map/locationGeometry';
 import type { StatsResult } from '$lib/server/db/stats';
 import type { PageData } from './$types';
@@ -26,7 +27,6 @@ let loading = $state(false);
 let errorMsg = $state<string | null>(null);
 let stats = $state<StatsResult | null>(null);
 let mounted = $state(false);
-let activeTab = $state<'species' | 'taxa' | 'targets'>('species');
 
 function addProtocol(result: ProtocolResult) {
   if (selectedProtocols.some((p) => p.atUri === result.atUri)) return;
@@ -220,147 +220,141 @@ function surveysUrl(extraParams: Record<string, string> = {}): string {
       {@render statCard(stats.totalIndividuals, "Individuals", {class: "col-span-2 sm:col-span-1"})}
     </div>
 
-    {#snippet tabBtn(id: 'species' | 'taxa' | 'targets', label: string)}
-      <button
-        type="button"
-        class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors {activeTab === id
-          ? 'border-foreground text-foreground'
-          : 'border-transparent text-muted-foreground hover:text-foreground'}"
-        onclick={() => (activeTab = id)}
-      >
-        {label}
-      </button>
-    {/snippet}
+    <Tabs.Root value="species">
+      <Tabs.List variant="line">
+        <Tabs.Trigger value="species">Species ({speciesTaxa.length})</Tabs.Trigger>
+        <Tabs.Trigger value="taxa">Taxa ({stats.taxa.length})</Tabs.Trigger>
+        <Tabs.Trigger value="targets">Targets ({stats.targets.length})</Tabs.Trigger>
+      </Tabs.List>
 
-    <div class="flex gap-1 border-b">
-      {@render tabBtn('species', `Species (${speciesTaxa.length})`)}
-      {@render tabBtn('taxa', `Taxa (${stats.taxa.length})`)}
-      {@render tabBtn('targets', `Targets (${stats.targets.length})`)}
-    </div>
+      <Tabs.Content value="species" class="mt-4">
+        {#if speciesTaxa.length > 0}
+          <Card.Root>
+            <Card.Content class="pt-4 pb-0">
+              <Table.Root>
+                <Table.Header>
+                  <Table.Row>
+                    <Table.Head>Scientific Name</Table.Head>
+                    <Table.Head class="text-right">Surveys</Table.Head>
+                    <Table.Head class="text-right">Count</Table.Head>
+                  </Table.Row>
+                </Table.Header>
+                <Table.Body>
+                  {#each speciesTaxa as taxon (taxon.taxonId)}
+                    <Table.Row>
+                      <Table.Cell>
+                        <a
+                          href={taxon.taxonId}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="hover:underline"
+                        >
+                          <Taxon taxon={{
+                            scientificName: taxon.scientificName ?? taxon.taxonId,
+                            taxonRank: taxon.taxonRank ?? undefined,
+                          }} />
+                        </a>
+                      </Table.Cell>
+                      <Table.Cell class="text-right">
+                        <p><a href={surveysUrl({ taxonID: taxon.taxonId })}>
+                          {taxon.surveyCount}
+                        </a></p>
+                      </Table.Cell>
+                      <Table.Cell class="text-right">{taxon.totalCount}</Table.Cell>
+                    </Table.Row>
+                  {/each}
+                </Table.Body>
+              </Table.Root>
+            </Card.Content>
+          </Card.Root>
+        {:else}
+          <p class="text-sm text-muted-foreground">No species data for the selected filters.</p>
+        {/if}
+      </Tabs.Content>
 
-    {#if activeTab === 'species'}
-      {#if speciesTaxa.length > 0}
-        <Card.Root>
-          <Card.Content class="pt-4 pb-0">
-            <Table.Root>
-              <Table.Header>
-                <Table.Row>
-                  <Table.Head>Scientific Name</Table.Head>
-                  <Table.Head class="text-right">Surveys</Table.Head>
-                  <Table.Head class="text-right">Count</Table.Head>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {#each speciesTaxa as taxon (taxon.taxonId)}
+      <Tabs.Content value="taxa" class="mt-4">
+        {#if stats.taxa.length > 0}
+          <Card.Root>
+            <Card.Content class="pt-4 pb-0">
+              <Table.Root>
+                <Table.Header>
                   <Table.Row>
-                    <Table.Cell>
-                      <a
-                        href={taxon.taxonId}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="hover:underline"
-                      >
-                        <Taxon taxon={{
-                          scientificName: taxon.scientificName ?? taxon.taxonId,
-                          taxonRank: taxon.taxonRank ?? undefined,
-                        }} />
-                      </a>
-                    </Table.Cell>
-                    <Table.Cell class="text-right">
-                      <p><a href={surveysUrl({ taxonID: taxon.taxonId })}>
-                        {taxon.surveyCount}
-                      </a></p>
-                    </Table.Cell>
-                    <Table.Cell class="text-right">{taxon.totalCount}</Table.Cell>
+                    <Table.Head>Scientific Name</Table.Head>
+                    <Table.Head class="text-right">Surveys</Table.Head>
+                    <Table.Head class="text-right">Count</Table.Head>
                   </Table.Row>
-                {/each}
-              </Table.Body>
-            </Table.Root>
-          </Card.Content>
-        </Card.Root>
-      {:else}
-        <p class="text-sm text-muted-foreground">No species data for the selected filters.</p>
-      {/if}
-    {:else if activeTab === 'taxa'}
-      {#if stats.taxa.length > 0}
-        <Card.Root>
-          <Card.Content class="pt-4 pb-0">
-            <Table.Root>
-              <Table.Header>
-                <Table.Row>
-                  <Table.Head>Scientific Name</Table.Head>
-                  <Table.Head class="text-right">Surveys</Table.Head>
-                  <Table.Head class="text-right">Count</Table.Head>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {#each stats.taxa as taxon (taxon.taxonId)}
+                </Table.Header>
+                <Table.Body>
+                  {#each stats.taxa as taxon (taxon.taxonId)}
+                    <Table.Row>
+                      <Table.Cell>
+                        <a
+                          href={taxon.taxonId}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="hover:underline"
+                        >
+                          <Taxon taxon={{
+                            scientificName: taxon.scientificName ?? taxon.taxonId,
+                            taxonRank: taxon.taxonRank ?? undefined,
+                          }} />
+                        </a>
+                      </Table.Cell>
+                      <Table.Cell class="text-right">
+                        <p><a href={surveysUrl({ taxonID: taxon.taxonId })}>
+                          {taxon.surveyCount}
+                        </a></p>
+                      </Table.Cell>
+                      <Table.Cell class="text-right">{taxon.totalCount}</Table.Cell>
+                    </Table.Row>
+                  {/each}
+                </Table.Body>
+              </Table.Root>
+            </Card.Content>
+          </Card.Root>
+        {:else}
+          <p class="text-sm text-muted-foreground">No taxon data for the selected filters.</p>
+        {/if}
+      </Tabs.Content>
+
+      <Tabs.Content value="targets" class="mt-4">
+        {#if stats.targets.length > 0}
+          <Card.Root>
+            <Card.Content class="pt-4 pb-0">
+              <Table.Root>
+                <Table.Header>
                   <Table.Row>
-                    <Table.Cell>
-                      <a
-                        href={taxon.taxonId}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="hover:underline"
-                      >
-                        <Taxon taxon={{
-                          scientificName: taxon.scientificName ?? taxon.taxonId,
-                          taxonRank: taxon.taxonRank ?? undefined,
-                        }} />
-                      </a>
-                    </Table.Cell>
-                    <Table.Cell class="text-right">
-                      <p><a href={surveysUrl({ taxonID: taxon.taxonId })}>
-                        {taxon.surveyCount}
-                      </a></p>
-                    </Table.Cell>
-                    <Table.Cell class="text-right">{taxon.totalCount}</Table.Cell>
+                    <Table.Head>Target</Table.Head>
+                    <Table.Head>Type</Table.Head>
+                    <Table.Head class="text-right">Surveys</Table.Head>
+                    <Table.Head class="text-right">Count</Table.Head>
                   </Table.Row>
-                {/each}
-              </Table.Body>
-            </Table.Root>
-          </Card.Content>
-        </Card.Root>
-      {:else}
-        <p class="text-sm text-muted-foreground">No taxon data for the selected filters.</p>
-      {/if}
-    {:else if activeTab === 'targets'}
-      {#if stats.targets.length > 0}
-        <Card.Root>
-          <Card.Content class="pt-4 pb-0">
-            <Table.Root>
-              <Table.Header>
-                <Table.Row>
-                  <Table.Head>Target</Table.Head>
-                  <Table.Head>Type</Table.Head>
-                  <Table.Head class="text-right">Surveys</Table.Head>
-                  <Table.Head class="text-right">Count</Table.Head>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {#each stats.targets as target (target.protocolTargetUri)}
-                  <Table.Row>
-                    <Table.Cell>
-                      {#if target.scopeType === 'taxon' && target.label}
-                        <em>{target.label}</em>
-                      {:else}
-                        {target.label ?? target.protocolTargetUri.split('/').at(-1)}
-                      {/if}
-                    </Table.Cell>
-                    <Table.Cell class="text-muted-foreground capitalize">
-                      {target.scopeType}
-                    </Table.Cell>
-                    <Table.Cell class="text-right">{target.surveyCount}</Table.Cell>
-                    <Table.Cell class="text-right">{target.totalCount}</Table.Cell>
-                  </Table.Row>
-                {/each}
-              </Table.Body>
-            </Table.Root>
-          </Card.Content>
-        </Card.Root>
-      {:else}
-        <p class="text-sm text-muted-foreground">No target data for the selected filters.</p>
-      {/if}
-    {/if}
+                </Table.Header>
+                <Table.Body>
+                  {#each stats.targets as target (target.protocolTargetUri)}
+                    <Table.Row>
+                      <Table.Cell>
+                        {#if target.scopeType === 'taxon' && target.label}
+                          <em>{target.label}</em>
+                        {:else}
+                          {target.label ?? target.protocolTargetUri.split('/').at(-1)}
+                        {/if}
+                      </Table.Cell>
+                      <Table.Cell class="text-muted-foreground capitalize">
+                        {target.scopeType}
+                      </Table.Cell>
+                      <Table.Cell class="text-right">{target.surveyCount}</Table.Cell>
+                      <Table.Cell class="text-right">{target.totalCount}</Table.Cell>
+                    </Table.Row>
+                  {/each}
+                </Table.Body>
+              </Table.Root>
+            </Card.Content>
+          </Card.Root>
+        {:else}
+          <p class="text-sm text-muted-foreground">No target data for the selected filters.</p>
+        {/if}
+      </Tabs.Content>
+    </Tabs.Root>
   {/if}
 </main>

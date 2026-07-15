@@ -10,9 +10,11 @@ import PlusIcon from '@lucide/svelte/icons/plus';
 import type { Component } from 'svelte';
 import Button from '$lib/components/Button.svelte';
 import Form from '$lib/components/Form.svelte';
+import SurveyCard from '$lib/components/SurveyCard.svelte';
 import * as Alert from '$lib/components/ui/alert';
 import ButtonGroup from '$lib/components/ui/button-group/button-group.svelte';
 import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+import * as Tabs from '$lib/components/ui/tabs';
 import type { Main as LocationAddress } from '$lib/lexicons/community/lexicon/location/address.defs';
 import type { Main as LocationBbox } from '$lib/lexicons/community/lexicon/location/bbox.defs';
 import type { Main as LocationGeo } from '$lib/lexicons/community/lexicon/location/geo.defs';
@@ -20,6 +22,7 @@ import type { Protocol, TaxonScope, VerbatimScope } from '$lib/offline/db';
 import { LOCATION_COMBOBOX_THRESHOLD } from '$lib/places';
 import { install } from '$lib/pwa/install.svelte';
 import { sanitizeHtml } from '$lib/sanitize';
+import type { ProtocolActivity } from '$lib/server/db/protocol-activity';
 import Handle from './handle.svelte';
 import Taxon from './Taxon.svelte';
 import * as Table from './ui/table';
@@ -33,26 +36,33 @@ interface ActionItem {
 
 interface Props {
   protocol: Protocol;
-  followerCount: number;
+  // Undefined until the network fetch resolves on the offline-first /app
+  // route, and forever when that route is serving a cached protocol with no
+  // connection — the count is never cached or guessed, only ever this page
+  // load's own live value. Same shape as `activity` below.
+  followerCount?: number;
+  // Survey counts and recent surveys for this protocol. Undefined until the
+  // network fetch resolves on the offline-first /app route, and forever when
+  // that route is serving a cached protocol with no connection. Those two
+  // cases look alike here, so `activityPending` is what tells them apart.
+  activity?: ProtocolActivity;
+  activityPending?: boolean;
   isFollowing?: boolean;
   isOffline?: boolean;
   isOwner?: boolean;
   isSignedIn?: boolean;
-  lastSurveyByTargetUri?: Record<
-    string,
-    { date: string; handle: string; rkey: string }
-  >;
   onAfterFollowChange?: (isFollowing: boolean, protocol: Protocol) => void;
 }
 
 let {
   protocol,
   followerCount: initialFollowerCount,
+  activity,
+  activityPending = false,
   isFollowing: initialIsFollowing,
   isOffline,
   isOwner = false,
   isSignedIn = false,
-  lastSurveyByTargetUri,
   onAfterFollowChange = () => {},
 }: Props = $props();
 
@@ -63,8 +73,22 @@ let followerCount = $state(initialFollowerCount);
 let showAllPlaces = $state(false);
 let authIssue = $state<'expired' | 'permission' | null>(null);
 
+// Picks up the real count once the parent route's streamed fetch resolves.
+// Guarded on followerCount still being undefined so a follow/unfollow click
+// that lands first (setting an optimistic number) never gets clobbered by a
+// late-arriving fetch.
+$effect(() => {
+  if (followerCount === undefined && initialFollowerCount !== undefined) {
+    followerCount = initialFollowerCount;
+  }
+});
+
 // svelte-ignore state_referenced_locally -- intentional: derived once from the prop this component was mounted with
 const returnTo = `/app/protocols/${protocol.handle}/${protocol.rkey}`;
+
+const surveysLabel = $derived(
+  activity ? `Surveys (${activity.surveyCount})` : 'Surveys',
+);
 
 // Distinguishes a dead session from a live one that's simply missing a scope
 // this action needs, since the two need different explanations: "sign in
@@ -202,6 +226,7 @@ const collapsibleActions = $derived.by(() => {
 
   <div class="text-muted-foreground text-xs mb-1">PROTOCOL</div>
   <h1>{protocol.record.title}</h1>
+  <Handle handle={protocol.handle} avatarUrl={protocol.avatarUrl} />
   {@html sanitizeHtml(protocol.record.description ?? '')}
 
   <div class="flex items-center gap-3">
@@ -213,7 +238,7 @@ const collapsibleActions = $derived.by(() => {
           method="POST"
           action="?/unfollow"
           onEnhance={() => {
-            const ogFollowerCount = followerCount;
+            const ogFollowerCount = followerCount ?? 0;
             // Captured now, synchronously, before any await: `protocol` is a
             // reactive prop that can point at a different protocol by the
             // time this form's POST resolves, if the user has since
@@ -221,7 +246,7 @@ const collapsibleActions = $derived.by(() => {
             // route component.
             const unfollowedProtocol = protocol;
             isFollowing = false;
-            followerCount = Math.max(0, followerCount - 1);
+            followerCount = Math.max(0, ogFollowerCount - 1);
             return ({ result }) => {
               if (result.type === 'success') {
                 isFollowing = false;
@@ -246,17 +271,20 @@ const collapsibleActions = $derived.by(() => {
           method="POST"
           action="?/follow"
           onEnhance={() => {
-            const ogFollowerCount = followerCount;
+            const ogFollowerCount = followerCount ?? 0;
             // Captured now, synchronously, before any await: `protocol` is a
             // reactive prop that can point at a different protocol by the
             // time this form's POST resolves, if the user has since
             // navigated to another protocol detail page reusing this same
-            // route component. lastSurveyByTargetUri is folded in here too,
+            // route component. The last-survey dates are folded in here too,
             // for the same reason, so the cache write below has the best
             // available sort key instead of always looking "never surveyed".
-            const followedProtocol = withLastSurveyAt(protocol, lastSurveyByTargetUri);
+            const followedProtocol = withLastSurveyAt(
+              protocol,
+              activity?.lastSurveyByTargetUri,
+            );
             isFollowing = true;
-            followerCount += 1;
+            followerCount = ogFollowerCount + 1;
             return ({ result }) => {
               if (result.type === 'success') {
                 isFollowing = true;
@@ -281,10 +309,12 @@ const collapsibleActions = $derived.by(() => {
         </Form>
       {/if}
     {/if}
-    <span class="text-muted-foreground text-sm">
-      {followerCount}
-      {followerCount === 1 ? 'follower' : 'followers'}
-    </span>
+    {#if followerCount !== undefined}
+      <span class="text-muted-foreground text-sm">
+        {followerCount}
+        {followerCount === 1 ? 'follower' : 'followers'}
+      </span>
+    {/if}
   </div>
 
   {#if authIssue === 'permission'}
@@ -316,145 +346,197 @@ const collapsibleActions = $derived.by(() => {
     </Alert.Root>
   {/if}
 
-  <Table.Root class="my-2">
-    <Table.Body>
-      <Table.Row>
-        <Table.Head>Author</Table.Head>
-        <Table.Cell><Handle handle={protocol.handle} avatarUrl={protocol.avatarUrl} /></Table.Cell>
-      </Table.Row>
-      <Table.Row>
-        <Table.Head>Created</Table.Head>
-        <Table.Cell>{formatDate(protocol.record.createdAt)}</Table.Cell>
-      </Table.Row>
-      <Table.Row>
-        <Table.Head>Required Fields</Table.Head>
-        <Table.Cell>
-          {#if protocol.record.requiredFields && protocol.record.requiredFields.length > 0}
-            <ul class="ml-4 mt-1 list-disc">
-              {#each protocol.record.requiredFields as field}
-                <li>{field}</li>
-              {/each}
-            </ul>
-          {:else}
-            No required fields
-          {/if}
-        </Table.Cell>
-      </Table.Row>
-    </Table.Body>
-  </Table.Root>
+  <Tabs.Root value="surveys" class="mt-6">
+    <Tabs.List variant="line">
+      <Tabs.Trigger value="surveys">{surveysLabel}</Tabs.Trigger>
+      <Tabs.Trigger value="targets">Targets ({protocol.targets.length})</Tabs.Trigger>
+      <Tabs.Trigger value="details">Details</Tabs.Trigger>
+    </Tabs.List>
 
-  <h2 class="mb-3 text-lg font-semibold">Targets ({protocol.targets.length})</h2>
-
-  {#if protocol.targets.length === 0}
-    <p class="text-muted-foreground">No targets.</p>
-  {:else}
-    <Table.Root>
-      <Table.Header>
-        <Table.Row>
-          <Table.Head>Type</Table.Head>
-          <Table.Head>Target</Table.Head>
-          <Table.Head>Last Survey</Table.Head>
-        </Table.Row>
-      </Table.Header>
-      <Table.Body>
-        {#each protocol.targets as target (target.atUri)}
-          {@const lastSurvey = lastSurveyByTargetUri?.[target.atUri]}
-          <Table.Row>
-            <Table.Cell>
-              {#if target.record.scope.length === 1}
-                {#if target.record.scope[0].$type?.endsWith('taxonScope')}
-                  Taxonomic
-                {:else if target.record.scope[0].$type?.endsWith('verbatimScope')}
-                  Verbatim
-                {/if}
-              {:else}
-                Multiple
-              {/if}
-            </Table.Cell>
-            <Table.Cell>
-              {#each target.record.scope as scope, idx}
-                {#if idx > 0}
-                  <p>AND</p>
-                {/if}
-                <div class="text-wrap">
-                  {#if scope.$type?.endsWith('taxonScope')}
-                    <Taxon taxon={scope as TaxonScope} />
-                  {:else if scope.$type?.endsWith('verbatimScope')}
-                    {@const verbatim = scope as VerbatimScope}
-                    {verbatim.verbatimTargetScope}
-                  {/if}
-                </div>
-              {/each}
-            </Table.Cell>
-            <Table.Cell>
-              {#if lastSurvey}
-                <a
-                  class="underline"
-                  href="/surveys/{lastSurvey.handle}/{lastSurvey.rkey}"
-                >
-                  {formatSurveyDate(lastSurvey.date)}
+    <Tabs.Content value="surveys" class="mt-4">
+      {#if activityPending}
+        <p class="text-muted-foreground text-sm">Loading surveys…</p>
+      {:else if !activity}
+        <p class="text-muted-foreground text-sm">
+          {isOffline
+            ? 'Surveys are unavailable offline.'
+            : 'Surveys could not be loaded.'}
+        </p>
+      {:else if activity.recentSurveys.length === 0}
+        <p class="text-muted-foreground text-sm">No surveys yet.</p>
+      {:else}
+        <div class="flex flex-col gap-5">
+          <ul class="flex flex-col gap-3">
+            {#each activity.recentSurveys as survey (survey.atUri)}
+              <li>
+                <a href="/surveys/{survey.handle}/{survey.rkey}">
+                  <SurveyCard {survey} />
                 </a>
+              </li>
+            {/each}
+          </ul>
+          {#if activity.surveyCount > activity.recentSurveys.length}
+            <Button
+              variant="ghost"
+              class="w-full mb-5"
+              href={`/surveys?protocols=${protocol.atUri}`}
+            >
+              View all surveys
+            </Button>
+          {/if}
+        </div>
+      {/if}
+    </Tabs.Content>
+
+    <Tabs.Content value="targets" class="mt-4">
+      {#if protocol.targets.length === 0}
+        <p class="text-muted-foreground">No targets.</p>
+      {:else}
+        <Table.Root>
+          <Table.Header>
+            <Table.Row>
+              <Table.Head>Type</Table.Head>
+              <Table.Head>Target</Table.Head>
+              <Table.Head class="text-right">Surveys</Table.Head>
+              <Table.Head class="text-right">Count</Table.Head>
+              <Table.Head>Last Survey</Table.Head>
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
+            {#each protocol.targets as target (target.atUri)}
+              {@const lastSurvey = activity?.lastSurveyByTargetUri?.[target.atUri]}
+              {@const stat = activity?.targetStats[target.atUri]}
+              <Table.Row>
+                <Table.Cell>
+                  {#if target.record.scope.length === 1}
+                    {#if target.record.scope[0].$type?.endsWith('taxonScope')}
+                      Taxonomic
+                    {:else if target.record.scope[0].$type?.endsWith('verbatimScope')}
+                      Verbatim
+                    {/if}
+                  {:else}
+                    Multiple
+                  {/if}
+                </Table.Cell>
+                <Table.Cell>
+                  {#each target.record.scope as scope, idx}
+                    {#if idx > 0}
+                      <p>AND</p>
+                    {/if}
+                    <div class="text-wrap">
+                      {#if scope.$type?.endsWith('taxonScope')}
+                        <Taxon taxon={scope as TaxonScope} />
+                      {:else if scope.$type?.endsWith('verbatimScope')}
+                        {@const verbatim = scope as VerbatimScope}
+                        {verbatim.verbatimTargetScope}
+                      {/if}
+                    </div>
+                  {/each}
+                </Table.Cell>
+                <!-- A target absent from targetStats has simply never been
+                     counted; only a missing `activity` means "not loaded". -->
+                <Table.Cell class="text-right">
+                  {activity ? (stat?.surveyCount ?? 0) : '—'}
+                </Table.Cell>
+                <Table.Cell class="text-right">
+                  {activity ? (stat?.totalCount ?? 0) : '—'}
+                </Table.Cell>
+                <Table.Cell>
+                  {#if lastSurvey}
+                    <a
+                      class="underline"
+                      href="/surveys/{lastSurvey.handle}/{lastSurvey.rkey}"
+                    >
+                      {formatSurveyDate(lastSurvey.date)}
+                    </a>
+                  {:else}
+                    —
+                  {/if}
+                </Table.Cell>
+              </Table.Row>
+            {/each}
+          </Table.Body>
+        </Table.Root>
+      {/if}
+    </Tabs.Content>
+
+    <Tabs.Content value="details" class="mt-4">
+      <Table.Root>
+        <Table.Body>
+          <Table.Row>
+            <Table.Head>Created</Table.Head>
+            <Table.Cell>{formatDate(protocol.record.createdAt)}</Table.Cell>
+          </Table.Row>
+          <Table.Row>
+            <Table.Head>Required Fields</Table.Head>
+            <Table.Cell>
+              {#if protocol.record.requiredFields && protocol.record.requiredFields.length > 0}
+                <ul class="ml-4 mt-1 list-disc">
+                  {#each protocol.record.requiredFields as field}
+                    <li>{field}</li>
+                  {/each}
+                </ul>
               {:else}
-                —
+                No required fields
               {/if}
             </Table.Cell>
           </Table.Row>
-        {/each}
-      </Table.Body>
-    </Table.Root>
-  {/if}
+        </Table.Body>
+      </Table.Root>
 
-  {#if protocol.record.locationOptions && protocol.record.locationOptions.length > 0}
-    <h2 class="mb-3 mt-6 text-lg font-semibold">
-      Place Options ({protocol.record.locationOptions.length})
-    </h2>
-    {@const visiblePlaces = showAllPlaces
-      ? protocol.record.locationOptions
-      : protocol.record.locationOptions.slice(0, LOCATION_COMBOBOX_THRESHOLD)}
-    <ul class="ml-4 list-disc">
-      {#each visiblePlaces as place}
-        <li>
-          <span class="font-medium">{place.name}</span>
-          {#if place.locations}
-            {#each place.locations as loc}
-              {#if loc.$type === 'community.lexicon.location.geo'}
-                <span class="text-muted-foreground ml-1 text-sm">
-                  ({(loc as LocationGeo).latitude}, {(loc as LocationGeo).longitude})
-                </span>
-              {:else if loc.$type === 'community.lexicon.location.address'}
-                <span class="text-muted-foreground ml-1 text-sm">
-                  {[
-                    (loc as LocationAddress).street,
-                    (loc as LocationAddress).locality,
-                    (loc as LocationAddress).region,
-                    (loc as LocationAddress).postalCode,
-                    (loc as LocationAddress).country,
-                  ]
-                    .filter(Boolean)
-                    .join(', ')}
-                </span>
-              {:else if loc.$type === 'community.lexicon.location.bbox'}
-                <span class="text-muted-foreground ml-1 text-sm">
-                  (N {(loc as LocationBbox).north}, S {(loc as LocationBbox).south},
-                  E {(loc as LocationBbox).east}, W {(loc as LocationBbox).west})
-                </span>
+      {#if protocol.record.locationOptions && protocol.record.locationOptions.length > 0}
+        <h2 class="mb-3 mt-6 text-lg font-semibold">
+          Place Options ({protocol.record.locationOptions.length})
+        </h2>
+        {@const visiblePlaces = showAllPlaces
+          ? protocol.record.locationOptions
+          : protocol.record.locationOptions.slice(0, LOCATION_COMBOBOX_THRESHOLD)}
+        <ul class="ml-4 list-disc">
+          {#each visiblePlaces as place}
+            <li>
+              <span class="font-medium">{place.name}</span>
+              {#if place.locations}
+                {#each place.locations as loc}
+                  {#if loc.$type === 'community.lexicon.location.geo'}
+                    <span class="text-muted-foreground ml-1 text-sm">
+                      ({(loc as LocationGeo).latitude}, {(loc as LocationGeo).longitude})
+                    </span>
+                  {:else if loc.$type === 'community.lexicon.location.address'}
+                    <span class="text-muted-foreground ml-1 text-sm">
+                      {[
+                        (loc as LocationAddress).street,
+                        (loc as LocationAddress).locality,
+                        (loc as LocationAddress).region,
+                        (loc as LocationAddress).postalCode,
+                        (loc as LocationAddress).country,
+                      ]
+                        .filter(Boolean)
+                        .join(', ')}
+                    </span>
+                  {:else if loc.$type === 'community.lexicon.location.bbox'}
+                    <span class="text-muted-foreground ml-1 text-sm">
+                      (N {(loc as LocationBbox).north}, S {(loc as LocationBbox).south},
+                      E {(loc as LocationBbox).east}, W {(loc as LocationBbox).west})
+                    </span>
+                  {/if}
+                {/each}
               {/if}
-            {/each}
-          {/if}
-        </li>
-      {/each}
-    </ul>
-    {#if protocol.record.locationOptions.length > LOCATION_COMBOBOX_THRESHOLD}
-      <Button
-        variant="ghost"
-        size="sm"
-        class="mt-2"
-        onclick={() => (showAllPlaces = !showAllPlaces)}
-      >
-        {showAllPlaces
-          ? 'Show less'
-          : `${protocol.record.locationOptions.length - LOCATION_COMBOBOX_THRESHOLD} more…`}
-      </Button>
-    {/if}
-  {/if}
+            </li>
+          {/each}
+        </ul>
+        {#if protocol.record.locationOptions.length > LOCATION_COMBOBOX_THRESHOLD}
+          <Button
+            variant="ghost"
+            size="sm"
+            class="mt-2"
+            onclick={() => (showAllPlaces = !showAllPlaces)}
+          >
+            {showAllPlaces
+              ? 'Show less'
+              : `${protocol.record.locationOptions.length - LOCATION_COMBOBOX_THRESHOLD} more…`}
+          </Button>
+        {/if}
+      {/if}
+    </Tabs.Content>
+  </Tabs.Root>
 </main>
