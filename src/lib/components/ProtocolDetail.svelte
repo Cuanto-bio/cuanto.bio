@@ -23,6 +23,7 @@ import { LOCATION_COMBOBOX_THRESHOLD } from '$lib/places';
 import { install } from '$lib/pwa/install.svelte';
 import { sanitizeHtml } from '$lib/sanitize';
 import type { ProtocolActivity } from '$lib/server/db/protocol-activity';
+import type { FollowerPreview } from '$lib/server/db/protocol-follows';
 import Handle from './handle.svelte';
 import Taxon from './Taxon.svelte';
 import * as Table from './ui/table';
@@ -47,6 +48,9 @@ interface Props {
   // cases look alike here, so `activityPending` is what tells them apart.
   activity?: ProtocolActivity;
   activityPending?: boolean;
+  // The most-recent few followers (excluding the viewer), for the
+  // "Followed by …" line. Same undefined-while-pending shape as followerCount.
+  followerPreview?: FollowerPreview[];
   isFollowing?: boolean;
   isOffline?: boolean;
   isOwner?: boolean;
@@ -59,6 +63,7 @@ let {
   followerCount: initialFollowerCount,
   activity,
   activityPending = false,
+  followerPreview,
   isFollowing: initialIsFollowing,
   isOffline,
   isOwner = false,
@@ -89,6 +94,37 @@ const returnTo = `/app/protocols/${protocol.handle}/${protocol.rkey}`;
 const surveysLabel = $derived(
   activity ? `Surveys (${activity.surveyCount})` : 'Surveys',
 );
+
+// Null (falls back to a plain follower count) until we have both a live count
+// and at least one other follower to name. `followerPreview` already
+// excludes the viewer, so it stays put across the viewer's own
+// follow/unfollow; only the "+ N more" tail shifts, driven by backing the
+// viewer out of followerCount. Text is assembled into styled parts here so
+// no layout whitespace leaks between the bold handles and their separators.
+const followedBy = $derived.by(() => {
+  if (
+    followerCount === undefined ||
+    !followerPreview ||
+    followerPreview.length === 0
+  ) {
+    return null;
+  }
+  const named = followerPreview.slice(0, 2);
+  const otherCount = Math.max(
+    followerPreview.length,
+    followerCount - (isFollowing ? 1 : 0),
+  );
+  const extra = otherCount - named.length;
+  const parts: { text: string; bold: boolean }[] = [
+    { text: 'Followed by ', bold: false },
+  ];
+  named.forEach((follower, idx) => {
+    if (idx > 0) parts.push({ text: ', ', bold: false });
+    parts.push({ text: follower.handle, bold: true });
+  });
+  if (extra > 0) parts.push({ text: ` + ${extra} more`, bold: false });
+  return { avatars: followerPreview.slice(0, 3), parts };
+});
 
 // Distinguishes a dead session from a live one that's simply missing a scope
 // this action needs, since the two need different explanations: "sign in
@@ -166,10 +202,14 @@ const collapsibleActions = $derived.by(() => {
           <span class="sm:hidden">Add</span>
           <span class="hidden sm:inline">Add Past Survey</span>
         </Button>
+        <!-- The primary call to action swaps with follow state: an unfollowed
+             visitor is nudged to follow first, so Start Survey drops to an
+             outline; once following, starting a survey becomes the CTA. -->
         <Button
           href="/app/surveys/new/{protocol.rkey}"
           title="Start a field survey now"
-          class="border-1 border-primary"
+          variant={isFollowing ? 'default' : 'outline'}
+          class={isFollowing ? 'border-1 border-primary' : ''}
         >
           <ClipboardClockIcon />
           <span class="sm:hidden">Start</span>
@@ -229,7 +269,7 @@ const collapsibleActions = $derived.by(() => {
   <Handle handle={protocol.handle} avatarUrl={protocol.avatarUrl} />
   {@html sanitizeHtml(protocol.record.description ?? '')}
 
-  <div class="flex items-center gap-3">
+  <div class="mt-2 flex flex-col items-start gap-3">
     {#if isOffline}
       <span class="text-muted-foreground text-xs">(follow requires connection)</span>
     {:else if isSignedIn}
@@ -302,14 +342,45 @@ const collapsibleActions = $derived.by(() => {
             };
           }}
         >
-          <Button type="submit" variant="outline">
+          <Button type="submit">
             <PlusIcon />
             Follow this protocol
           </Button>
         </Form>
       {/if}
     {/if}
-    {#if followerCount !== undefined}
+    {#if followedBy}
+      <div class="flex items-center gap-2">
+        <div class="flex -space-x-2">
+          {#each followedBy.avatars as follower (follower.handle)}
+            {#if follower.avatarUrl}
+              <img
+                src={follower.avatarUrl}
+                alt=""
+                class="ring-background size-8 rounded-full object-cover ring-2"
+                aria-hidden="true"
+              />
+            {:else}
+              <div
+                class="ring-background bg-muted text-muted-foreground flex size-8 items-center justify-center rounded-full text-xs font-medium uppercase ring-2"
+                aria-hidden="true"
+              >
+                {follower.handle.slice(0, 1)}
+              </div>
+            {/if}
+          {/each}
+        </div>
+        <span class="text-muted-foreground text-sm"
+          >{#each followedBy.parts as part}{#if part.bold}<span
+                class="text-foreground font-medium">{part.text}</span
+              >{:else}{part.text}{/if}{/each}</span
+        >
+      </div>
+    {:else if followerCount !== undefined && !isFollowing}
+      <!-- No one else to name (the preview excludes the viewer). Skip the plain
+           count when the viewer is following, since here that means they are the
+           lone follower and "1 follower" pointing at themselves reads as dead
+           space; a genuine "0 followers" (not following) still shows. -->
       <span class="text-muted-foreground text-sm">
         {followerCount}
         {followerCount === 1 ? 'follower' : 'followers'}

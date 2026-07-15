@@ -8,6 +8,7 @@ import {
 } from '$lib/offline/db';
 import { syncOfflineData } from '$lib/offline/sync';
 import type { ProtocolActivity } from '$lib/server/db/protocol-activity';
+import type { FollowerPreview } from '$lib/server/db/protocol-follows';
 
 let { data } = $props();
 
@@ -29,6 +30,13 @@ let activityPending = $state(data.activity instanceof Promise);
 // svelte-ignore state_referenced_locally -- intentional: see activity above
 let followerCount = $state<number | undefined>(
   data.followerCount instanceof Promise ? undefined : data.followerCount,
+);
+
+// followerPreview follows the same resolved-value-or-promise shape as
+// followerCount above.
+// svelte-ignore state_referenced_locally -- intentional: see activity above
+let followerPreview = $state<FollowerPreview[] | undefined>(
+  data.followerPreview instanceof Promise ? undefined : data.followerPreview,
 );
 
 // offline follows the same shape too: assumed online (false) until this
@@ -79,6 +87,23 @@ $effect(() => {
 });
 
 $effect(() => {
+  const next = data.followerPreview;
+  if (!(next instanceof Promise)) {
+    followerPreview = next;
+    return;
+  }
+  followerPreview = undefined;
+  let current = true;
+  next.then((value) => {
+    if (!current) return;
+    followerPreview = value;
+  });
+  return () => {
+    current = false;
+  };
+});
+
+$effect(() => {
   const next = data.offline;
   if (!(next instanceof Promise)) {
     offline = next;
@@ -111,6 +136,7 @@ afterNavigate(() => {
 <ProtocolDetail
   protocol={data.protocol}
   {followerCount}
+  {followerPreview}
   isFollowing={data.isFollowing}
   isOffline={offline}
   isOwner={data.isOwner}

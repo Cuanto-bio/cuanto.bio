@@ -7,6 +7,7 @@ import {
   type Protocol,
 } from '$lib/offline/db';
 import type { ProtocolActivity } from '$lib/server/db/protocol-activity';
+import type { FollowerPreview } from '$lib/server/db/protocol-follows';
 import type { PageLoad } from './$types';
 
 const log = logger.child({ component: 'app-protocol-detail' });
@@ -14,6 +15,7 @@ const log = logger.child({ component: 'app-protocol-detail' });
 interface ProtocolApiResponse {
   protocol: Protocol;
   followerCount: number;
+  followerPreview: FollowerPreview[];
   activity?: ProtocolActivity;
 }
 
@@ -76,6 +78,7 @@ export const load: PageLoad = async ({ fetch, params, parent, url }) => {
       isOwner: cachedProtocol.handle === currentUserHandle,
       activity: fresh.then((r) => r.data?.activity),
       followerCount: fresh.then((r) => r.data?.followerCount),
+      followerPreview: fresh.then((r) => r.data?.followerPreview),
       offline: fresh.then((r) => r.offline),
     };
   }

@@ -1,6 +1,9 @@
 import { error, redirect } from '@sveltejs/kit';
 import { getProtocolActivity } from '$lib/server/db/protocol-activity';
-import { getFollowerCount } from '$lib/server/db/protocol-follows';
+import {
+  getFollowerCount,
+  getProtocolFollowerPreview,
+} from '$lib/server/db/protocol-follows';
 import { getProtocolDetailByHandleAndRkey } from '$lib/server/db/survey-protocols';
 import type { PageServerLoad } from './$types';
 
@@ -19,6 +22,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
   if (!protocol) error(404, 'Protocol not found');
 
   const followerCount = await getFollowerCount(protocol.atUri);
+  const followerPreview = await getProtocolFollowerPreview(protocol.atUri);
 
   const activity = await getProtocolActivity(
     protocol.atUri,
@@ -29,6 +33,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
     protocol,
     handle: params.handle,
     followerCount,
+    followerPreview,
     activity,
   };
 };

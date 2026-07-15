@@ -81,3 +81,29 @@ export async function getFollowerCount(protocolUri: string): Promise<number> {
   `;
   return row?.count ?? 0;
 }
+
+export interface FollowerPreview {
+  handle: string;
+  avatarUrl: string | null;
+}
+
+// The most-recent handful of followers, for the "Followed by …" social-proof
+// line. `excludeDid` drops the viewer so the line reads as other people who
+// follow this protocol; pass it undefined for the signed-out public page
+// where there is no viewer.
+export async function getProtocolFollowerPreview(
+  protocolUri: string,
+  limit = 3,
+  excludeDid?: string,
+): Promise<FollowerPreview[]> {
+  const rows = await sql<{ handle: string; avatar_url: string | null }[]>`
+    SELECT u.handle, u.avatar_url
+    FROM protocol_follows pf
+    JOIN users u ON u.did = pf.did
+    WHERE pf.protocol_uri = ${protocolUri}
+      ${excludeDid ? sql`AND pf.did <> ${excludeDid}` : sql``}
+    ORDER BY pf.created_at DESC
+    LIMIT ${limit}
+  `;
+  return rows.map((r) => ({ handle: r.handle, avatarUrl: r.avatar_url }));
+}

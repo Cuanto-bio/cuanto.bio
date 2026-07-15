@@ -85,8 +85,11 @@ test('follow flow', async ({ page, sql, context }) => {
       page.getByRole('button', { name: 'Follow this protocol' }),
     ).not.toBeVisible();
 
-    // Follower count increments
-    await expect(page.getByText('1 follower')).toBeVisible();
+    // The viewer is now the lone follower. The "Followed by" line excludes the
+    // viewer, so with no one else to name it stays hidden rather than counting
+    // only themselves.
+    await expect(page.getByText('1 follower')).toHaveCount(0);
+    await expect(page.getByText('Followed by')).toHaveCount(0);
 
     // Protocol appears in /protocols/following
     await page.goto('/app/protocols/following');
@@ -152,6 +155,11 @@ test('unfollow flow', async ({ page, sql, context }) => {
     const unfollowBtn = page.getByRole('button', { name: 'Unfollow' });
     await expect(unfollowBtn).toBeVisible();
 
+    // On a fresh load where the viewer is the lone follower, the social-proof
+    // line stays hidden (not the optimistic path — this is the streamed count).
+    await expect(page.getByText('1 follower')).toHaveCount(0);
+    await expect(page.getByText('Followed by')).toHaveCount(0);
+
     await unfollowBtn.click();
 
     await expect(
@@ -172,7 +180,7 @@ test('unfollow flow', async ({ page, sql, context }) => {
   }
 });
 
-test('unauthenticated view shows follower count but no follow button', async ({
+test('unauthenticated view shows followers but no follow button', async ({
   page,
   sql,
 }) => {
@@ -182,7 +190,9 @@ test('unauthenticated view shows follower count but no follow button', async ({
 
   try {
     await page.goto(`/protocols/${HANDLE}/${protocolRkey}`);
-    await expect(page.getByText(/follower/)).toBeVisible();
+    // A signed-out visitor sees the social-proof "Followed by …" line (no
+    // viewer to exclude) but neither follow nor unfollow buttons.
+    await expect(page.getByText(/Followed by/)).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Follow this protocol' }),
     ).not.toBeVisible();

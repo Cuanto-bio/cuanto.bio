@@ -203,6 +203,104 @@ test.describe('protocol detail Last Survey column', () => {
   });
 });
 
+// ── Followed by line ──────────────────────────────────────────────────────────
+
+const FB_DID = 'did:test:followed-by-spec';
+const FB_HANDLE = 'user-followed-by-spec';
+
+test.describe('protocol detail Followed by line', () => {
+  const followerDids = [
+    'did:test:fb-follower-a',
+    'did:test:fb-follower-b',
+    'did:test:fb-follower-c',
+  ];
+
+  test.afterEach(async ({ sql }) => {
+    for (const did of followerDids) {
+      await sql`DELETE FROM users WHERE did = ${did}`;
+    }
+    await teardownDid(sql, FB_DID);
+  });
+
+  test('names recent followers with avatars and a "+ N more" tail', async ({
+    page,
+    sql,
+  }) => {
+    const { protocolRkey } = await seedProtocol(sql, FB_DID);
+    const protocolUri = `at://${FB_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+
+    // Three followers; the two most recent are named, the third folds into
+    // "+ 1 more". Only the newest has an avatar, so the other two render as
+    // initial fallbacks.
+    const followers = [
+      {
+        did: followerDids[0],
+        handle: 'amylpatten',
+        avatar: 'https://example.com/amy.png',
+        createdAt: '2026-03-01T00:00:00Z',
+      },
+      {
+        did: followerDids[1],
+        handle: 'damontighe',
+        avatar: null,
+        createdAt: '2026-02-01T00:00:00Z',
+      },
+      {
+        did: followerDids[2],
+        handle: 'thirduser',
+        avatar: null,
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+    ];
+    for (const f of followers) {
+      await sql`
+        INSERT INTO users (did, handle, avatar_url)
+        VALUES (${f.did}, ${f.handle}, ${f.avatar})
+        ON CONFLICT (did) DO NOTHING
+      `;
+      const rkey = `fbfollow-${f.handle}`;
+      const atUri = `at://${f.did}/bio.cuanto.surveyProtocol.follow/${rkey}`;
+      await sql`
+        INSERT INTO protocol_follows (at_uri, did, rkey, protocol_uri, created_at)
+        VALUES (${atUri}, ${f.did}, ${rkey}, ${protocolUri}, ${f.createdAt})
+      `;
+    }
+
+    await page.goto(`/protocols/${FB_HANDLE}/${protocolRkey}`);
+
+    await expect(
+      page.getByText('Followed by amylpatten, damontighe + 1 more'),
+    ).toBeVisible();
+
+    // The newest follower's avatar renders as an image in the stack.
+    await expect(
+      page.locator('img[src="https://example.com/amy.png"]'),
+    ).toHaveCount(1);
+  });
+
+  test('names a lone follower with no "+ more" tail', async ({ page, sql }) => {
+    const { protocolRkey } = await seedProtocol(sql, FB_DID);
+    const protocolUri = `at://${FB_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+
+    await sql`
+      INSERT INTO users (did, handle) VALUES (${followerDids[0]}, ${'solo'})
+      ON CONFLICT (did) DO NOTHING
+    `;
+    const atUri = `at://${followerDids[0]}/bio.cuanto.surveyProtocol.follow/solo`;
+    await sql`
+      INSERT INTO protocol_follows (at_uri, did, rkey, protocol_uri, created_at)
+      VALUES (${atUri}, ${followerDids[0]}, ${'solo'}, ${protocolUri}, now())
+    `;
+
+    await page.goto(`/protocols/${FB_HANDLE}/${protocolRkey}`);
+
+    await expect(
+      page.getByText('Followed by solo', { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText(/\+ \d+ more/)).toHaveCount(0);
+  });
+});
+
 test.describe('protocol detail details tab with place options', () => {
   const LOC_DID = 'did:test:protocol-detail-loc-spec';
   const LOC_HANDLE = 'user-protocol-detail-loc-spec';
