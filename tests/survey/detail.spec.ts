@@ -1,3 +1,4 @@
+import type { Sql } from 'postgres';
 import {
   expect,
   seedProtocol,
@@ -614,5 +615,153 @@ test('survey detail does not show coordinates or map when survey has no geo loca
     await expect(page.locator('[data-testid="geo-map"]')).not.toBeVisible();
   } finally {
     await teardownDid(sql, COORDS_DID);
+  }
+});
+
+// ── Survey detail: surveyors row ──────────────────────────────────────────────
+
+const SURVEYORS_DID = 'did:test:survey-surveyors';
+const SURVEYORS_HANDLE = 'user-survey-surveyors';
+// A 1x1 transparent GIF, so the avatar resolves without a network round trip.
+const AVATAR_URL =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
+// Seeds a survey by SURVEYORS_DID whose author has an avatar, optionally
+// recording surveyorCount. Visited signed-out via the public detail route, so
+// no protocol pre-caching in IDB is needed.
+async function seedSurveyWithSurveyors(
+  sql: Sql,
+  surveyorCount?: number,
+): Promise<{ surveyRkey: string; protocolRkey: string }> {
+  const { protocolRkey } = await seedProtocol(sql, SURVEYORS_DID);
+  const protocolUri = `at://${SURVEYORS_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+  await sql`
+    UPDATE users SET avatar_url = ${AVATAR_URL} WHERE did = ${SURVEYORS_DID}
+  `;
+
+  const rkey = `surveyors${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  const atUri = `at://${SURVEYORS_DID}/bio.cuanto.survey/${rkey}`;
+  const record = {
+    $type: 'bio.cuanto.survey',
+    protocol: {
+      uri: protocolUri,
+      cid: 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34',
+    },
+    createdAt: new Date().toISOString(),
+    eventDate: '2026-05-01T10:00:00.000Z',
+    location: { $type: 'org.atgeo.place', name: 'Surveyors Park' },
+    ...(surveyorCount != null ? { surveyorCount } : {}),
+  };
+  await sql`
+    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, created_at, record, indexed_at)
+    VALUES (${atUri}, ${SURVEYORS_DID}, ${rkey}, ${protocolUri}, now(), ${sql.json(record)}, now())
+  `;
+  return { surveyRkey: rkey, protocolRkey };
+}
+
+test('survey detail shows the surveyor avatar and handle when surveyorCount is absent', async ({
+  page,
+  sql,
+}) => {
+  const { surveyRkey } = await seedSurveyWithSurveyors(sql);
+
+  try {
+    await page.goto(`/surveys/${SURVEYORS_HANDLE}/${surveyRkey}`);
+
+    const row = page.getByTestId('survey-surveyors');
+    await expect(row).toBeVisible();
+    await expect(row.getByText(`@${SURVEYORS_HANDLE}`)).toBeVisible();
+    const avatar = row.locator('img');
+    await expect(avatar).toBeVisible();
+    await expect(avatar).toHaveAttribute('src', AVATAR_URL);
+    await expect(row).not.toContainText('other');
+  } finally {
+    await teardownDid(sql, SURVEYORS_DID);
+  }
+});
+
+test('survey detail shows "and N others" when surveyorCount exceeds 1', async ({
+  page,
+  sql,
+}) => {
+  const { surveyRkey } = await seedSurveyWithSurveyors(sql, 3);
+
+  try {
+    await page.goto(`/surveys/${SURVEYORS_HANDLE}/${surveyRkey}`);
+
+    const row = page.getByTestId('survey-surveyors');
+    await expect(row.getByText(`@${SURVEYORS_HANDLE}`)).toBeVisible();
+    await expect(row).toContainText('and 2 others');
+  } finally {
+    await teardownDid(sql, SURVEYORS_DID);
+  }
+});
+
+test('survey detail singularizes the others count when surveyorCount is 2', async ({
+  page,
+  sql,
+}) => {
+  const { surveyRkey } = await seedSurveyWithSurveyors(sql, 2);
+
+  try {
+    await page.goto(`/surveys/${SURVEYORS_HANDLE}/${surveyRkey}`);
+
+    const row = page.getByTestId('survey-surveyors');
+    await expect(row).toContainText('and 1 other');
+    await expect(row).not.toContainText('others');
+  } finally {
+    await teardownDid(sql, SURVEYORS_DID);
+  }
+});
+
+test('survey detail shows only the surveyor when surveyorCount is 1', async ({
+  page,
+  sql,
+}) => {
+  const { surveyRkey } = await seedSurveyWithSurveyors(sql, 1);
+
+  try {
+    await page.goto(`/surveys/${SURVEYORS_HANDLE}/${surveyRkey}`);
+
+    const row = page.getByTestId('survey-surveyors');
+    await expect(row.getByText(`@${SURVEYORS_HANDLE}`)).toBeVisible();
+    await expect(row).not.toContainText('other');
+  } finally {
+    await teardownDid(sql, SURVEYORS_DID);
+  }
+});
+
+// The owner's /app view reads the survey from IndexedDB rather than the server
+// load, so the handle and avatar have to survive the cache round trip too.
+test('owner survey detail shows the surveyor avatar and handle from the cache', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await context.addCookies([
+    {
+      name: 'did',
+      value: SURVEYORS_DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  const { surveyRkey, protocolRkey } = await seedSurveyWithSurveyors(sql, 3);
+
+  try {
+    await page.goto(`/app/protocols/${SURVEYORS_HANDLE}/${protocolRkey}`);
+    await page.waitForLoadState('networkidle');
+    await page.goto(`/app/surveys/${SURVEYORS_HANDLE}/${surveyRkey}`);
+    await page.waitForLoadState('networkidle');
+
+    const row = page.getByTestId('survey-surveyors');
+    await expect(row.getByText(`@${SURVEYORS_HANDLE}`)).toBeVisible();
+    await expect(row.locator('img')).toBeVisible();
+    await expect(row).toContainText('and 2 others');
+  } finally {
+    await teardownDid(sql, SURVEYORS_DID);
   }
 });

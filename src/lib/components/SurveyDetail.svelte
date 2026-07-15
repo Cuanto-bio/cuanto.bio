@@ -27,6 +27,7 @@ import type {
 import { type LoadedTrack, loadSurveyTrack } from '$lib/offline/track';
 import { createTargetFilter } from '$lib/targets.svelte';
 import Button from './Button.svelte';
+import Handle from './handle.svelte';
 import * as Table from './ui/table';
 
 interface Props {
@@ -48,6 +49,12 @@ function extractGeo(s: Survey): { lat: string | null; lon: string | null } {
 }
 
 const geo = $derived(extractGeo(survey));
+
+// Surveyors other than the record's author. surveyorCount counts every
+// surveyor, the author included, and is absent on solo surveys.
+const otherSurveyorCount = $derived(
+  Math.max((survey.record.surveyorCount ?? 1) - 1, 0),
+);
 
 let track = $state<LoadedTrack | null>(null);
 
@@ -249,6 +256,16 @@ const externalLinkProps =
                     </Table.Cell>
                   </Table.Row>
                 {/if}
+                <Table.Row data-testid="survey-surveyors">
+                  <Table.Head>Surveyors</Table.Head>
+                  <Table.Cell class="flex flex-row gap-1">
+                    <Handle handle={survey.handle} avatarUrl={survey.avatarUrl} />
+                    {#if otherSurveyorCount > 0}
+                      and {otherSurveyorCount}
+                      {otherSurveyorCount === 1 ? 'other' : 'others'}
+                    {/if}
+                  </Table.Cell>
+                </Table.Row>
                 {#if displayTrack && displayTrack.length > 1}
                   <Table.Row>
                     <Table.Head>Distance</Table.Head>
