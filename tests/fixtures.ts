@@ -292,13 +292,15 @@ export async function seedOccurrence(
 // Seeds a survey_target without an occurrence, so it shows up as notDetected in
 // the dwc-dp export for any survey by the same did+protocol without a matching
 // occurrence. targetCreatedAt controls the temporal gate; null means "unknown
-// birth time" (treated as always existing).
+// birth time" (treated as always existing). targetRetiredAt controls the upper
+// bound of the target's validity; null means "never retired".
 export async function seedSurveyTarget(
   sql: Sql,
   did: string,
   protocolUri: string,
   protocolTargetUri: string,
   targetCreatedAt: Date | null = null,
+  targetRetiredAt: Date | null = null,
 ): Promise<{ surveyTargetUri: string }> {
   const targetRkey = protocolTargetUri.split('/').at(-1) ?? '';
   const surveyTargetUri = `at://${did}/bio.cuanto.surveyTarget/${targetRkey}`;
@@ -308,19 +310,21 @@ export async function seedSurveyTarget(
     protocolTargetID: protocolTargetUri,
     scope: [],
     createdAt: targetCreatedAt?.toISOString(),
+    retiredAt: targetRetiredAt?.toISOString(),
   };
   await sql`
     INSERT INTO survey_targets (
       at_uri, did, rkey, protocol_uri, protocol_target_uri, record,
-      indexed_at, created_at
+      indexed_at, created_at, retired_at
     )
     VALUES (
       ${surveyTargetUri}, ${did}, ${targetRkey}, ${protocolUri},
       ${protocolTargetUri}, ${sql.json(targetRecord)},
-      now(), ${targetCreatedAt}
+      now(), ${targetCreatedAt}, ${targetRetiredAt}
     )
     ON CONFLICT (at_uri) DO UPDATE SET
-      created_at = EXCLUDED.created_at
+      created_at = EXCLUDED.created_at,
+      retired_at = EXCLUDED.retired_at
   `;
   return { surveyTargetUri };
 }

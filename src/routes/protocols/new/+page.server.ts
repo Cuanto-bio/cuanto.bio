@@ -4,7 +4,10 @@ import * as ProtocolTarget from '$lib/lexicons/bio/cuanto/protocolTarget';
 import type { Main as ProtocolTargetMain } from '$lib/lexicons/bio/cuanto/protocolTarget.defs';
 import * as SurveyProtocol from '$lib/lexicons/bio/cuanto/surveyProtocol';
 import sql from '$lib/server/db';
-import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
+import {
+  insertProtocol,
+  insertProtocolTarget,
+} from '$lib/server/db/survey-protocols';
 import { parseLocationOptions } from '$lib/server/locationOptions';
 import { createRecord, PdsSessionExpiredError } from '$lib/server/pds';
 import type { Actions, PageServerLoad } from './$types';
@@ -90,7 +93,7 @@ export const actions: Actions = {
           targetRecord,
         );
         const targetRkey = targetUri.split('/').at(-1) ?? '';
-        await insertTarget(did, targetRkey, targetRecord, targetUri);
+        await insertProtocolTarget(did, targetRkey, targetRecord, targetUri);
       } catch (err) {
         console.error('Failed to create survey target:', err);
       }

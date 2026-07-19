@@ -6,10 +6,10 @@ import * as SurveyProtocol from '$lib/lexicons/bio/cuanto/surveyProtocol';
 import logger from '$lib/logger';
 import sql from '$lib/server/db';
 import {
-  deleteTargetsByUris,
+  deleteProtocolTargetsByUris,
   getProtocolDetailByHandleAndRkey,
   insertProtocol,
-  insertTarget,
+  insertProtocolTarget,
 } from '$lib/server/db/survey-protocols';
 import { parseLocationOptions } from '$lib/server/locationOptions';
 import {
@@ -129,7 +129,7 @@ export const actions: Actions = {
       );
     });
 
-    await deleteTargetsByUris(toDelete.map((t) => t.atUri));
+    await deleteProtocolTargetsByUris(toDelete.map((t) => t.atUri));
     for (const target of toDelete) {
       try {
         await deleteRecord(target.atUri);
@@ -158,7 +158,12 @@ export const actions: Actions = {
           targetRkey,
           targetRecord,
         );
-        await insertTarget(did, targetRkey, targetRecord, existingTarget.atUri);
+        await insertProtocolTarget(
+          did,
+          targetRkey,
+          targetRecord,
+          existingTarget.atUri,
+        );
       } catch (err) {
         log.error({ err }, 'Failed to update survey target');
       }
@@ -177,7 +182,7 @@ export const actions: Actions = {
           targetRecord,
         );
         const targetRkey = targetUri.split('/').at(-1) ?? '';
-        await insertTarget(did, targetRkey, targetRecord, targetUri);
+        await insertProtocolTarget(did, targetRkey, targetRecord, targetUri);
       } catch (err) {
         log.error({ err }, 'Failed to create survey target');
       }

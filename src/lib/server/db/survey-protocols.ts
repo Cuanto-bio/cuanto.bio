@@ -1,23 +1,34 @@
+import type { ISql } from 'postgres';
 import type { Main as AtProtocolTarget } from '$lib/lexicons/bio/cuanto/protocolTarget.defs.js';
 import type { Main as AtSurveyProtocol } from '$lib/lexicons/bio/cuanto/surveyProtocol.defs.js';
 import type { Protocol, Target } from '$lib/offline/db.js';
 import sql from './index.js';
 
+// db defaults to the module-level connection but accepts a transaction handle
+// (from sql.begin) so a caller that must insert a protocol and its targets
+// atomically can do so (see backfillProtocol in the tap webhook). Without
+// that, a reader between the two statements could see the protocol as
+// indexed with zero targets, which reconcileRetirements
+// (materialize-targets.ts) reads as "all targets were removed" and
+// mass-retires every surveyor's targets. scripts/reindex-protocol.ts has the
+// same failure mode but doesn't use these helpers, so it wraps its own
+// writes in a transaction directly.
 export async function insertProtocol(
   did: string,
   rkey: string,
   record: AtSurveyProtocol,
   atUri: string,
   cid: string,
+  db: ISql = sql,
 ): Promise<void> {
-  await sql`
+  await db`
     INSERT INTO survey_protocols (at_uri, did, rkey, cid, record, indexed_at)
     VALUES (
       ${atUri},
       ${did},
       ${rkey},
       ${cid},
-      ${sql.json(record as Parameters<typeof sql.json>[0])},
+      ${db.json(record as Parameters<typeof db.json>[0])},
       now()
     )
     ON CONFLICT (at_uri) DO UPDATE SET
@@ -26,31 +37,45 @@ export async function insertProtocol(
   `;
 }
 
-export async function insertTarget(
+// A create/update event means the record currently exists on the PDS, so this
+// clears deleted_at on conflict -- the write-side half of the tombstone: if a
+// protocolTarget reappears (or a stale delete is corrected) under the same
+// at_uri, the next create/update event un-tombstones it.
+export async function insertProtocolTarget(
   did: string,
   rkey: string,
   record: AtProtocolTarget,
   atUri: string,
+  db: ISql = sql,
 ): Promise<void> {
-  await sql`
+  await db`
     INSERT INTO protocol_targets (at_uri, did, rkey, protocol_uri, record, indexed_at)
     VALUES (
       ${atUri},
       ${did},
       ${rkey},
       ${record.protocol},
-      ${sql.json(record as Parameters<typeof sql.json>[0])},
+      ${db.json(record as Parameters<typeof db.json>[0])},
       now()
     )
     ON CONFLICT (at_uri) DO UPDATE SET
       protocol_uri = EXCLUDED.protocol_uri,
-      record = EXCLUDED.record
+      record = EXCLUDED.record,
+      deleted_at = NULL
   `;
 }
 
-export async function deleteTargetsByUris(uris: string[]): Promise<void> {
+// Tombstones rather than hard-deletes: reconcileRetirements (materialize-targets.ts)
+// needs to tell "the author deleted this target" (deleted_at set) apart from "we
+// haven't indexed it yet" (no row at all).
+export async function deleteProtocolTargetsByUris(
+  uris: string[],
+): Promise<void> {
   if (uris.length === 0) return;
-  await sql`DELETE FROM protocol_targets WHERE at_uri = ANY(${uris})`;
+  await sql`
+    UPDATE protocol_targets SET deleted_at = now()
+    WHERE at_uri = ANY(${uris}) AND deleted_at IS NULL
+  `;
 }
 
 export interface ProtocolRow {
@@ -64,24 +89,43 @@ export interface ProtocolRow {
   last_survey_at?: string;
 }
 
-interface TargetRow {
+interface ProtocolTargetRow {
   protocol_uri: string;
   at_uri: string;
   record: AtProtocolTarget;
 }
 
-export async function getTargetsForProtocols(
+export async function getProtocolTargetsForProtocols(
   protocolUris: string[],
-): Promise<TargetRow[]> {
+): Promise<ProtocolTargetRow[]> {
   if (protocolUris.length === 0) return [];
-  return sql<TargetRow[]>`
+  return sql<ProtocolTargetRow[]>`
     SELECT protocol_uri, at_uri, record
     FROM protocol_targets
-    WHERE protocol_uri = ANY(${protocolUris})
+    WHERE protocol_uri = ANY(${protocolUris}) AND deleted_at IS NULL
   `;
 }
 
-function toTarget(row: TargetRow): Target {
+export interface ProtocolTargetStatusRow {
+  rkey: string;
+  deleted_at: Date | null;
+}
+
+// Every protocolTarget ever indexed for the protocol, live or tombstoned, keyed
+// by rkey -- reconcileRetirements (materialize-targets.ts) needs this to
+// distinguish "deleted" (deleted_at set) from "never indexed" (no row at all),
+// which getProtocolTargetsForProtocols' live-only view can't express.
+export async function getProtocolTargetStatusesByProtocol(
+  protocolUri: string,
+): Promise<ProtocolTargetStatusRow[]> {
+  return sql<ProtocolTargetStatusRow[]>`
+    SELECT rkey, deleted_at
+    FROM protocol_targets
+    WHERE protocol_uri = ${protocolUri}
+  `;
+}
+
+function toProtocolTarget(row: ProtocolTargetRow): Target {
   return { atUri: row.at_uri, record: row.record };
 }
 
@@ -112,23 +156,23 @@ async function getProtocolByDidAndRkey(
   return row ?? null;
 }
 
-function toProtocol(row: ProtocolRow, targets: TargetRow[]): Protocol {
+function toProtocol(row: ProtocolRow, targets: ProtocolTargetRow[]): Protocol {
   return {
     atUri: row.at_uri,
     rkey: row.rkey,
     handle: row.handle,
     avatarUrl: row.avatar_url ?? undefined,
     record: row.record,
-    targets: targets.map(toTarget),
+    targets: targets.map(toProtocolTarget),
     ...(row.followed_at ? { followedAt: row.followed_at } : {}),
     ...(row.last_survey_at ? { lastSurveyAt: row.last_survey_at } : {}),
   };
 }
 
 function groupTargetsByProtocol(
-  targets: TargetRow[],
-): Map<string, TargetRow[]> {
-  const map = new Map<string, TargetRow[]>();
+  targets: ProtocolTargetRow[],
+): Map<string, ProtocolTargetRow[]> {
+  const map = new Map<string, ProtocolTargetRow[]>();
   for (const t of targets) {
     const list = map.get(t.protocol_uri) ?? [];
     list.push(t);
@@ -147,7 +191,7 @@ export async function getProtocolDetailByHandleAndRkey(
   if (!user) return null;
   const protocol = await getProtocolByDidAndRkey(user.did, rkey);
   if (!protocol) return null;
-  const targets = await getTargetsForProtocols([protocol.at_uri]);
+  const targets = await getProtocolTargetsForProtocols([protocol.at_uri]);
   return toProtocol(protocol, targets);
 }
 
@@ -179,7 +223,7 @@ export async function getFollowedProtocolsByDid(
     ORDER BY pf.created_at DESC
   `;
   const protocolUris = rows.map((r) => r.at_uri);
-  const targetRows = await getTargetsForProtocols(protocolUris);
+  const targetRows = await getProtocolTargetsForProtocols(protocolUris);
   const byProtocol = groupTargetsByProtocol(targetRows);
   return rows.map((p) => toProtocol(p, byProtocol.get(p.at_uri) ?? []));
 }
@@ -197,7 +241,7 @@ export async function getProtocolsPage(
     OFFSET ${offset}
   `;
   const protocolUris = rows.map((r) => r.at_uri);
-  const targetRows = await getTargetsForProtocols(protocolUris);
+  const targetRows = await getProtocolTargetsForProtocols(protocolUris);
   const byProtocol = groupTargetsByProtocol(targetRows);
   return rows.map((p) => toProtocol(p, byProtocol.get(p.at_uri) ?? []));
 }

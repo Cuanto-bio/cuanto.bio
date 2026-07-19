@@ -11,7 +11,7 @@ vi.mock('$lib/server/pds', () => ({
 
 vi.mock('$lib/server/db/survey-protocols', () => ({
   insertProtocol: vi.fn(),
-  insertTarget: vi.fn(),
+  insertProtocolTarget: vi.fn(),
 }));
 
 vi.mock('$lib/server/db', () => ({

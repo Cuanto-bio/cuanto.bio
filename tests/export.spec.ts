@@ -97,30 +97,10 @@ test.describe('DwC-DP export endpoint', () => {
   }) => {
     await context.addCookies([authCookie(EXPORT_DID)]);
 
-    // Seed a minimal protocol (no protocol_targets needed; we seed survey_targets
-    // directly to control created_at).
-    const protocolRkey = `testproto${Date.now()}`;
+    // survey_targets are seeded directly below to control created_at; the
+    // protocol_targets seedProtocol creates are unused by this test.
+    const { protocolRkey } = await seedProtocol(sql, EXPORT_DID);
     const protocolUri = `at://${EXPORT_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
-    await sql`
-      INSERT INTO users (did, handle)
-      VALUES (${EXPORT_DID}, ${EXPORT_HANDLE})
-      ON CONFLICT (did) DO NOTHING
-    `;
-    const protocolRecord = sql.json({
-      $type: 'bio.cuanto.surveyProtocol',
-      title: 'T',
-      description: 'D',
-      createdAt: new Date().toISOString(),
-    });
-    await sql`
-      INSERT INTO survey_protocols (at_uri, did, rkey, cid, record, indexed_at)
-      VALUES (
-        ${protocolUri}, ${EXPORT_DID}, ${protocolRkey},
-        'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34',
-        ${protocolRecord},
-        now()
-      )
-    `;
 
     const surveyTime = new Date('2026-01-15T12:00:00Z');
     const beforeSurvey = new Date('2026-01-10T00:00:00Z');
@@ -170,28 +150,8 @@ test.describe('DwC-DP export endpoint', () => {
   }) => {
     await context.addCookies([authCookie(EXPORT_DID)]);
 
-    const protocolRkey = `testproto${Date.now()}`;
+    const { protocolRkey } = await seedProtocol(sql, EXPORT_DID);
     const protocolUri = `at://${EXPORT_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
-    await sql`
-      INSERT INTO users (did, handle)
-      VALUES (${EXPORT_DID}, ${EXPORT_HANDLE})
-      ON CONFLICT (did) DO NOTHING
-    `;
-    const protocolRecord2 = sql.json({
-      $type: 'bio.cuanto.surveyProtocol',
-      title: 'T',
-      description: 'D',
-      createdAt: new Date().toISOString(),
-    });
-    await sql`
-      INSERT INTO survey_protocols (at_uri, did, rkey, cid, record, indexed_at)
-      VALUES (
-        ${protocolUri}, ${EXPORT_DID}, ${protocolRkey},
-        'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34',
-        ${protocolRecord2},
-        now()
-      )
-    `;
 
     const ptUriC = `at://${EXPORT_DID}/bio.cuanto.protocolTarget/targetrkeyc`;
     // Null created_at = unknown birth time; must not be suppressed.
@@ -213,5 +173,81 @@ test.describe('DwC-DP export endpoint', () => {
     );
     expect(notDetectedRows).toHaveLength(1);
     expect(notDetectedRows[0].join(',')).toContain('targetrkeyc');
+  });
+
+  test('notDetected: only emitted for targets not yet retired at survey time', async ({
+    context,
+    sql,
+  }) => {
+    await context.addCookies([authCookie(EXPORT_DID)]);
+
+    const { protocolRkey } = await seedProtocol(sql, EXPORT_DID);
+    const protocolUri = `at://${EXPORT_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+
+    const beforeRetirement = new Date('2026-01-10T00:00:00Z');
+    const retiredAt = new Date('2026-01-15T00:00:00Z');
+    const afterRetirement = new Date('2026-01-20T00:00:00Z');
+
+    const ptUriD = `at://${EXPORT_DID}/bio.cuanto.protocolTarget/targetrkeyd`;
+    const ptUriE = `at://${EXPORT_DID}/bio.cuanto.protocolTarget/targetrkeye`;
+
+    // Target D: retired. A survey before the retirement should still see it as
+    // notDetected; a survey after should not.
+    await seedSurveyTarget(
+      sql,
+      EXPORT_DID,
+      protocolUri,
+      ptUriD,
+      beforeRetirement,
+      retiredAt,
+    );
+    // Target E: never retired, a control that should always be notDetected.
+    await seedSurveyTarget(
+      sql,
+      EXPORT_DID,
+      protocolUri,
+      ptUriE,
+      beforeRetirement,
+    );
+
+    await seedSurvey(
+      sql,
+      EXPORT_DID,
+      protocolUri,
+      'Test Location',
+      beforeRetirement.toISOString(),
+    );
+    await seedSurvey(
+      sql,
+      EXPORT_DID,
+      protocolUri,
+      'Test Location',
+      afterRetirement.toISOString(),
+    );
+
+    const response = await context.request.get(
+      `/api/protocols/${EXPORT_HANDLE}/${protocolRkey}/export`,
+    );
+    expect(response.status()).toBe(200);
+
+    const buf = Buffer.from(await response.body());
+    const files = await extractTarGz(buf);
+
+    const rows = csvRows(files.get('occurrence.csv')!);
+    const notDetectedRows = rows.filter((fields) =>
+      fields.some((f) => f === 'notDetected'),
+    );
+
+    // Target D: notDetected only for the survey before retirement.
+    const targetDRows = notDetectedRows.filter((fields) =>
+      fields.some((f) => f.includes('targetrkeyd')),
+    );
+    expect(targetDRows).toHaveLength(1);
+
+    // Target E: notDetected for both surveys (never retired).
+    const targetERows = notDetectedRows.filter((fields) =>
+      fields.some((f) => f.includes('targetrkeye')),
+    );
+    expect(targetERows).toHaveLength(2);
   });
 });

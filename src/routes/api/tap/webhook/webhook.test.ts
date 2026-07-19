@@ -2,7 +2,15 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('$lib/server/db/survey-protocols', () => ({
   insertProtocol: vi.fn(),
-  insertTarget: vi.fn(),
+  insertProtocolTarget: vi.fn(),
+  deleteProtocolTargetsByUris: vi.fn(),
+}));
+
+// backfillProtocol wraps its writes in sql.begin; stand in a fake transaction
+// handle ('tx') so tests can assert insertProtocol/insertProtocolTarget were
+// called with it rather than the default connection.
+vi.mock('$lib/server/db', () => ({
+  default: { begin: vi.fn((cb: (tx: unknown) => unknown) => cb('tx')) },
 }));
 
 vi.mock('$lib/server/db/surveys', () => ({
@@ -14,6 +22,11 @@ vi.mock('$lib/server/db/surveys', () => ({
 vi.mock('$lib/server/db/protocol-follows', () => ({
   createFollow: vi.fn(),
   deleteFollow: vi.fn(),
+}));
+
+vi.mock('$lib/server/db/survey-targets', () => ({
+  insertSurveyTarget: vi.fn(),
+  deleteSurveyTargetByUri: vi.fn(),
 }));
 
 vi.mock('$env/dynamic/private', () => ({
@@ -46,7 +59,15 @@ import {
   insertIdentification,
 } from '$lib/server/db/identifications';
 import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
-import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
+import {
+  deleteProtocolTargetsByUris,
+  insertProtocol,
+  insertProtocolTarget,
+} from '$lib/server/db/survey-protocols';
+import {
+  deleteSurveyTargetByUri,
+  insertSurveyTarget,
+} from '$lib/server/db/survey-targets';
 import {
   deleteOccurrenceByAtUri,
   insertOccurrence,
@@ -107,6 +128,27 @@ const targetEvent = {
           verbatimTargetScope: 'trees',
         },
       ],
+    },
+    cid: TEST_CID,
+    live: true,
+  },
+};
+
+const surveyTargetEvent = {
+  id: 9,
+  type: 'record',
+  record: {
+    did: 'did:plc:abc123',
+    rev: 'revabc',
+    collection: 'bio.cuanto.surveyTarget',
+    rkey: '3tgt',
+    action: 'create',
+    record: {
+      $type: 'bio.cuanto.surveyTarget',
+      protocol: 'at://did:plc:abc123/bio.cuanto.surveyProtocol/3abc',
+      protocolTargetID: 'at://did:plc:abc123/bio.cuanto.protocolTarget/3def',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      scope: [],
     },
     cid: TEST_CID,
     live: true,
@@ -274,10 +316,10 @@ describe('POST /api/tap/webhook', () => {
       'at://did:plc:abc123/bio.cuanto.surveyProtocol/3abc',
       TEST_CID,
     );
-    expect(insertTarget).not.toHaveBeenCalled();
+    expect(insertProtocolTarget).not.toHaveBeenCalled();
   });
 
-  test('calls insertTarget for a surveyTarget update event', async () => {
+  test('calls insertProtocolTarget for a protocolTarget update event', async () => {
     const updateEvent = {
       ...targetEvent,
       record: { ...targetEvent.record, action: 'update' },
@@ -286,21 +328,73 @@ describe('POST /api/tap/webhook', () => {
       request: makeRequest(updateEvent, VALID_AUTH),
     } as Parameters<typeof POST>[0]);
     expect(resp.status).toBe(200);
-    expect(insertTarget).toHaveBeenCalled();
+    expect(insertProtocolTarget).toHaveBeenCalled();
   });
 
-  test('calls insertTarget for a surveyTarget create event', async () => {
+  test('calls insertProtocolTarget for a protocolTarget create event', async () => {
     const resp = await POST({
       request: makeRequest(targetEvent, VALID_AUTH),
     } as Parameters<typeof POST>[0]);
     expect(resp.status).toBe(200);
-    expect(insertTarget).toHaveBeenCalledWith(
+    expect(insertProtocolTarget).toHaveBeenCalledWith(
       'did:plc:abc123',
       '3def',
       targetEvent.record.record,
       'at://did:plc:abc123/bio.cuanto.protocolTarget/3def',
     );
     expect(insertProtocol).not.toHaveBeenCalled();
+  });
+
+  test('calls deleteProtocolTargetsByUris for a protocolTarget delete event', async () => {
+    const deleteEvent = {
+      ...targetEvent,
+      record: { ...targetEvent.record, action: 'delete', record: undefined },
+    };
+    const resp = await POST({
+      request: makeRequest(deleteEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(deleteProtocolTargetsByUris).toHaveBeenCalledWith([
+      'at://did:plc:abc123/bio.cuanto.protocolTarget/3def',
+    ]);
+    expect(insertProtocolTarget).not.toHaveBeenCalled();
+  });
+
+  test('calls insertSurveyTarget with the event rev for a surveyTarget create event', async () => {
+    const resp = await POST({
+      request: makeRequest(surveyTargetEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    // evt.rev is threaded through so insertSurveyTarget's staleness guard can
+    // reject an out-of-order/replayed event instead of clobbering a newer
+    // retired_at with an older one.
+    expect(insertSurveyTarget).toHaveBeenCalledWith(
+      'did:plc:abc123',
+      '3tgt',
+      surveyTargetEvent.record.record,
+      'at://did:plc:abc123/bio.cuanto.surveyTarget/3tgt',
+      'at://did:plc:abc123/bio.cuanto.protocolTarget/3def',
+      'revabc',
+    );
+  });
+
+  test('calls deleteSurveyTargetByUri for a surveyTarget delete event', async () => {
+    const deleteEvent = {
+      ...surveyTargetEvent,
+      record: {
+        ...surveyTargetEvent.record,
+        action: 'delete',
+        record: undefined,
+      },
+    };
+    const resp = await POST({
+      request: makeRequest(deleteEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(deleteSurveyTargetByUri).toHaveBeenCalledWith(
+      'at://did:plc:abc123/bio.cuanto.surveyTarget/3tgt',
+    );
+    expect(insertSurveyTarget).not.toHaveBeenCalled();
   });
 
   test('calls insertSurvey for a survey update event', async () => {
@@ -418,13 +512,13 @@ describe('POST /api/tap/webhook', () => {
     expect(insertProtocol).not.toHaveBeenCalled();
   });
 
-  test('does not call insertProtocol or insertTarget for an identity event', async () => {
+  test('does not call insertProtocol or insertProtocolTarget for an identity event', async () => {
     const resp = await POST({
       request: makeRequest(identityEvent, VALID_AUTH),
     } as Parameters<typeof POST>[0]);
     expect(resp.status).toBe(200);
     expect(insertProtocol).not.toHaveBeenCalled();
-    expect(insertTarget).not.toHaveBeenCalled();
+    expect(insertProtocolTarget).not.toHaveBeenCalled();
   });
 
   test('returns 200 without inserting for an unrecognised collection', async () => {
@@ -437,7 +531,7 @@ describe('POST /api/tap/webhook', () => {
     } as Parameters<typeof POST>[0]);
     expect(resp.status).toBe(200);
     expect(insertProtocol).not.toHaveBeenCalled();
-    expect(insertTarget).not.toHaveBeenCalled();
+    expect(insertProtocolTarget).not.toHaveBeenCalled();
   });
 
   test('calls createFollow for a follow create event', async () => {
@@ -560,8 +654,8 @@ describe('POST /api/tap/webhook', () => {
     },
   };
 
-  test('backfills missing protocol when insertTarget gets FK violation', async () => {
-    vi.mocked(insertTarget).mockRejectedValueOnce(fkError);
+  test('backfills missing protocol when insertProtocolTarget gets FK violation', async () => {
+    vi.mocked(insertProtocolTarget).mockRejectedValueOnce(fkError);
     vi.mocked(fetchAtRecord).mockResolvedValueOnce(fetchedProtocolRecord);
     const resp = await POST({
       request: makeRequest(targetEvent, VALID_AUTH),
@@ -576,8 +670,9 @@ describe('POST /api/tap/webhook', () => {
       fetchedProtocolRecord.value,
       fetchedProtocolRecord.uri,
       TEST_CID,
+      'tx',
     );
-    expect(insertTarget).toHaveBeenCalledTimes(2);
+    expect(insertProtocolTarget).toHaveBeenCalledTimes(2);
   });
 
   test('backfills missing protocol when insertSurvey gets FK violation', async () => {
@@ -699,7 +794,7 @@ describe('POST /api/tap/webhook', () => {
   };
 
   test('backfillProtocol also inserts related targets', async () => {
-    vi.mocked(insertTarget).mockRejectedValueOnce(fkError);
+    vi.mocked(insertProtocolTarget).mockRejectedValueOnce(fkError);
     vi.mocked(fetchAtRecord).mockResolvedValueOnce(fetchedProtocolRecord);
     vi.mocked(listAtRecords).mockResolvedValueOnce([fetchedTargetRecord]);
     const resp = await POST({
@@ -710,7 +805,47 @@ describe('POST /api/tap/webhook', () => {
       'did:plc:abc123',
       'bio.cuanto.protocolTarget',
     );
-    expect(insertTarget).toHaveBeenCalledTimes(3); // 1 fail + 1 backfill + 1 retry
+    expect(insertProtocolTarget).toHaveBeenCalledTimes(3); // 1 fail + 1 backfill + 1 retry
+  });
+
+  test('backfillProtocol inserts the protocol and its targets inside one transaction', async () => {
+    vi.mocked(insertProtocolTarget).mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord).mockResolvedValueOnce(fetchedProtocolRecord);
+    vi.mocked(listAtRecords).mockResolvedValueOnce([fetchedTargetRecord]);
+    const resp = await POST({
+      request: makeRequest(targetEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+
+    // The original (pre-backfill) attempt uses the default connection.
+    expect(insertProtocolTarget).toHaveBeenNthCalledWith(
+      1,
+      'did:plc:abc123',
+      '3def',
+      targetEvent.record.record,
+      'at://did:plc:abc123/bio.cuanto.protocolTarget/3def',
+    );
+    // backfillProtocol's own writes are routed through the same transaction
+    // handle ('tx'), so a failed target insert can't leave a committed
+    // protocol row with zero targets (see materialize-targets.ts's
+    // reconcileRetirements, which would otherwise mass-retire every
+    // surveyor's targets on seeing that empty state).
+    expect(insertProtocol).toHaveBeenCalledWith(
+      'did:plc:abc123',
+      '3abc',
+      fetchedProtocolRecord.value,
+      fetchedProtocolRecord.uri,
+      TEST_CID,
+      'tx',
+    );
+    expect(insertProtocolTarget).toHaveBeenNthCalledWith(
+      2,
+      'did:plc:abc123',
+      '3def',
+      fetchedTargetRecord.value,
+      fetchedTargetRecord.uri,
+      'tx',
+    );
   });
 
   test('backfillSurvey also inserts related occurrences', async () => {
@@ -812,15 +947,15 @@ describe('POST /api/tap/webhook', () => {
     expect(insertIdentification).toHaveBeenCalledTimes(2);
   });
 
-  test('returns 200 without backfilling when protocol is RecordNotFound (insertTarget FK)', async () => {
-    vi.mocked(insertTarget).mockRejectedValueOnce(fkError);
+  test('returns 200 without backfilling when protocol is RecordNotFound (insertProtocolTarget FK)', async () => {
+    vi.mocked(insertProtocolTarget).mockRejectedValueOnce(fkError);
     vi.mocked(fetchAtRecord).mockResolvedValueOnce(null);
     const resp = await POST({
       request: makeRequest(targetEvent, VALID_AUTH),
     } as Parameters<typeof POST>[0]);
     expect(resp.status).toBe(200);
     expect(insertProtocol).not.toHaveBeenCalled();
-    expect(insertTarget).toHaveBeenCalledOnce();
+    expect(insertProtocolTarget).toHaveBeenCalledOnce();
   });
 
   test('returns 200 without backfilling when protocol is RecordNotFound (insertSurvey FK)', async () => {

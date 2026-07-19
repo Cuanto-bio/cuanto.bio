@@ -29,6 +29,11 @@ type Main = {
   createdAt: l.DatetimeString
 
   /**
+   * Timestamp when the target's source protocolTarget was removed from the protocol, after which it no longer implies a non-detection. Absent while the target is still part of the protocol.
+   */
+  retiredAt?: l.DatetimeString
+
+  /**
    * One or more scope criteria copied from the source protocolTarget.
    */
   scope: (
@@ -48,6 +53,7 @@ const main = l.record<'tid', Main>(
     protocol: l.string({ format: 'at-uri' }),
     protocolTargetID: l.string({ format: 'at-uri' }),
     createdAt: l.string({ format: 'datetime' }),
+    retiredAt: l.optional(l.string({ format: 'datetime' })),
     scope: l.array(
       l.typedUnion(
         [

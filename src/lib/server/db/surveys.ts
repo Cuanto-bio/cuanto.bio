@@ -503,6 +503,10 @@ export function streamAbsencesByProtocolUri(protocolUri: string) {
         st.created_at IS NULL
         OR st.created_at <= COALESCE(s.event_date, s.created_at)
       )
+      AND (
+        st.retired_at IS NULL
+        OR COALESCE(s.event_date, s.created_at) < st.retired_at
+      )
     ORDER BY s.at_uri, st.at_uri
   `.cursor(100);
 }

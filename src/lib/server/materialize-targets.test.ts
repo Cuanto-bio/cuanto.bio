@@ -6,7 +6,8 @@ vi.mock('$lib/server/pds', () => ({
 }));
 
 vi.mock('$lib/server/db/survey-protocols', () => ({
-  getTargetsForProtocols: vi.fn(),
+  getProtocolTargetsForProtocols: vi.fn(),
+  getProtocolTargetStatusesByProtocol: vi.fn(),
 }));
 
 vi.mock('$lib/server/db/survey-targets', () => ({
@@ -28,7 +29,10 @@ vi.mock('$lib/server/logger', () => ({
 }));
 
 import { getFollowByDidAndProtocol } from '$lib/server/db/protocol-follows';
-import { getTargetsForProtocols } from '$lib/server/db/survey-protocols';
+import {
+  getProtocolTargetStatusesByProtocol,
+  getProtocolTargetsForProtocols,
+} from '$lib/server/db/survey-protocols';
 import {
   deleteSurveyTargetsByDidAndProtocol,
   getSurveyTargetsByDidAndProtocol,
@@ -44,7 +48,11 @@ import {
 const DID = 'did:test:surveyor';
 const PROTOCOL_URI = 'at://did:test:author/bio.cuanto.surveyProtocol/proto1';
 const PT_URI = 'at://did:test:author/bio.cuanto.protocolTarget/t1';
+const PT_URI2 = 'at://did:test:author/bio.cuanto.protocolTarget/t2';
+const PT_URI3 = 'at://did:test:author/bio.cuanto.protocolTarget/t3';
 const ST_URI = `at://${DID}/bio.cuanto.surveyTarget/t1`;
+const ST_URI2 = `at://${DID}/bio.cuanto.surveyTarget/t2`;
+const ST_URI3 = `at://${DID}/bio.cuanto.surveyTarget/t3`;
 
 const protocolTargetRow = {
   protocol_uri: PROTOCOL_URI,
@@ -62,16 +70,42 @@ const protocolTargetRow = {
   },
 };
 
+// A surveyTarget already materialized for t2, still active (never retired).
+function existingSurveyTarget(overrides: Record<string, unknown> = {}) {
+  return {
+    at_uri: ST_URI2,
+    rkey: 't2',
+    protocol_uri: PROTOCOL_URI,
+    protocol_target_uri: PT_URI2,
+    created_at: null,
+    record: {
+      $type: 'bio.cuanto.surveyTarget',
+      protocol: PROTOCOL_URI,
+      protocolTargetID: PT_URI2,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      scope: [],
+      ...overrides,
+    },
+  };
+}
+
+// The protocol_targets status row for rkey t2: live by default, or tombstoned
+// when a deletedAt is given.
+function targetStatus(rkey: string, deletedAt: Date | null = null) {
+  return { rkey, deleted_at: deletedAt };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(putRecord).mockResolvedValue({ uri: ST_URI, cid: 'cid1' });
+  vi.mocked(getProtocolTargetStatusesByProtocol).mockResolvedValue([]);
 });
 
 describe('materializeSurveyTargets', () => {
   test('creates a surveyTarget per protocolTarget, reusing the rkey', async () => {
-    vi.mocked(getTargetsForProtocols).mockResolvedValue([
+    vi.mocked(getProtocolTargetsForProtocols).mockResolvedValue([
       protocolTargetRow,
-    ] as unknown as Awaited<ReturnType<typeof getTargetsForProtocols>>);
+    ] as unknown as Awaited<ReturnType<typeof getProtocolTargetsForProtocols>>);
     vi.mocked(getSurveyTargetsByDidAndProtocol).mockResolvedValue([]);
 
     await materializeSurveyTargets(DID, PROTOCOL_URI);
@@ -95,11 +129,23 @@ describe('materializeSurveyTargets', () => {
   });
 
   test('is idempotent: skips targets already materialized', async () => {
-    vi.mocked(getTargetsForProtocols).mockResolvedValue([
+    vi.mocked(getProtocolTargetsForProtocols).mockResolvedValue([
       protocolTargetRow,
-    ] as unknown as Awaited<ReturnType<typeof getTargetsForProtocols>>);
+    ] as unknown as Awaited<ReturnType<typeof getProtocolTargetsForProtocols>>);
     vi.mocked(getSurveyTargetsByDidAndProtocol).mockResolvedValue([
-      { rkey: 't1' },
+      {
+        at_uri: ST_URI,
+        rkey: 't1',
+        protocol_uri: PROTOCOL_URI,
+        protocol_target_uri: PT_URI,
+        record: {
+          $type: 'bio.cuanto.surveyTarget',
+          protocol: PROTOCOL_URI,
+          protocolTargetID: PT_URI,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          scope: [],
+        },
+      },
     ] as unknown as Awaited<
       ReturnType<typeof getSurveyTargetsByDidAndProtocol>
     >);
@@ -110,11 +156,246 @@ describe('materializeSurveyTargets', () => {
     expect(insertSurveyTarget).not.toHaveBeenCalled();
   });
 
-  test('does nothing when the protocol has no targets', async () => {
-    vi.mocked(getTargetsForProtocols).mockResolvedValue([]);
+  test('does nothing when the protocol has no targets and no existing surveyTargets', async () => {
+    vi.mocked(getProtocolTargetsForProtocols).mockResolvedValue([]);
+    vi.mocked(getSurveyTargetsByDidAndProtocol).mockResolvedValue([]);
     await materializeSurveyTargets(DID, PROTOCOL_URI);
-    expect(getSurveyTargetsByDidAndProtocol).not.toHaveBeenCalled();
     expect(putRecord).not.toHaveBeenCalled();
+    expect(insertSurveyTarget).not.toHaveBeenCalled();
+  });
+});
+
+describe('materializeSurveyTargets: retirement reconciliation', () => {
+  test('retires a surveyTarget whose protocolTarget was tombstoned, stamping the true deletion time', async () => {
+    vi.mocked(getProtocolTargetsForProtocols).mockResolvedValue([]);
+    const deletedAt = new Date('2026-03-01T00:00:00.000Z');
+    vi.mocked(getProtocolTargetStatusesByProtocol).mockResolvedValue([
+      targetStatus('t2', deletedAt),
+    ]);
+    vi.mocked(getSurveyTargetsByDidAndProtocol).mockResolvedValue([
+      existingSurveyTarget(),
+    ] as unknown as Awaited<
+      ReturnType<typeof getSurveyTargetsByDidAndProtocol>
+    >);
+    vi.mocked(putRecord).mockResolvedValue({ uri: ST_URI2, cid: 'cid2' });
+
+    await materializeSurveyTargets(DID, PROTOCOL_URI);
+
+    // retiredAt is the tombstone's deleted_at, not the reconciliation call's
+    // own "now" -- closes the false-notDetected window between the author's
+    // delete and the surveyor's next sync.
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      'bio.cuanto.surveyTarget',
+      't2',
+      expect.objectContaining({
+        protocolTargetID: PT_URI2,
+        retiredAt: deletedAt.toISOString(),
+      }),
+    );
+    expect(insertSurveyTarget).toHaveBeenCalledWith(
+      DID,
+      't2',
+      expect.objectContaining({ retiredAt: deletedAt.toISOString() }),
+      ST_URI2,
+      PT_URI2,
+    );
+  });
+
+  test('does not retire a surveyTarget whose protocolTarget is live', async () => {
+    vi.mocked(getProtocolTargetsForProtocols).mockResolvedValue([
+      { protocol_uri: PROTOCOL_URI, at_uri: PT_URI2, record: { scope: [] } },
+    ] as unknown as Awaited<ReturnType<typeof getProtocolTargetsForProtocols>>);
+    vi.mocked(getProtocolTargetStatusesByProtocol).mockResolvedValue([
+      targetStatus('t2'),
+    ]);
+    vi.mocked(getSurveyTargetsByDidAndProtocol).mockResolvedValue([
+      existingSurveyTarget(),
+    ] as unknown as Awaited<
+      ReturnType<typeof getSurveyTargetsByDidAndProtocol>
+    >);
+
+    await materializeSurveyTargets(DID, PROTOCOL_URI);
+
+    expect(putRecord).not.toHaveBeenCalled();
+    expect(insertSurveyTarget).not.toHaveBeenCalled();
+  });
+
+  test('un-retires a surveyTarget whose protocolTarget is live again under the same rkey', async () => {
+    vi.mocked(getProtocolTargetsForProtocols).mockResolvedValue([
+      { protocol_uri: PROTOCOL_URI, at_uri: PT_URI2, record: { scope: [] } },
+    ] as unknown as Awaited<ReturnType<typeof getProtocolTargetsForProtocols>>);
+    vi.mocked(getProtocolTargetStatusesByProtocol).mockResolvedValue([
+      targetStatus('t2'),
+    ]);
+    vi.mocked(getSurveyTargetsByDidAndProtocol).mockResolvedValue([
+      existingSurveyTarget({ retiredAt: '2026-02-01T00:00:00.000Z' }),
+    ] as unknown as Awaited<
+      ReturnType<typeof getSurveyTargetsByDidAndProtocol>
+    >);
+    vi.mocked(putRecord).mockResolvedValue({ uri: ST_URI2, cid: 'cid2' });
+
+    await materializeSurveyTargets(DID, PROTOCOL_URI);
+
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      'bio.cuanto.surveyTarget',
+      't2',
+      expect.not.objectContaining({ retiredAt: expect.anything() }),
+    );
+    expect(insertSurveyTarget).toHaveBeenCalledWith(
+      DID,
+      't2',
+      expect.not.objectContaining({ retiredAt: expect.anything() }),
+      ST_URI2,
+      PT_URI2,
+    );
+  });
+
+  test('is idempotent: does not re-stamp a surveyTarget that is already retired', async () => {
+    vi.mocked(getProtocolTargetsForProtocols).mockResolvedValue([]);
+    vi.mocked(getProtocolTargetStatusesByProtocol).mockResolvedValue([
+      targetStatus('t2', new Date('2026-02-01T00:00:00.000Z')),
+    ]);
+    vi.mocked(getSurveyTargetsByDidAndProtocol).mockResolvedValue([
+      existingSurveyTarget({ retiredAt: '2026-02-01T00:00:00.000Z' }),
+    ] as unknown as Awaited<
+      ReturnType<typeof getSurveyTargetsByDidAndProtocol>
+    >);
+
+    await materializeSurveyTargets(DID, PROTOCOL_URI);
+
+    expect(putRecord).not.toHaveBeenCalled();
+    expect(insertSurveyTarget).not.toHaveBeenCalled();
+  });
+
+  test('retires every existing target when the whole protocol is emptied (all protocolTargets tombstoned)', async () => {
+    vi.mocked(getProtocolTargetsForProtocols).mockResolvedValue([]);
+    const deletedAt = new Date('2026-03-01T00:00:00.000Z');
+    vi.mocked(getProtocolTargetStatusesByProtocol).mockResolvedValue([
+      targetStatus('t2', deletedAt),
+      targetStatus('t3', deletedAt),
+    ]);
+    const other = {
+      ...existingSurveyTarget(),
+      at_uri: ST_URI3,
+      rkey: 't3',
+      protocol_target_uri: PT_URI3,
+      record: { ...existingSurveyTarget().record, protocolTargetID: PT_URI3 },
+    };
+    vi.mocked(getSurveyTargetsByDidAndProtocol).mockResolvedValue([
+      existingSurveyTarget(),
+      other,
+    ] as unknown as Awaited<
+      ReturnType<typeof getSurveyTargetsByDidAndProtocol>
+    >);
+
+    await materializeSurveyTargets(DID, PROTOCOL_URI);
+
+    // Previously a documented v1 limitation (whole-protocol deletion was
+    // never retired because the guard bailed on the protocol itself being
+    // gone); tombstones make every target's deletion independently visible,
+    // so this now Just Works.
+    expect(insertSurveyTarget).toHaveBeenCalledTimes(2);
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      'bio.cuanto.surveyTarget',
+      't2',
+      expect.objectContaining({ retiredAt: deletedAt.toISOString() }),
+    );
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      'bio.cuanto.surveyTarget',
+      't3',
+      expect.objectContaining({ retiredAt: deletedAt.toISOString() }),
+    );
+  });
+
+  test('does not touch a surveyTarget with no protocol_targets row at all (not indexed yet, or mid-backfill)', async () => {
+    vi.mocked(getProtocolTargetsForProtocols).mockResolvedValue([]);
+    vi.mocked(getProtocolTargetStatusesByProtocol).mockResolvedValue([]);
+    vi.mocked(getSurveyTargetsByDidAndProtocol).mockResolvedValue([
+      existingSurveyTarget(),
+    ] as unknown as Awaited<
+      ReturnType<typeof getSurveyTargetsByDidAndProtocol>
+    >);
+
+    await materializeSurveyTargets(DID, PROTOCOL_URI);
+
+    expect(putRecord).not.toHaveBeenCalled();
+    expect(insertSurveyTarget).not.toHaveBeenCalled();
+  });
+
+  test('a PDS failure retiring one target does not throw and does not block reconciling the rest', async () => {
+    vi.mocked(getProtocolTargetsForProtocols).mockResolvedValue([]);
+    const deletedAt = new Date('2026-03-01T00:00:00.000Z');
+    vi.mocked(getProtocolTargetStatusesByProtocol).mockResolvedValue([
+      targetStatus('t2', deletedAt),
+      targetStatus('t3', deletedAt),
+    ]);
+    const failingTarget = existingSurveyTarget();
+    const okTarget = {
+      ...existingSurveyTarget(),
+      at_uri: ST_URI3,
+      rkey: 't3',
+      protocol_target_uri: PT_URI3,
+      record: {
+        ...existingSurveyTarget().record,
+        protocolTargetID: PT_URI3,
+      },
+    };
+    vi.mocked(getSurveyTargetsByDidAndProtocol).mockResolvedValue([
+      failingTarget,
+      okTarget,
+    ] as unknown as Awaited<
+      ReturnType<typeof getSurveyTargetsByDidAndProtocol>
+    >);
+    vi.mocked(putRecord)
+      .mockRejectedValueOnce(new Error('PDS unavailable'))
+      .mockResolvedValueOnce({ uri: ST_URI3, cid: 'cid3' });
+
+    await expect(
+      materializeSurveyTargets(DID, PROTOCOL_URI),
+    ).resolves.toBeUndefined();
+
+    expect(putRecord).toHaveBeenCalledTimes(2);
+    expect(insertSurveyTarget).toHaveBeenCalledTimes(1);
+    expect(insertSurveyTarget).toHaveBeenCalledWith(
+      DID,
+      't3',
+      expect.anything(),
+      ST_URI3,
+      PT_URI3,
+    );
+  });
+
+  test('falls back to the created_at column when retiring a legacy target with no record.createdAt', async () => {
+    vi.mocked(getProtocolTargetsForProtocols).mockResolvedValue([]);
+    vi.mocked(getProtocolTargetStatusesByProtocol).mockResolvedValue([
+      targetStatus('t2', new Date('2026-03-01T00:00:00.000Z')),
+    ]);
+    const legacyTarget = {
+      ...existingSurveyTarget(),
+      created_at: new Date('2026-01-05T00:00:00.000Z'),
+      record: {
+        ...existingSurveyTarget().record,
+        createdAt: undefined,
+      },
+    };
+    vi.mocked(getSurveyTargetsByDidAndProtocol).mockResolvedValue([
+      legacyTarget,
+    ] as unknown as Awaited<
+      ReturnType<typeof getSurveyTargetsByDidAndProtocol>
+    >);
+
+    await materializeSurveyTargets(DID, PROTOCOL_URI);
+
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      'bio.cuanto.surveyTarget',
+      't2',
+      expect.objectContaining({ createdAt: '2026-01-05T00:00:00.000Z' }),
+    );
   });
 });
 

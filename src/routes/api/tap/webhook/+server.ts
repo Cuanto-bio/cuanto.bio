@@ -8,13 +8,18 @@ import type { Main as SurveyProtocol } from '$lib/lexicons/bio/cuanto/surveyProt
 import type { Main as SurveyTarget } from '$lib/lexicons/bio/cuanto/surveyTarget.defs';
 import type { Main as Identification } from '$lib/lexicons/bio/lexicons/temp/v0-1/identification.defs';
 import type { Main as Occurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs';
+import sql from '$lib/server/db';
 import {
   deleteIdentificationByAtUri,
   deleteIdentificationsByOccurrenceUris,
   insertIdentification,
 } from '$lib/server/db/identifications';
 import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
-import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
+import {
+  deleteProtocolTargetsByUris,
+  insertProtocol,
+  insertProtocolTarget,
+} from '$lib/server/db/survey-protocols';
 import {
   deleteSurveyTargetByUri,
   insertSurveyTarget,
@@ -36,7 +41,7 @@ import {
 import type { RequestHandler } from './$types';
 
 const PROTOCOL_NSID = 'bio.cuanto.surveyProtocol';
-const TARGET_NSID = 'bio.cuanto.protocolTarget';
+const PROTOCOL_TARGET_NSID = 'bio.cuanto.protocolTarget';
 const SURVEY_NSID = 'bio.cuanto.survey';
 const SURVEY_TARGET_NSID = 'bio.cuanto.surveyTarget';
 const OCCURRENCE_NSID = 'bio.lexicons.temp.v0-1.occurrence';
@@ -79,24 +84,40 @@ async function backfillProtocol(protocolUri: string): Promise<boolean> {
   }
   const { did, rkey } = parseAtUri(protocolUri);
   await ensureUser(did);
-  await insertProtocol(
-    did,
-    rkey,
-    rec.value as SurveyProtocol,
-    rec.uri,
-    rec.cid,
-  );
 
   // listAtRecords has no server-side field filter, so we fetch all targets for
-  // the DID and filter client-side.
-  const targets = (await listAtRecords(did, TARGET_NSID)) ?? [];
-  for (const t of targets) {
-    const target = t.value as ProtocolTarget;
-    if (target.protocol === protocolUri) {
+  // the DID and filter client-side. Fetched before opening the transaction so
+  // the PDS round-trip doesn't hold the transaction open.
+  const allTargets = (await listAtRecords(did, PROTOCOL_TARGET_NSID)) ?? [];
+  const targets = allTargets.filter(
+    (t) => (t.value as ProtocolTarget).protocol === protocolUri,
+  );
+
+  // Insert the protocol and its targets in one transaction. Otherwise a reader
+  // between the two writes (e.g. reconcileRetirements in materialize-targets.ts)
+  // sees the protocol as indexed with zero targets and mistakes "not yet
+  // backfilled" for "the author deleted every target," mass-retiring every
+  // surveyor's targets for it.
+  await sql.begin(async (tx) => {
+    await insertProtocol(
+      did,
+      rkey,
+      rec.value as SurveyProtocol,
+      rec.uri,
+      rec.cid,
+      tx,
+    );
+    for (const t of targets) {
       const { rkey: tRkey } = parseAtUri(t.uri);
-      await insertTarget(did, tRkey, target, t.uri);
+      await insertProtocolTarget(
+        did,
+        tRkey,
+        t.value as ProtocolTarget,
+        t.uri,
+        tx,
+      );
     }
-  }
+  });
 
   log.info({ protocolUri }, 'backfilled missing protocol');
   return true;
@@ -229,12 +250,19 @@ export const POST: RequestHandler = async ({ request }) => {
         target,
         atUri,
         target.protocolTargetID,
+        evt.rev,
       );
       log.info({ atUri }, 'ingested survey target');
     } else if (evt.action === 'delete') {
       await deleteSurveyTargetByUri(atUri);
       log.info({ atUri }, 'deleted survey target');
     }
+    return json({ ok: true });
+  }
+
+  if (evt.collection === PROTOCOL_TARGET_NSID && evt.action === 'delete') {
+    await deleteProtocolTargetsByUris([atUri]);
+    log.info({ atUri }, 'deleted protocol target');
     return json({ ok: true });
   }
 
@@ -268,17 +296,18 @@ export const POST: RequestHandler = async ({ request }) => {
       evt.cid ?? '',
     );
     log.info({ atUri }, 'ingested survey protocol');
-  } else if (evt.collection === TARGET_NSID) {
+  } else if (evt.collection === PROTOCOL_TARGET_NSID) {
     const target = evt.record as unknown as ProtocolTarget;
     try {
-      await insertTarget(evt.did, evt.rkey, target, atUri);
+      await insertProtocolTarget(evt.did, evt.rkey, target, atUri);
     } catch (e) {
       if (isFkViolation(e)) {
         const backfilled = await backfillProtocol(target.protocol);
-        if (backfilled) await insertTarget(evt.did, evt.rkey, target, atUri);
+        if (backfilled)
+          await insertProtocolTarget(evt.did, evt.rkey, target, atUri);
       } else throw e;
     }
-    log.info({ atUri }, 'ingested survey target');
+    log.info({ atUri }, 'ingested protocol target');
   } else if (evt.collection === SURVEY_NSID) {
     await ensureUser(evt.did);
     const survey = evt.record as unknown as Survey;

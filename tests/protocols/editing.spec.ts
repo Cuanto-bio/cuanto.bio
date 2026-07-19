@@ -140,8 +140,11 @@ test.describe('protocol editing', () => {
       `/app/protocols/${EDIT_HANDLE}/${protocolRkey}`,
     );
 
+    // Removed targets are tombstoned (deleted_at set), not hard-deleted, so
+    // filter to the live ones -- what the protocol's current target list is.
     const targets = await sql<{ record: Record<string, unknown> }[]>`
-      SELECT record FROM protocol_targets WHERE protocol_uri = ${protocolUri}
+      SELECT record FROM protocol_targets
+      WHERE protocol_uri = ${protocolUri} AND deleted_at IS NULL
     `;
     expect(targets).toHaveLength(1);
     const scope = (

@@ -2,11 +2,16 @@ import type { l } from '@atproto/lex';
 import { parseAtUri } from '$lib/atUri';
 import * as SurveyTarget from '$lib/lexicons/bio/cuanto/surveyTarget';
 import { getFollowByDidAndProtocol } from '$lib/server/db/protocol-follows';
-import { getTargetsForProtocols } from '$lib/server/db/survey-protocols';
+import {
+  getProtocolTargetStatusesByProtocol,
+  getProtocolTargetsForProtocols,
+  type ProtocolTargetStatusRow,
+} from '$lib/server/db/survey-protocols';
 import {
   deleteSurveyTargetsByDidAndProtocol,
   getSurveyTargetsByDidAndProtocol,
   insertSurveyTarget,
+  type SurveyTargetRow,
 } from '$lib/server/db/survey-targets';
 import { countSurveysByDidAndProtocol } from '$lib/server/db/surveys';
 import logger from '$lib/server/logger';
@@ -14,40 +19,120 @@ import { deleteRecord, putRecord } from '$lib/server/pds';
 
 const log = logger.child({ component: 'materialize-targets' });
 
+// Builds, writes to the PDS, and indexes a bio.cuanto.surveyTarget record.
+// Shared by the forward-materialize loop and reconcileRetirements below so the
+// build -> putRecord -> insertSurveyTarget sequence lives in one place.
+async function writeSurveyTarget(
+  did: string,
+  rkey: string,
+  protocolTargetUri: string,
+  fields: Parameters<typeof SurveyTarget.$build>[0],
+): Promise<void> {
+  const record = SurveyTarget.$build(fields);
+  const { uri } = await putRecord(did, SurveyTarget.$nsid, rkey, record);
+  await insertSurveyTarget(did, rkey, record, uri, protocolTargetUri);
+}
+
 // Ensures the surveyor (did) has a bio.cuanto.surveyTarget for each of the
 // protocol's protocolTargets, reusing the protocolTarget's rkey so the operation
 // is idempotent and the occurrence-repoint mapping is deterministic. The scope is
 // copied from the protocolTarget so it survives the author deleting the protocol.
 // Source data comes from the local index, so this works regardless of whether the
-// protocol author has migrated their own records.
+// protocol author has migrated their own records. Also reconciles retirement of
+// surveyTargets whose source protocolTarget has been deleted (or un-deleted); see
+// reconcileRetirements.
 export async function materializeSurveyTargets(
   did: string,
   protocolUri: string,
 ): Promise<void> {
-  const protocolTargets = await getTargetsForProtocols([protocolUri]);
-  if (protocolTargets.length === 0) return;
+  const [protocolTargets, targetStatuses, existing] = await Promise.all([
+    getProtocolTargetsForProtocols([protocolUri]),
+    getProtocolTargetStatusesByProtocol(protocolUri),
+    getSurveyTargetsByDidAndProtocol(did, protocolUri),
+  ]);
 
-  const existing = await getSurveyTargetsByDidAndProtocol(did, protocolUri);
   const existingRkeys = new Set(existing.map((t) => t.rkey));
 
   for (const pt of protocolTargets) {
     const { rkey } = parseAtUri(pt.at_uri);
     if (existingRkeys.has(rkey)) continue;
 
-    const record = SurveyTarget.$build({
+    await writeSurveyTarget(did, rkey, pt.at_uri, {
       protocol: protocolUri as l.AtUriString,
       protocolTargetID: pt.at_uri as l.AtUriString,
       createdAt: new Date().toISOString() as l.DatetimeString,
       scope: pt.record.scope,
     });
-    const { uri } = await putRecord(did, SurveyTarget.$nsid, rkey, record);
-    await insertSurveyTarget(did, rkey, record, uri, pt.at_uri);
   }
+
+  await reconcileRetirements(did, protocolUri, existing, targetStatuses);
 
   log.info(
     { did, protocolUri, count: protocolTargets.length },
     'materialized survey targets',
   );
+}
+
+// Retires surveyTargets whose source protocolTarget was deleted (stamps
+// retiredAt with the true deletion time), and un-retires ones whose
+// protocolTarget is live again under the same rkey (clears retiredAt; a genuine
+// re-add gets a new rkey, so same-rkey reappearance is recovery from an
+// erroneous or transient delete, not history worth preserving).
+//
+// Keyed on protocol_targets.deleted_at (a tombstone left by
+// deleteProtocolTargetsByUris) rather than presence/absence in the live-only
+// view, so "deleted" and "not indexed yet" are distinguishable: a target with
+// no protocol_targets row at all -- live or tombstoned -- is left untouched,
+// because we simply don't have enough information yet (see
+// docs/2026-07-16-survey-target-retirement.md).
+//
+// Failures are per-target and non-fatal (logged, not thrown): this runs inline
+// on survey create/edit and protocol follow, so a transient PDS error while
+// retiring one orphaned target must not fail the surveyor's actual request.
+// Whatever didn't get stamped this time is retried on the next materialize call.
+async function reconcileRetirements(
+  did: string,
+  protocolUri: string,
+  existing: SurveyTargetRow[],
+  targetStatuses: ProtocolTargetStatusRow[],
+): Promise<void> {
+  const statusByRkey = new Map(targetStatuses.map((s) => [s.rkey, s]));
+
+  for (const target of existing) {
+    const status = statusByRkey.get(target.rkey);
+    if (!status) continue; // no signal yet: not indexed, or mid-backfill
+
+    const isDeleted = status.deleted_at !== null;
+    const isRetired = target.record.retiredAt != null;
+    if (isDeleted === isRetired) continue; // already consistent
+
+    // record.createdAt is required by the lexicon, but rows that predate the
+    // field (migration 20260610002 backfilled only the created_at column, not
+    // the record JSON) can have it undefined; fall back to that column rather
+    // than rewrite the record with a missing required field.
+    const createdAt = (target.record.createdAt ??
+      target.created_at?.toISOString() ??
+      new Date().toISOString()) as l.DatetimeString;
+
+    const retiredAt = status.deleted_at
+      ? (status.deleted_at.toISOString() as l.DatetimeString)
+      : undefined;
+
+    try {
+      await writeSurveyTarget(did, target.rkey, target.protocol_target_uri, {
+        protocol: target.record.protocol,
+        protocolTargetID: target.record.protocolTargetID,
+        createdAt,
+        scope: target.record.scope,
+        ...(retiredAt ? { retiredAt } : {}),
+      });
+    } catch (err) {
+      log.error(
+        { err, did, protocolUri, rkey: target.rkey },
+        'failed to reconcile surveyTarget retirement',
+      );
+    }
+  }
 }
 
 // Deletes the surveyor's materialized surveyTargets for a protocol when they are

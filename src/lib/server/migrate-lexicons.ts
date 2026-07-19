@@ -2,7 +2,10 @@ import { parseAtUri } from '$lib/atUri';
 import sql from '$lib/server/db';
 import { insertIdentification } from '$lib/server/db/identifications';
 import { reindexFollowSubject } from '$lib/server/db/protocol-follows';
-import { insertProtocol, insertTarget } from '$lib/server/db/survey-protocols';
+import {
+  insertProtocol,
+  insertProtocolTarget,
+} from '$lib/server/db/survey-protocols';
 import { insertSurveyTarget } from '$lib/server/db/survey-targets';
 import { insertOccurrence, insertSurvey } from '$lib/server/db/surveys';
 import logger from '$lib/server/logger';
@@ -174,7 +177,7 @@ async function migrateOwnTargets(did: string): Promise<void> {
         rkey,
         record,
       );
-      await insertTarget(did, rkey, record as never, res.uri);
+      await insertProtocolTarget(did, rkey, record as never, res.uri);
     }
   }
 }
@@ -452,7 +455,7 @@ export async function fixProtocolTargetScopes(did: string): Promise<void> {
     const { rkey } = parseAtUri(t.uri);
     const record = { ...value, scope };
     await putRecord(did, NEW_PROTOCOL_TARGET_NSID, rkey, record);
-    await insertTarget(did, rkey, record as never, t.uri);
+    await insertProtocolTarget(did, rkey, record as never, t.uri);
     fixed++;
   }
   log.info({ did, fixed }, 'fixed protocol target scope types');

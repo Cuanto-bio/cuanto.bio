@@ -124,12 +124,6 @@ async function main() {
     }
 
     const protocol = rec.value as Record<string, unknown>;
-    await sql`
-      INSERT INTO survey_protocols (at_uri, did, rkey, cid, record, indexed_at)
-      VALUES (${protocolUri}, ${did}, ${rkey}, ${rec.cid}, ${sql.json(protocol)}, now())
-      ON CONFLICT (at_uri) DO UPDATE SET cid = EXCLUDED.cid, record = EXCLUDED.record
-    `;
-    console.log('Upserted protocol');
 
     console.log(`Fetching targets for DID ${did}...`);
     const allTargets = await listAtRecords(did, TARGET_NSID, pdsUrl);
@@ -138,16 +132,30 @@ async function main() {
     );
     console.log(`Found ${protocolTargets.length} target(s) for this protocol`);
 
-    for (const t of protocolTargets) {
-      const { rkey: tRkey } = parseAtUri(t.uri);
-      const target = t.value as Record<string, unknown>;
-      await sql`
-        INSERT INTO protocol_targets (at_uri, did, rkey, protocol_uri, record, indexed_at)
-        VALUES (${t.uri}, ${did}, ${tRkey}, ${protocolUri}, ${sql.json(target)}, now())
-        ON CONFLICT (at_uri) DO UPDATE SET protocol_uri = EXCLUDED.protocol_uri, record = EXCLUDED.record
+    // Insert the protocol and its targets in one transaction. Otherwise a
+    // reader between the two writes (e.g. reconcileRetirements in
+    // materialize-targets.ts) sees the protocol as indexed with zero targets
+    // and mistakes "not yet reindexed" for "the author deleted every target,"
+    // mass-retiring every surveyor's targets for it.
+    await sql.begin(async (tx) => {
+      await tx`
+        INSERT INTO survey_protocols (at_uri, did, rkey, cid, record, indexed_at)
+        VALUES (${protocolUri}, ${did}, ${rkey}, ${rec.cid}, ${tx.json(protocol)}, now())
+        ON CONFLICT (at_uri) DO UPDATE SET cid = EXCLUDED.cid, record = EXCLUDED.record
       `;
-      console.log(`Upserted target ${t.uri}`);
-    }
+      console.log('Upserted protocol');
+
+      for (const t of protocolTargets) {
+        const { rkey: tRkey } = parseAtUri(t.uri);
+        const target = t.value as Record<string, unknown>;
+        await tx`
+          INSERT INTO protocol_targets (at_uri, did, rkey, protocol_uri, record, indexed_at)
+          VALUES (${t.uri}, ${did}, ${tRkey}, ${protocolUri}, ${tx.json(target)}, now())
+          ON CONFLICT (at_uri) DO UPDATE SET protocol_uri = EXCLUDED.protocol_uri, record = EXCLUDED.record
+        `;
+        console.log(`Upserted target ${t.uri}`);
+      }
+    });
 
     console.log('Done.');
   } finally {

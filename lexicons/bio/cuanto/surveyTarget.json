@@ -25,6 +25,11 @@
             "format": "datetime",
             "description": "Client-declared timestamp when the surveyor materialized this target. Used to determine whether the surveyor knew about this target when a survey was conducted."
           },
+          "retiredAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when the target's source protocolTarget was removed from the protocol, after which it no longer implies a non-detection. Absent while the target is still part of the protocol."
+          },
           "scope": {
             "type": "array",
             "description": "One or more scope criteria copied from the source protocolTarget.",
