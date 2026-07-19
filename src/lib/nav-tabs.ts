@@ -1,9 +1,11 @@
-import BarChart2Icon from '@lucide/svelte/icons/bar-chart-2';
 import BookOpenIcon from '@lucide/svelte/icons/book-open';
 import BookmarkIcon from '@lucide/svelte/icons/bookmark';
+import ChartColumnIcon from '@lucide/svelte/icons/chart-column';
+import ClipboardListIcon from '@lucide/svelte/icons/clipboard-list';
 import EllipsisIcon from '@lucide/svelte/icons/ellipsis';
 import HomeIcon from '@lucide/svelte/icons/home';
-import TrendingUpIcon from '@lucide/svelte/icons/trending-up';
+import InfoIcon from '@lucide/svelte/icons/info';
+import ListChecksIcon from '@lucide/svelte/icons/list-checks';
 import UserIcon from '@lucide/svelte/icons/user';
 import type { Component } from 'svelte';
 
@@ -45,7 +47,7 @@ export const SIGNED_IN_TABS: Tab[] = [
     key: 'surveys',
     href: '/app/surveys',
     label: 'Your Surveys',
-    icon: BarChart2Icon,
+    icon: ClipboardListIcon,
   },
   {
     type: 'popover',
@@ -53,9 +55,10 @@ export const SIGNED_IN_TABS: Tab[] = [
     label: 'Explore',
     icon: EllipsisIcon,
     items: [
-      { href: '/protocols', label: 'All Protocols', icon: BookOpenIcon },
-      { href: '/surveys', label: 'All Surveys', icon: BarChart2Icon },
-      { href: '/stats', label: 'Stats Explorer', icon: TrendingUpIcon },
+      { href: '/protocols', label: 'All Protocols', icon: ListChecksIcon },
+      { href: '/surveys', label: 'All Surveys', icon: ClipboardListIcon },
+      { href: '/stats', label: 'Stats Explorer', icon: ChartColumnIcon },
+      { href: '/about', label: 'About', icon: InfoIcon },
     ],
   },
   {
@@ -81,14 +84,14 @@ export const SIGNED_OUT_TABS: LinkTab[] = [
     key: 'surveys',
     href: '/surveys',
     label: 'Surveys',
-    icon: BarChart2Icon,
+    icon: ClipboardListIcon,
   },
   {
     type: 'link',
     key: 'stats',
     href: '/stats',
     label: 'Stats',
-    icon: TrendingUpIcon,
+    icon: ChartColumnIcon,
   },
   {
     type: 'link',

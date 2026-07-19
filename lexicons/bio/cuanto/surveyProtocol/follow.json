@@ -4,7 +4,7 @@
   "defs": {
     "main": {
       "type": "record",
-      "description": "A user's declaration of intent to participate in surveys following a Protocol. Portable across cuanto instances because it lives in the user's PDS.",
+      "description": "A user's declaration of intent to participate in surveys following a Protocol.",
       "key": "tid",
       "record": {
         "type": "object",

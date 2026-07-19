@@ -8,7 +8,7 @@ const $nsid = 'bio.cuanto.surveyProtocol.follow'
 
 export { $nsid }
 
-/** A user's declaration of intent to participate in surveys following a Protocol. Portable across cuanto instances because it lives in the user's PDS. */
+/** A user's declaration of intent to participate in surveys following a Protocol. */
 type Main = {
   $type: 'bio.cuanto.surveyProtocol.follow'
 
@@ -25,7 +25,7 @@ type Main = {
 
 export type { Main }
 
-/** A user's declaration of intent to participate in surveys following a Protocol. Portable across cuanto instances because it lives in the user's PDS. */
+/** A user's declaration of intent to participate in surveys following a Protocol. */
 const main = l.record<'tid', Main>(
   'tid',
   $nsid,

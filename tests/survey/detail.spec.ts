@@ -44,7 +44,9 @@ test('survey detail page shows Edit link for owner', async ({
     await page.waitForLoadState('networkidle');
     await page.goto(`/app/surveys/${EDIT_HANDLE}/${surveyRkey}`);
     await page.waitForLoadState('networkidle');
-    await expect(page.getByRole('link', { name: 'Edit' })).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'Edit', exact: true }),
+    ).toBeVisible();
   } finally {
     await teardownDid(sql, EDIT_DID);
   }

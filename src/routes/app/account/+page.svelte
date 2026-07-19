@@ -1,4 +1,5 @@
 <script lang="ts">
+import LogOutIcon from '@lucide/svelte/icons/log-out';
 import { Button } from '$lib/components/ui/button';
 import { signOut } from '$lib/offline/auth';
 
@@ -17,5 +18,8 @@ let { data } = $props();
     <p class="text-lg font-bold">@{data.handle}</p>
   </div>
 
-  <Button onclick={signOut} variant="outline" class="w-full">Sign out</Button>
+  <Button onclick={signOut} variant="outline" class="w-full">
+    <LogOutIcon />
+    Sign out
+  </Button>
 </main>

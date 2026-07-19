@@ -32,7 +32,9 @@ test.describe('protocol editing', () => {
     await context.addCookies([authCookie(EDIT_DID)]);
     const { protocolRkey } = await seedProtocol(sql, EDIT_DID);
     await page.goto(`/protocols/${EDIT_HANDLE}/${protocolRkey}`);
-    await expect(page.getByRole('link', { name: 'Edit' })).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'Edit', exact: true }),
+    ).toBeVisible();
   });
 
   test('edit button not visible for non-owner', async ({
@@ -47,7 +49,9 @@ test.describe('protocol editing', () => {
     `;
     await context.addCookies([authCookie(OTHER_DID)]);
     await page.goto(`/protocols/${EDIT_HANDLE}/${protocolRkey}`);
-    await expect(page.getByRole('link', { name: 'Edit' })).not.toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'Edit', exact: true }),
+    ).not.toBeVisible();
   });
 
   test('non-owner cannot access edit route directly', async ({

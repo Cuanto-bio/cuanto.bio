@@ -93,7 +93,13 @@ onMount(() => {
 </svelte:head>
 <SidebarProvider>
   <AppSidebar did={page.data.did ?? undefined} handle={page.data.handle ?? undefined} avatarUrl={page.data.avatarUrl ?? undefined} />
-  <main class="flex-1 mobile-main flex flex-col">
+  <!--
+    min-w-0 is load-bearing: as a flex item this defaults to min-width:auto, so
+    any wide descendant (a diagram, a table) stretches it past the viewport and
+    the whole page scrolls sideways instead of the descendant's own
+    overflow-x-auto kicking in.
+  -->
+  <main class="flex-1 min-w-0 mobile-main flex flex-col">
     <div class="sidebar-trigger-wrapper"><SidebarTrigger /></div>
     <MobileHeader />
     {#if !online.value}
@@ -124,8 +130,8 @@ onMount(() => {
       width would make this an overflow container that never actually scrolls on
       desktop, which silently breaks `position: sticky` for anything inside it.
     -->
-    <div class="mobile-scroll flex-1" bind:this={scrollContainer}>
-      <div class="mx-auto max-w-4xl px-4 pb-8 flex flex-col min-h-full">
+    <div class="mobile-scroll flex-1 min-w-0" bind:this={scrollContainer}>
+      <div class="mx-auto max-w-4xl min-w-0 px-4 pb-8 flex flex-col min-h-full">
         {@render children()}
         <InstallFooter />
       </div>

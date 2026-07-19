@@ -164,7 +164,7 @@ test.describe('Nominatim place search', () => {
       '[placeholder="Search for a place on OpenStreetMap…"]',
       'Golden Gate Park',
     );
-    await page.click('button:has-text("Search")');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
     await page.waitForLoadState('networkidle');
 
     expect(requestUrls).toHaveLength(1);
@@ -198,7 +198,7 @@ test.describe('Nominatim place search', () => {
       '[placeholder="Search for a place on OpenStreetMap…"]',
       'Golden Gate',
     );
-    await page.click('button:has-text("Search")');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
 
     await page
       .getByRole('button', { name: /Golden Gate Park/ })
@@ -229,7 +229,7 @@ test.describe('Nominatim place search', () => {
       '[placeholder="Search for a place on OpenStreetMap…"]',
       'Golden Gate',
     );
-    await page.click('button:has-text("Search")');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
 
     await page
       .getByRole('button', { name: /Golden Gate Park/ })
@@ -255,7 +255,7 @@ test.describe('Nominatim place search', () => {
       '[placeholder="Search for a place on OpenStreetMap…"]',
       'Golden Gate',
     );
-    await page.click('button:has-text("Search")');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
     await page
       .getByRole('button', { name: /Golden Gate Park/ })
       .first()

@@ -162,7 +162,10 @@
     @apply font-sans;
   }
   h1 {
-    @apply scroll-m-20 text-4xl tracking-tight text-balance;
+    @apply scroll-m-20 text-3xl tracking-tight text-balance mb-2;
+  }
+  h2 {
+    @apply scroll-m-20 text-2xl tracking-tight text-balance mb-2;
   }
 
   .wordmark {
@@ -171,7 +174,7 @@
   }
 
   p {
-    @apply text-muted-foreground leading-7 [&:not(:last-child)]:mb-6;
+    @apply leading-7 not-last:mb-6;
     letter-spacing: 2%;
   }
   p a {

@@ -1,4 +1,13 @@
 <script lang="ts">
+import BookmarkIcon from '@lucide/svelte/icons/bookmark';
+import ChartColumnIcon from '@lucide/svelte/icons/chart-column';
+import ClipboardListIcon from '@lucide/svelte/icons/clipboard-list';
+import CodeIcon from '@lucide/svelte/icons/code';
+import InfoIcon from '@lucide/svelte/icons/info';
+import ListChecksIcon from '@lucide/svelte/icons/list-checks';
+import LogInIcon from '@lucide/svelte/icons/log-in';
+import LogOutIcon from '@lucide/svelte/icons/log-out';
+import MessageSquarePlusIcon from '@lucide/svelte/icons/message-square-plus';
 import { onMount } from 'svelte';
 import { afterNavigate } from '$app/navigation';
 import Handle from '$lib/components/handle.svelte';
@@ -93,21 +102,30 @@ onMount(() => {
           <SidebarMenuItem>
             <SidebarMenuButton>
               {#snippet child({ props })}
-                <a href='/protocols' {...props}>All Protocols</a>
+                <a href='/surveys' {...props}>
+                  <ClipboardListIcon size={24} />
+                  Surveys
+                </a>
               {/snippet}
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton>
               {#snippet child({ props })}
-                <a href='/surveys' {...props}>All Surveys</a>
+                <a href='/protocols' {...props}>
+                  <ListChecksIcon size={24} />
+                  Protocols
+                </a>
               {/snippet}
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton>
               {#snippet child({ props })}
-                <a href='/stats' {...props}>Stats Explorer</a>
+                <a href='/stats' {...props}>
+                  <ChartColumnIcon size={24} />
+                  Stats
+                </a>
               {/snippet}
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -123,14 +141,20 @@ onMount(() => {
             <SidebarMenuItem>
               <SidebarMenuButton>
                 {#snippet child({ props })}
-                  <a href="/app/surveys" {...props}>Your Surveys</a>
+                  <a href="/app/surveys" {...props}>
+                    <ClipboardListIcon />
+                    Your Surveys
+                  </a>
                 {/snippet}
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton>
                 {#snippet child({ props })}
-                  <a href="/app/protocols/following" {...props}>Followed Protocols</a>
+                  <a href="/app/protocols/following" {...props}>
+                    <BookmarkIcon />
+                    Followed Protocols
+                  </a>
                 {/snippet}
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -138,6 +162,43 @@ onMount(() => {
         </SidebarGroupContent>
       </SidebarGroup>
     {/if}
+    <SidebarGroup>
+      <SidebarGroupLabel>Errata</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton>
+              {#snippet child({ props })}
+                <a href="/about" {...props}>
+                  <InfoIcon size={24} />
+                  About
+                </a>
+              {/snippet}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton>
+              {#snippet child({ props })}
+                <a href="https://userinput.app/#/s/did:plc:dd7efi6wormdpmcyscnkjc6n/3mquh7nnpd22t" {...props}>
+                  <MessageSquarePlusIcon size={24} />
+                  Feedback
+                </a>
+              {/snippet}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton>
+              {#snippet child({ props })}
+                <a href="https://tangled.org/cuanto.bio/cuanto.bio" {...props}>
+                  <CodeIcon size={24} />
+                  Code
+                </a>
+              {/snippet}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
   </SidebarContent>
 
   <SidebarFooter>
@@ -153,13 +214,23 @@ onMount(() => {
       <button onclick={refreshServiceWorkerInfo} class="underline">refresh</button>
     </div>
     {#if handle}
-      <div class="text-muted-foreground px-2 text-xs font-bold"><Handle {handle} {avatarUrl} /></div>
       <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton>
+            <a href="/app/account" class="flex gap-1.5 items-center">
+              <img src={avatarUrl} alt="" class="h-4 w-4 rounded-full object-cover" aria-hidden="true" />
+              <Handle {handle} />
+            </a>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
         {#if online.value}
           <SidebarMenuItem>
             <SidebarMenuButton>
               {#snippet child({ props })}
-                <button onclick={signOut} {...props}>Sign out</button>
+                <button onclick={signOut} {...props}>
+                  <LogOutIcon />
+                  Sign out
+                </button>
               {/snippet}
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -170,7 +241,10 @@ onMount(() => {
         <SidebarMenuItem>
           <SidebarMenuButton>
             {#snippet child({ props })}
-              <a href="/auth/signin" {...props}>Sign in</a>
+              <a href="/auth/signin" {...props}>
+                <LogInIcon />
+                Sign in
+              </a>
             {/snippet}
           </SidebarMenuButton>
         </SidebarMenuItem>

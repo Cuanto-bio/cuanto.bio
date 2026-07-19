@@ -103,7 +103,7 @@ test.describe('protocol form unsaved changes', () => {
     await seedProtocol(sql, DID);
     await openNewProtocolForm(page);
 
-    await page.getByRole('link', { name: 'All Protocols' }).click();
+    await page.getByRole('link', { name: 'Protocols', exact: true }).click();
     await page.waitForURL(/\/protocols$/);
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
   });
@@ -118,7 +118,7 @@ test.describe('protocol form unsaved changes', () => {
     await openNewProtocolForm(page);
 
     await page.getByLabel('Title').fill('Half-written protocol');
-    await page.getByRole('link', { name: 'All Protocols' }).click();
+    await page.getByRole('link', { name: 'Protocols', exact: true }).click();
 
     const dialog = page.getByRole('alertdialog');
     await expect(dialog).toBeVisible();
@@ -138,7 +138,7 @@ test.describe('protocol form unsaved changes', () => {
     await openNewProtocolForm(page);
 
     await page.getByLabel('Title').fill('Half-written protocol');
-    await page.getByRole('link', { name: 'All Protocols' }).click();
+    await page.getByRole('link', { name: 'Protocols', exact: true }).click();
 
     await page
       .getByRole('alertdialog')
@@ -161,7 +161,7 @@ test.describe('protocol form unsaved changes', () => {
     await page.getByLabel('Title').fill('Typed then erased');
     await page.getByLabel('Title').fill('');
 
-    await page.getByRole('link', { name: 'All Protocols' }).click();
+    await page.getByRole('link', { name: 'Protocols', exact: true }).click();
     await page.waitForURL(/\/protocols$/);
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
   });
