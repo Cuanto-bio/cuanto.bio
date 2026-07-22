@@ -1,5 +1,5 @@
 import type { Survey } from '$lib/offline/db';
-import { getProtocolStats } from './stats.js';
+import { getProtocolStats, type WeeklyPoint } from './stats.js';
 import {
   getLastSurveyByTargetUris,
   getSurveysPage,
@@ -20,6 +20,18 @@ export type ProtocolActivity = {
   // Keyed by protocolTarget URI. Targets nobody has counted are absent, so
   // consumers must treat a missing entry as zero rather than "unknown".
   targetStats: Record<string, TargetActivity>;
+  // Keyed by protocolTarget URI. Unlike targetStats this includes targets that
+  // were sought but never counted, so a missing entry here means the target was
+  // never in scope for any recent survey.
+  //
+  // Grows as targets x SPARKBAR_WEEKS, and the Targets tab draws a sparkbar for
+  // every target, so this is proportional to what that tab renders rather than
+  // fetched and discarded. It does ride along on the initial load even though
+  // Surveys is the default tab; that is deliberate, since splitting it out
+  // would trade payload size for a second round-trip on tab switch. Worth
+  // revisiting only if a protocol accumulates targets faster than the tab can
+  // usefully list them, at which point the table needs paging anyway.
+  targetWeekly: Record<string, WeeklyPoint[]>;
   lastSurveyByTargetUri: LastSurveyByTargetUri;
 };
 
@@ -47,6 +59,7 @@ export async function getProtocolActivity(
     surveyCount: stats.surveyCount,
     recentSurveys,
     targetStats,
+    targetWeekly: stats.targetWeekly,
     lastSurveyByTargetUri: toLastSurveyMap(lastSurveyRows),
   };
 }

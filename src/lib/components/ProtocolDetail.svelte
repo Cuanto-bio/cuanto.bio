@@ -10,6 +10,8 @@ import PlusIcon from '@lucide/svelte/icons/plus';
 import type { Component } from 'svelte';
 import Button from '$lib/components/Button.svelte';
 import Form from '$lib/components/Form.svelte';
+import SparkbarDialog from '$lib/components/SparkbarDialog.svelte';
+import SparkbarInfo from '$lib/components/SparkbarInfo.svelte';
 import SurveyCard from '$lib/components/SurveyCard.svelte';
 import * as Alert from '$lib/components/ui/alert';
 import ButtonGroup from '$lib/components/ui/button-group/button-group.svelte';
@@ -18,12 +20,18 @@ import * as Tabs from '$lib/components/ui/tabs';
 import type { Main as LocationAddress } from '$lib/lexicons/community/lexicon/location/address.defs';
 import type { Main as LocationBbox } from '$lib/lexicons/community/lexicon/location/bbox.defs';
 import type { Main as LocationGeo } from '$lib/lexicons/community/lexicon/location/geo.defs';
-import type { Protocol, TaxonScope, VerbatimScope } from '$lib/offline/db';
+import type {
+  Protocol,
+  Target,
+  TaxonScope,
+  VerbatimScope,
+} from '$lib/offline/db';
 import { LOCATION_COMBOBOX_THRESHOLD } from '$lib/places';
 import { install } from '$lib/pwa/install.svelte';
 import { sanitizeHtml } from '$lib/sanitize';
 import type { ProtocolActivity } from '$lib/server/db/protocol-activity';
 import type { FollowerPreview } from '$lib/server/db/protocol-follows';
+import { seriesMax } from '$lib/sparkbar';
 import Handle from './handle.svelte';
 import Taxon from './Taxon.svelte';
 import * as Table from './ui/table';
@@ -94,6 +102,37 @@ const returnTo = `/app/protocols/${protocol.handle}/${protocol.rkey}`;
 const surveysLabel = $derived(
   activity ? `Surveys (${activity.surveyCount})` : 'Surveys',
 );
+
+// One ceiling for every sparkbar in the Targets tab, so bar heights compare
+// across targets rather than each row scaling to its own peak.
+const targetSparkbarMax = $derived(seriesMax(activity?.targetWeekly));
+
+// The target cell stacks its scopes with AND between them; the chart dialog
+// needs the same identity as a single line of text.
+function targetTitle(target: Target): string {
+  const parts = target.record.scope
+    .map((scope) => {
+      if (scope.$type?.endsWith('taxonScope')) {
+        return (scope as TaxonScope).scientificName;
+      }
+      if (scope.$type?.endsWith('verbatimScope')) {
+        return (scope as VerbatimScope).verbatimTargetScope;
+      }
+      return null;
+    })
+    .filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(' AND ') : 'Target';
+}
+
+// Only a target with exactly one taxonomic scope names a single taxon. One
+// scope out of several describes a criterion, not the subject, so those keep
+// the composed AND title instead.
+function soleTaxonScope(target: Target): TaxonScope | undefined {
+  if (target.record.scope.length !== 1) return undefined;
+  const [scope] = target.record.scope;
+  if (!scope?.$type?.endsWith('taxonScope')) return undefined;
+  return scope as TaxonScope;
+}
 
 // Null (falls back to a plain follower count) until we have both a live count
 // and at least one other follower to name. `followerPreview` already
@@ -466,29 +505,26 @@ const collapsibleActions = $derived.by(() => {
         <Table.Root>
           <Table.Header>
             <Table.Row>
-              <Table.Head>Type</Table.Head>
               <Table.Head>Target</Table.Head>
+              <Table.Head class="whitespace-nowrap">
+                Trend
+                <SparkbarInfo scope="target" />
+              </Table.Head>
               <Table.Head class="text-right">Surveys</Table.Head>
               <Table.Head class="text-right">Count</Table.Head>
               <Table.Head>Last Survey</Table.Head>
+              <Table.Head>Type</Table.Head>
             </Table.Row>
           </Table.Header>
           <Table.Body>
             {#each protocol.targets as target (target.atUri)}
               {@const lastSurvey = activity?.lastSurveyByTargetUri?.[target.atUri]}
               {@const stat = activity?.targetStats[target.atUri]}
+              {@const weekly = activity?.targetWeekly?.[target.atUri]}
               <Table.Row>
-                <Table.Cell>
-                  {#if target.record.scope.length === 1}
-                    {#if target.record.scope[0].$type?.endsWith('taxonScope')}
-                      Taxonomic
-                    {:else if target.record.scope[0].$type?.endsWith('verbatimScope')}
-                      Verbatim
-                    {/if}
-                  {:else}
-                    Multiple
-                  {/if}
-                </Table.Cell>
+                <!-- A target absent from targetWeekly was never in scope for a
+                     survey in the window, which is not the same as a run of
+                     zeros, so show nothing rather than a flat line. -->
                 <Table.Cell>
                   {#each target.record.scope as scope, idx}
                     {#if idx > 0}
@@ -503,6 +539,19 @@ const collapsibleActions = $derived.by(() => {
                       {/if}
                     </div>
                   {/each}
+                </Table.Cell>
+                <Table.Cell>
+                  {#if weekly}
+                    <SparkbarDialog
+                      points={weekly}
+                      max={targetSparkbarMax}
+                      title={targetTitle(target)}
+                      taxon={soleTaxonScope(target)}
+                      scope="target"
+                    />
+                  {:else}
+                    <span class="text-muted-foreground">—</span>
+                  {/if}
                 </Table.Cell>
                 <!-- A target absent from targetStats has simply never been
                      counted; only a missing `activity` means "not loaded". -->
@@ -522,6 +571,17 @@ const collapsibleActions = $derived.by(() => {
                     </a>
                   {:else}
                     —
+                  {/if}
+                </Table.Cell>
+                <Table.Cell>
+                  {#if target.record.scope.length === 1}
+                    {#if target.record.scope[0].$type?.endsWith('taxonScope')}
+                      Taxonomic
+                    {:else if target.record.scope[0].$type?.endsWith('verbatimScope')}
+                      Verbatim
+                    {/if}
+                  {:else}
+                    Multiple
                   {/if}
                 </Table.Cell>
               </Table.Row>

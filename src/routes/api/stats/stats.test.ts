@@ -24,6 +24,8 @@ const fakeStats = {
     },
   ],
   targets: [],
+  targetWeekly: {},
+  taxonWeekly: {},
 };
 
 async function callGet(search: string): Promise<Response> {
