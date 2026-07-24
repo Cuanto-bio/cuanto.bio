@@ -237,7 +237,7 @@ const externalLinkProps =
       <div class="py-6 flex-1">
         <Card.Header>
           <Card.Title>{survey.protocolTitle}</Card.Title>
-          <Card.Description>{survey.record.location.name}</Card.Description>
+          <Card.Description>{survey.record.location?.name}</Card.Description>
         </Card.Header>
         <Card.Content class="space-y-2 text-sm">
           <div class="table-compact">

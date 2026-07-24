@@ -33,6 +33,45 @@ test('/surveys shows location name from JSONB record', async ({
   }
 });
 
+test('/surveys does not crash on a survey record with no location', async ({
+  page,
+  sql,
+}) => {
+  // A GPS-track survey created with no named place has no `location` on its
+  // record (and older records may lack it entirely). SurveyCard read
+  // record.location.name unguarded, so one such survey crashed the whole list.
+  await sql`
+    INSERT INTO users (did, handle) VALUES (${PUBLIC_DID}, ${PUBLIC_HANDLE})
+    ON CONFLICT (did) DO NOTHING
+  `;
+  const { protocolRkey } = await seedProtocol(sql, PUBLIC_DID);
+  const protocolUri = `at://${PUBLIC_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+
+  const rkey = `noloc${Date.now()}`;
+  const atUri = `at://${PUBLIC_DID}/bio.cuanto.survey/${rkey}`;
+  const record = {
+    $type: 'bio.cuanto.survey',
+    protocol: {
+      uri: protocolUri,
+      cid: 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34',
+    },
+    createdAt: new Date().toISOString(),
+    // no `location`
+  };
+  await sql`
+    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, created_at, record, indexed_at)
+    VALUES (${atUri}, ${PUBLIC_DID}, ${rkey}, ${protocolUri}, now(), ${sql.json(record)}, now())
+  `;
+
+  try {
+    await page.goto(`/surveys/${PUBLIC_HANDLE}`);
+    // The protocol title rendering proves the card did not throw.
+    await expect(page.getByText('Test Protocol')).toBeVisible();
+  } finally {
+    await teardownDid(sql, PUBLIC_DID);
+  }
+});
+
 test('/surveys/[handle] shows surveys for that user from JSONB record', async ({
   page,
   sql,

@@ -17,7 +17,9 @@ let { survey, currentUser, children }: Props = $props();
 const isSurvey = (s: Survey | PendingSurvey): s is Survey => 'record' in s;
 
 const locationName = $derived(
-  isSurvey(survey) ? survey.record.location.name : survey.locationName,
+  // record.location can be absent (a GPS-track survey with no named place, or
+  // an older record), so guard it rather than crash the whole list.
+  isSurvey(survey) ? (survey.record.location?.name ?? '') : survey.locationName,
 );
 const eventDate = $derived(
   isSurvey(survey) ? (survey.record.eventDate ?? null) : survey.eventDate,
