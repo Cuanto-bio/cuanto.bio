@@ -42,3 +42,27 @@ of the AT Protocol stack. `@atproto/dev-env` exists for this purpose but is heav
 
 If the test suite grows to need more realistic PDS interaction, `@atproto/dev-env` is the
 right starting point.
+
+## Native wrapper testing
+
+The Capacitor wrapper loads cuanto.bio live, so most of the app is plain web behavior the
+suites above already cover. Native-specific code is tested in three layers; only the third
+needs a device. The rationale (and why Detox was declined) is in
+`docs/2026-07-24-native-e2e-testing-assessment.md`.
+
+- **Layer 1, unit seams** (`pnpm test:unit`) — the native modules with the Capacitor plugins
+  mocked at the module boundary: `src/lib/auth/native.test.ts` (the sign-in handoff state
+  machine), `token.test.ts`, `signin.test.ts`, `haptics.test.ts`, `gps/nativeSource.test.ts`.
+- **Layer 2, faked-bridge E2E** (`pnpm test:integration`) — `tests/native-wrapper.spec.ts`
+  drives the real `isNative()`-gated web code (the `/app` auth guard, the native sign-in
+  route, the bearer fetch wrapper) in a browser. `tests/nativeBridge.ts` injects a fake
+  Capacitor bridge that reports a native platform, records plugin calls, and can fire the
+  `appUrlOpen` deep-link callback. Nothing in the app is mocked; only the OS boundary (system
+  browser, deep link) is faked. The full return leg is exercised end to end against the real
+  server: the app's PKCE challenge is captured, a matching code is seeded the way the OAuth
+  callback would mint it, and the deep link drives token exchange through to a bearer-
+  authenticated `/api/me`.
+- **Layer 3, device smoke** — `docs/native-release-smoke-checklist.md`, plus
+  `scripts/ios-smoke.sh` for the build/link/launch sanity. Covers only what a browser or
+  simulator cannot prove: the App-Bound service worker, background GPS, the real system-
+  browser handoff, and haptics on device.

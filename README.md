@@ -129,6 +129,69 @@ railway redeploy --service <tap-service-name>
 
 TAP will replay all known records through the webhook on startup. Set `TAP_NO_REPLAY=true` again afterward to prevent re-replaying on future restarts.
 
+## Native apps (iOS & Android)
+
+The iOS and Android apps are thin [Capacitor](https://capacitorjs.com) wrappers
+that load the live site over the network (`server.url` in `capacitor.config.ts`)
+instead of bundling it, so shipping a web deploy reaches app users with no app
+store round trip. See
+[`docs/2026-07-20-capacitor-ios-overview.md`](docs/2026-07-20-capacitor-ios-overview.md)
+for the architecture and rationale.
+
+**Prerequisites:**
+
+- **iOS:** macOS with Xcode and CocoaPods (`brew install cocoapods`)
+- **Android:** Android Studio, with the Android SDK and a JDK
+
+The Capacitor CLI ships as a dev dependency. The `pnpm cap:*` scripts below wrap
+it and sync the native projects from `PUBLIC_URL` first; reach for `npx cap ...`
+directly only for anything they don't cover.
+
+### Configure the host
+
+The wrapper loads whatever `PUBLIC_URL` points at (the same public origin the
+app is served from), so no Capacitor-specific config is needed. In production
+that is `https://cuanto.bio`; for device testing set `PUBLIC_URL` in `.env` to a
+public HTTPS URL with real SSL, such as a
+[Tailscale funnel](https://tailscale.com/kb/1223/funnel) to a local
+`pnpm build && pnpm preview`. A native build fails fast if `PUBLIC_URL` is a
+loopback, IP-literal, or plain-http address (like the dev default
+`http://127.0.0.1:5173`), since none of those can load in the WKWebView.
+
+On iOS the host must also appear in `WKAppBoundDomains` in
+`ios/App/App/Info.plist`, or App-Bound mode blocks the very page it loads (that
+mode is what lets the site's service worker run). The `pnpm cap:*` scripts below
+keep it in sync with `PUBLIC_URL` for you.
+
+After changing `PUBLIC_URL` you must re-sync the native projects before
+building. The `pnpm cap:run:*` and `pnpm cap:open:*` scripts do this
+automatically; to sync both platforms without building, run `pnpm cap:sync`.
+
+### App icons
+
+`pnpm gen-icons` regenerates the iOS and Android launcher icons (alongside the
+PWA icons and favicon) from `static/favicon.svg`. They are written straight into
+the native projects, so just rebuild in Xcode / Android Studio to pick them up.
+
+### Build and run
+
+These scripts sync the native projects from `PUBLIC_URL` first (and, for iOS,
+update `WKAppBoundDomains` to match), so you never have to remember to re-sync
+after editing `.env`:
+
+```sh
+# Open the native project in Xcode / Android Studio, then build and run there
+pnpm cap:open:ios
+pnpm cap:open:android
+
+# Or build and launch on a connected device or emulator from the command line
+pnpm cap:run:ios
+pnpm cap:run:android
+```
+
+`pnpm cap:ios:domains` runs the iOS `WKAppBoundDomains` sync on its own, and
+`pnpm cap:sync` syncs both platforms without building.
+
 ## Development setup
 
 **Prerequisites:** Node.js 20+, pnpm, Docker
@@ -187,8 +250,12 @@ pnpm test:integration
 | `pnpm check` | Type-check and lint |
 | `pnpm format` | Auto-fix formatting |
 | `pnpm psql` | Open a psql shell against the dev database |
-| `pnpm gen-icons` | Regenerate PWA icons and favicon from `static/favicon.svg` (requires ImageMagick) |
+| `pnpm gen-icons` | Regenerate PWA, favicon, and native iOS/Android app icons from `static/favicon.svg` (requires ImageMagick) |
+| `pnpm cap:run:ios` / `pnpm cap:run:android` | Sync from `PUBLIC_URL`, then build and launch the native app on a device or emulator |
+| `pnpm cap:open:ios` / `pnpm cap:open:android` | Sync from `PUBLIC_URL`, then open the native project in Xcode / Android Studio |
+| `pnpm cap:sync` | Sync both native projects from `PUBLIC_URL` (incl. iOS `WKAppBoundDomains`) without building |
+| `pnpm cap:ios:domains` | Update iOS `WKAppBoundDomains` in `Info.plist` to match `PUBLIC_URL` |
 
 ## Design
 
-`static/favicon.svg` is the authoritative icon that `pnpm gen-icons` uses to generate other icon assets.
+`static/favicon.svg` is the authoritative icon that `pnpm gen-icons` uses to generate the other icon assets: the PWA icons, the favicon, and the native iOS/Android app icons.

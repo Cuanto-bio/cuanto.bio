@@ -19,6 +19,8 @@ const config = {
         // instead — it's read at runtime and doesn't require a build-time value.
         process.env.PUBLIC_URL,
       ].filter(Boolean),
+      // The native wrapper loads the site same-origin, so its POSTs already
+      // pass this check with no special-casing.
     },
 
     // Registration is handled in src/routes/+layout.svelte so the SW is

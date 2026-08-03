@@ -1,11 +1,19 @@
 export const ssr = false;
 
 import { redirect } from '@sveltejs/kit';
+import { isSignInPath, signInPath } from '$lib/auth/signin';
 import { clearIdbUser, getIdbUser, saveIdbUser } from '$lib/offline/db';
 import { syncOfflineData } from '$lib/offline/sync';
 import type { LayoutLoad } from './$types';
 
-export const load: LayoutLoad = async ({ fetch }) => {
+export const load: LayoutLoad = async ({ fetch, url }) => {
+  // The native sign-in route lives under /app (the bundle contains nothing
+  // else), so it has to be exempt from the guard that would otherwise redirect
+  // it to itself forever.
+  if (isSignInPath(url.pathname)) {
+    return { did: undefined, handle: null as unknown as string };
+  }
+
   // All of /app is a signed in experience, so we check auth status
   try {
     const abortCtrl = new AbortController();
@@ -33,13 +41,15 @@ export const load: LayoutLoad = async ({ fetch }) => {
     if (res.status === 401) {
       // Server does *not* think we're signed in, clear local auth data
       await clearIdbUser();
-      redirect(302, '/auth/signin');
+      redirect(302, signInPath());
     }
   } catch {
     // offline — fall through to IDB
   }
   // Probably offline, check local auth data
   const user = await getIdbUser();
-  if (!user) redirect(302, '/auth/signin');
+  if (!user) {
+    redirect(302, signInPath());
+  }
   return user;
 };

@@ -1,5 +1,6 @@
 import { MediaQuery } from 'svelte/reactivity';
 import { browser } from '$app/environment';
+import { isNative } from '$lib/platform';
 import {
   type BrowserFamily,
   detectBrowserFamily,
@@ -92,8 +93,15 @@ class PwaInstall {
   // Whether to offer instructions at all: only on a touch device that isn't
   // already running standalone and isn't detected as installed. Gates both the
   // footer entry point and the auto-trigger.
+  //
+  // Never in the native shell. None of the other conditions catch that case: a
+  // WKWebView is a touch device, does not match `display-mode: standalone`, and
+  // has no `appinstalled` event — so without this the app would invite someone
+  // to install the PWA from inside the installed native app.
   get shouldOffer(): boolean {
-    return this.isTouch && !this.isStandalone && !this.#installed;
+    return (
+      !isNative() && this.isTouch && !this.isStandalone && !this.#installed
+    );
   }
 
   open(auto = false): void {

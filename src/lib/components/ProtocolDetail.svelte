@@ -168,17 +168,62 @@ const followedBy = $derived.by(() => {
 // Distinguishes a dead session from a live one that's simply missing a scope
 // this action needs, since the two need different explanations: "sign in
 // again" reads as untrue when the token still works fine for everything else.
-function authIssueFromResult(result: {
-  type: string;
-  data?: unknown;
+function authIssueFromBody(body: {
+  sessionExpired?: boolean;
+  permissionRequired?: boolean;
 }): 'expired' | 'permission' | null {
-  if (result.type !== 'failure') return null;
-  const data = result.data as
-    | { sessionExpired?: boolean; permissionRequired?: boolean }
-    | undefined;
-  if (data?.permissionRequired) return 'permission';
-  if (data?.sessionExpired) return 'expired';
+  if (body?.permissionRequired) return 'permission';
+  if (body?.sessionExpired) return 'expired';
   return null;
+}
+
+// Follow/unfollow go through /api rather than a form action so that /app can be
+// built statically — adapter-static rejects +page.server.ts. See
+// docs/2026-07-20-capacitor-phase-1-static-spa.md.
+//
+// The optimistic update is applied before the request and rolled back on
+// failure, matching what the enhanced form did. `protocol` is captured
+// synchronously up front because it is a reactive prop: by the time the request
+// resolves the user may have navigated to another protocol reusing this same
+// component, and the cache write in onAfterFollowChange must refer to the one
+// they actually clicked.
+let followPending = $state(false);
+
+async function setFollowing(next: boolean) {
+  if (followPending) return;
+  followPending = true;
+
+  const ogFollowerCount = followerCount ?? 0;
+  const clicked = next
+    ? withLastSurveyAt(protocol, activity?.lastSurveyByTargetUri)
+    : protocol;
+
+  isFollowing = next;
+  followerCount = next ? ogFollowerCount + 1 : Math.max(0, ogFollowerCount - 1);
+
+  try {
+    const res = await fetch(
+      `/api/protocols/${clicked.handle}/${clicked.rkey}/follow`,
+      { method: next ? 'POST' : 'DELETE' },
+    );
+    if (res.ok) {
+      authIssue = null;
+      onAfterFollowChange(next, clicked);
+      // Nudge the user to install the PWA after they commit to a protocol
+      // (suppressed if not applicable or already dismissed).
+      if (next) install.maybeAutoPrompt();
+    } else {
+      isFollowing = !next;
+      followerCount = ogFollowerCount;
+      authIssue = authIssueFromBody(await res.json().catch(() => ({})));
+    }
+  } catch {
+    // Network failure: roll back rather than leave the button lying.
+    isFollowing = !next;
+    followerCount = ogFollowerCount;
+  } finally {
+    followPending = false;
+  }
 }
 
 function formatDate(iso: string) {
@@ -313,79 +358,19 @@ const collapsibleActions = $derived.by(() => {
       <span class="text-muted-foreground text-xs">(follow requires connection)</span>
     {:else if isSignedIn}
       {#if isFollowing}
-        <Form
-          method="POST"
-          action="?/unfollow"
-          onEnhance={() => {
-            const ogFollowerCount = followerCount ?? 0;
-            // Captured now, synchronously, before any await: `protocol` is a
-            // reactive prop that can point at a different protocol by the
-            // time this form's POST resolves, if the user has since
-            // navigated to another protocol detail page reusing this same
-            // route component.
-            const unfollowedProtocol = protocol;
-            isFollowing = false;
-            followerCount = Math.max(0, ogFollowerCount - 1);
-            return ({ result }) => {
-              if (result.type === 'success') {
-                isFollowing = false;
-                followerCount = Math.max(0, ogFollowerCount - 1);
-                authIssue = null;
-                onAfterFollowChange(false, unfollowedProtocol);
-              } else {
-                isFollowing = true;
-                followerCount = ogFollowerCount;
-                authIssue = authIssueFromResult(result);
-              }
-            };
-          }}
+        <Button
+          variant="outline"
+          disabled={followPending}
+          onclick={() => setFollowing(false)}
         >
-          <Button type="submit" variant="outline">
-            <MinusIcon />
-            Unfollow
-          </Button>
-        </Form>
+          <MinusIcon />
+          Unfollow
+        </Button>
       {:else}
-        <Form
-          method="POST"
-          action="?/follow"
-          onEnhance={() => {
-            const ogFollowerCount = followerCount ?? 0;
-            // Captured now, synchronously, before any await: `protocol` is a
-            // reactive prop that can point at a different protocol by the
-            // time this form's POST resolves, if the user has since
-            // navigated to another protocol detail page reusing this same
-            // route component. The last-survey dates are folded in here too,
-            // for the same reason, so the cache write below has the best
-            // available sort key instead of always looking "never surveyed".
-            const followedProtocol = withLastSurveyAt(
-              protocol,
-              activity?.lastSurveyByTargetUri,
-            );
-            isFollowing = true;
-            followerCount = ogFollowerCount + 1;
-            return ({ result }) => {
-              if (result.type === 'success') {
-                isFollowing = true;
-                followerCount = ogFollowerCount + 1;
-                authIssue = null;
-                onAfterFollowChange(true, followedProtocol);
-                // Nudge the user to install the PWA after they commit to a
-                // protocol (suppressed if not applicable or already dismissed).
-                install.maybeAutoPrompt();
-              } else {
-                isFollowing = false;
-                followerCount = ogFollowerCount;
-                authIssue = authIssueFromResult(result);
-              }
-            };
-          }}
-        >
-          <Button type="submit">
-            <PlusIcon />
-            Follow this protocol
-          </Button>
-        </Form>
+        <Button disabled={followPending} onclick={() => setFollowing(true)}>
+          <PlusIcon />
+          Follow this protocol
+        </Button>
       {/if}
     {/if}
     {#if followedBy}

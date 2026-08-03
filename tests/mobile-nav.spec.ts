@@ -229,14 +229,22 @@ test('newly followed protocol appears in Following list immediately, without a r
 
     await page.goto(`/protocols/${newHandle}/${newRkey}`);
     // The "Unfollow" button flips on optimistically, before the POST
-    // resolves, so wait for the actual ?/follow response (not just that
-    // button) to make sure the post-follow callback — which writes the local
-    // cache — has actually run before we navigate away. The app layout also
-    // fires its own unrelated /api/sync calls on every navigation, so we
-    // can't use that request as a signal here.
+    // resolves, so wait for the actual follow response (not just that button)
+    // to make sure the post-follow callback — which writes the local cache —
+    // has actually run before we navigate away. The app layout also fires its
+    // own unrelated /api/sync calls on every navigation, so we can't use that
+    // request as a signal here.
+    //
+    // This was `?/follow` until follow/unfollow moved off form actions and onto
+    // /api/protocols/[handle]/[rkey]/follow so /app could be built statically.
+    // Only the URL changed; what this test guards — that the Following list
+    // picks the new follow up from the synchronous local cache write rather
+    // than from the delayed /api/sync round trip — is unchanged.
     const followResponse = page.waitForResponse(
       (res) =>
-        res.url().includes('?/follow') && res.request().method() === 'POST',
+        /\/api\/protocols\/[^/]+\/[^/]+\/follow$/.test(
+          new URL(res.url()).pathname,
+        ) && res.request().method() === 'POST',
     );
     await page.getByRole('button', { name: 'Follow this protocol' }).click();
     await followResponse;

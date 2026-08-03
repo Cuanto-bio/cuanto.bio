@@ -17,6 +17,7 @@ import AppSidebar from '$lib/components/sidebar.svelte';
 import { SidebarProvider, SidebarTrigger } from '$lib/components/ui/sidebar';
 import { Toaster } from '$lib/components/ui/sonner';
 import { useOnline } from '$lib/composables/online.svelte';
+import { isNative } from '$lib/platform';
 import { install } from '$lib/pwa/install.svelte';
 import { SKIP_WAITING, watchForUpdates } from '$lib/pwa/swUpdate';
 
@@ -42,9 +43,19 @@ afterNavigate(({ from, to }) => {
 });
 
 onMount(() => {
-  // Detect installed state early (appinstalled event + getInstalledRelatedApps)
-  // so we can suppress the prompt before any user interaction.
-  install.init();
+  // The install prompt is suppressed on native — it would invite someone to
+  // install the PWA from inside the already-installed native app. The service
+  // worker, by contrast, is wanted on native in the wrapper: the app loads
+  // cuanto.bio live and same-origin, so the SW caches the shell for offline
+  // launch (proven in the Stage A spike) and its "new version available"
+  // prompt is the correct update path — the live site *is* how the app
+  // updates, with no App Store round trip.
+  if (!isNative()) {
+    // Detect installed state early (appinstalled event +
+    // getInstalledRelatedApps) so we can suppress the prompt before any user
+    // interaction.
+    install.init();
+  }
 
   if ('serviceWorker' in navigator) {
     // Register at an absolute path so the scope is always the origin root,

@@ -26,9 +26,31 @@ test.describe('/api/protocols', () => {
     await teardownDid(sql, DID);
   });
 
-  test('returns 422 when q param is missing', async ({ request }) => {
+  // Omitting `q` used to 422. It now lists the collection, because /app/protocols
+  // needs a list it can fetch client-side (no +page.server.ts) and a bare
+  // collection GET is the natural place for it. Matches /api/protocols/following,
+  // which also returns a bare Protocol[]. The `?q=` search mode is unchanged and
+  // still returns the thinner {results} shape the autocomplete wants.
+  test('lists protocols when q is omitted', async ({ request }) => {
     const resp = await request.get('/api/protocols');
-    expect(resp.status()).toBe(422);
+    expect(resp.status()).toBe(200);
+    const body = await resp.json();
+    expect(Array.isArray(body)).toBe(true);
+    const titles = body.map(
+      (p: { record: { title: string } }) => p.record.title,
+    );
+    expect(titles).toContain('Test Protocol');
+  });
+
+  test('includes targets in the listed protocols', async ({ request }) => {
+    const resp = await request.get('/api/protocols');
+    const body = await resp.json();
+    const seeded = body.find(
+      (p: { record: { title: string } }) => p.record.title === 'Test Protocol',
+    );
+    expect(seeded).toBeDefined();
+    expect(Array.isArray(seeded.targets)).toBe(true);
+    expect(seeded.targets.length).toBeGreaterThan(0);
   });
 
   test('returns matching protocols for a query', async ({ request }) => {

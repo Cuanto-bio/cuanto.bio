@@ -2,7 +2,18 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      viewport-fit=cover is what makes env(safe-area-inset-*) return real
+      values. Without it those are always 0, so mobile-nav's existing bottom
+      inset was silently doing nothing on notched devices and the installed PWA
+      sat under the home indicator. The matching top inset lives on .mobile-main
+      in layout.css — the two have to ship together, since cover alone would put
+      content under the status bar.
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <meta name="text-scale" content="scale" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />

@@ -1,23 +1,32 @@
+import { nativeGpsSource } from '$lib/gps/nativeSource';
+import type { GpsSource } from '$lib/gps/source';
+import { webGpsSource } from '$lib/gps/webSource';
 import { accumulate, emptyWindow, type WindowState } from '$lib/gpsTrackWindow';
 import type { GpsTrackPoint } from '$lib/gpx';
+import { isNative } from '$lib/platform';
 
-export function useGpsTrack(initialPoints: GpsTrackPoint[] = []) {
+export function useGpsTrack(
+  initialPoints: GpsTrackPoint[] = [],
+  // Injectable so tests and future callers can supply a source; defaults to
+  // whichever one this platform can actually use.
+  source: GpsSource = isNative() ? nativeGpsSource() : webGpsSource(),
+) {
   const points = $state<GpsTrackPoint[]>(initialPoints);
   let isRecording = $state(false);
-  let watchId: number | null = null;
   let wakeLock: WakeLockSentinel | null = null;
   let hiddenAt: number | null = null;
   let recordWindow: WindowState = emptyWindow();
 
-  function onPosition(pos: GeolocationPosition) {
+  // The screen wake lock exists only to stop the browser suspending JS while
+  // the user walks. A source that keeps delivering in the background does not
+  // need it, and holding it there would burn the display for the length of a
+  // survey — the exact cost the native shell was built to remove.
+  const needsWakeLock = !source.worksInBackground;
+
+  function onFix(fix: GpsTrackPoint) {
     // Keep the best (lowest-accuracy) fix per interval rather than the first
     // one to arrive; the device pushes better fixes between window boundaries.
-    const result = accumulate(recordWindow, {
-      lat: pos.coords.latitude,
-      lng: pos.coords.longitude,
-      timestamp: pos.timestamp,
-      accuracy: pos.coords.accuracy,
-    });
+    const result = accumulate(recordWindow, fix);
     recordWindow = result.state;
     if (result.emit) points.push(result.emit);
   }
@@ -33,7 +42,7 @@ export function useGpsTrack(initialPoints: GpsTrackPoint[] = []) {
   }
 
   async function acquireWakeLock() {
-    if (!('wakeLock' in navigator)) {
+    if (!needsWakeLock || !('wakeLock' in navigator)) {
       return;
     }
     try {
@@ -56,40 +65,42 @@ export function useGpsTrack(initialPoints: GpsTrackPoint[] = []) {
   }
 
   async function start() {
-    if (isRecording || !('geolocation' in navigator)) return;
+    if (isRecording) return;
     isRecording = true;
     recordWindow = emptyWindow();
-    watchId = navigator.geolocation.watchPosition(onPosition, onWatchError, {
-      enableHighAccuracy: true,
-    });
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    await acquireWakeLock();
+    if (needsWakeLock) {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
+    await source.start(onFix, onSourceError);
+    // The source can fail synchronously (e.g. geolocation unavailable), which
+    // runs onSourceError → teardown() before we get here. Only take the wake
+    // lock if we're still recording, or we'd hold one nothing ever releases.
+    if (isRecording) await acquireWakeLock();
   }
 
-  function onWatchError() {
-    // Geolocation failed (permission denied, position unavailable, timeout, …).
+  function onSourceError() {
+    // The source failed (permission denied, position unavailable, timeout, …).
     // Reset recording state so the UI doesn't claim we're still tracking.
     if (!isRecording) return;
+    teardown();
+  }
+
+  function teardown() {
     isRecording = false;
-    if (watchId !== null) {
-      navigator.geolocation.clearWatch(watchId);
-      watchId = null;
+    source.stop().catch(() => {
+      // Already stopped, or the plugin is gone. Nothing useful to do, and the
+      // local state is what the UI reads.
+    });
+    if (needsWakeLock) {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     }
-    document.removeEventListener('visibilitychange', onVisibilityChange);
     releaseWakeLock();
     flushWindow();
   }
 
   function stop() {
     if (!isRecording) return;
-    isRecording = false;
-    if (watchId !== null) {
-      navigator.geolocation.clearWatch(watchId);
-      watchId = null;
-    }
-    document.removeEventListener('visibilitychange', onVisibilityChange);
-    releaseWakeLock();
-    flushWindow();
+    teardown();
   }
 
   return {

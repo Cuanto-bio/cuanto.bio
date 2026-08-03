@@ -141,6 +141,14 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    /* Keeps content clear of the status bar and dynamic island now that
+       viewport-fit=cover (see app.html) lets the layout extend edge to edge.
+       Applies to the native shell and to the installed PWA, which are the two
+       cases that render without browser chrome; it resolves to 0 everywhere
+       else. Left/right matter in landscape on notched devices. */
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
   }
 
   .mobile-scroll {
