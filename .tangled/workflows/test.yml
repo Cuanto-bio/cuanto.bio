@@ -1,0 +1,21 @@
+when:
+  - event: ["push", "manual"]
+    branch: ["main"]
+  - event: ["pull_request"]
+    branch: ["main"]
+
+engine: microvm
+image: nixos
+
+environment:
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+
+dependencies:
+  - nodejs
+  - pnpm
+
+steps:
+  - name: "Install deps"
+    command: pnpm install --frozen-lockfile
+  - name: "Run unit tests"
+    command: pnpm test:unit
