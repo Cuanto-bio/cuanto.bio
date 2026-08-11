@@ -17,5 +17,7 @@ dependencies:
 steps:
   - name: "Install deps"
     command: pnpm install --frozen-lockfile
-  - name: "Run unit tests"
-    command: pnpm test:unit
+  - name: "Run checks"
+    command: pnpm check
+  - name: "Run tests"
+    command: pnpm test
