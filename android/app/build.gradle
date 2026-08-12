@@ -1,5 +1,24 @@
 apply plugin: 'com.android.application'
 
+// Derive version name (and code) from an env var; in CI this should get set
+// based on the git ref (hopefully a tag)
+def versionNameFromEnv = System.getenv("ANDROID_VERSION_NAME")
+
+// Derive a code (integer) from the semver, and bail if the version name
+// doesn't look like a semver, or if the semver is invalid
+def versionCodeFrom = { String semver ->
+    def m = semver =~ /^(\d+)\.(\d+)\.(\d+)$/
+    if (!m.matches()) {
+        throw new GradleException(
+            "ANDROID_VERSION_NAME must be X.Y.Z with no suffix, got: '${semver}'")
+    }
+    def (major, minor, patch) = [m[0][1] as int, m[0][2] as int, m[0][3] as int]
+    if (minor > 999 || patch > 999) {
+        throw new GradleException("minor and patch must each be <= 999, got: '${semver}'")
+    }
+    return major * 1000000 + minor * 1000 + patch
+}
+
 android {
     namespace = "bio.cuanto.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +26,12 @@ android {
         applicationId "bio.cuanto.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+
+        // Default values foir code ane name are just 1 so dev and test builds
+        // continue to work, though invalid semvers will throw
+        versionCode = versionNameFromEnv ? versionCodeFrom(versionNameFromEnv) : 1
+        versionName = versionNameFromEnv ?: "1.0"
+
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
