@@ -7,17 +7,64 @@ when:
 engine: microvm
 image: nixos
 
-environment:
-  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+# This project depends on several prebuilt, dynamically linked Linux binaries
+# that NixOS cannot execute: biome, rollup,
+# @tailwindcss/oxide and lefthook (native npm packages), plus Playwright's
+#  browsers. Rather than shimming each one, every Node step runs inside the
+#  official Playwright image, which is Ubuntu-based and ships the browsers
+#  preinstalled. The NixOS guest is reduced to a Docker host.
+virtualisation:
+  docker: true
 
-dependencies:
-  - nodejs
-  - pnpm
+environment:
+  # Must track the @playwright/test version actually installed, or the browsers
+  # baked into the image will not match what the npm package expects. Check with
+  # `pnpm exec playwright --version` after any Playwright bump.
+  RUNNER_IMAGE: "mcr.microsoft.com/playwright:v1.59.1-noble"
+  # Same image compose.yml uses locally. PostGIS, not plain Postgres:
+  # scripts/setup-test-db.ts does CREATE EXTENSION postgis.
+  DB_IMAGE: "postgis/postgis:16-3.4"
 
 steps:
-  - name: "Install deps"
-    command: pnpm install --frozen-lockfile
+  # --network host on both containers puts Postgres on the guest's
+  # localhost:5432 and lets the runner reach it there. That is what
+  # tests/global-setup.ts, scripts/setup-test-db.ts and both Playwright configs
+  # hardcode, so nothing in the test setup has to change for CI.
+  - name: "Start PostGIS"
+    command: |
+      set -euo pipefail
+      docker run -d --name db --network host \
+        -e POSTGRES_DB=cuanto \
+        -e POSTGRES_USER=cuanto \
+        -e POSTGRES_PASSWORD=cuanto \
+        "$DB_IMAGE"
+      for _ in $(seq 1 60); do
+        if docker exec db pg_isready -U cuanto >/dev/null 2>&1; then break; fi
+        sleep 2
+      done
+      docker exec db pg_isready -U cuanto
+
+  # One long-lived container for every Node step. Each `docker run --rm` would
+  # otherwise need its own `npm i -g pnpm`, and node_modules would be the only
+  # thing surviving between steps.
+  - name: "Start runner"
+    command: |
+      set -euo pipefail
+      docker run -d --name runner --network host -v "$PWD:/w" -w /w \
+        -e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+        "$RUNNER_IMAGE" sleep infinity
+      docker exec runner npm i -g pnpm@11
+
+  - name: "Install dependencies"
+    command: docker exec runner pnpm install --frozen-lockfile
+
   - name: "Run checks"
-    command: pnpm check
+    command: docker exec runner pnpm check
+
+  - name: "Set up test database"
+    command: docker exec runner pnpm test:db:setup
+
+  # `pnpm test` is unit + integration + PWA. The Playwright configs start their
+  # own dev/preview servers, so nothing else needs launching here.
   - name: "Run tests"
-    command: pnpm test
+    command: docker exec runner pnpm test

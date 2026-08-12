@@ -5,4 +5,16 @@ allowBuilds:
 onlyBuiltDependencies:
   - esbuild
   - '@tailwindcss/oxide'
+# Moved here from the `pnpm` field in package.json, which pnpm 11 no longer
+# reads. While they lived there they were silently ignored, so cookie stayed
+# pinned at 0.6.0 (CVE-2024-47764) despite the override.
+#
+# The cookie bound is deliberately capped at <0.8.0 rather than left open at
+# ">=0.7.0". Unbounded, it resolves to 2.0.1, which renamed the package's
+# exports (parse -> parseCookie, serialize -> stringifyCookie). SvelteKit does
+# `import { parse, serialize } from 'cookie'`, so both become undefined and all
+# cookie handling breaks. 0.7.x is the release that actually fixes the CVE.
+overrides:
+  cookie@<0.7.0: '>=0.7.0 <0.8.0'
+  postcss@<8.5.10: '>=8.5.10'
 confirmModulesPurge: false
