@@ -99,10 +99,22 @@ export async function getProtocolTargetsForProtocols(
   protocolUris: string[],
 ): Promise<ProtocolTargetRow[]> {
   if (protocolUris.length === 0) return [];
+  // Ordered because this list is user-visible: the survey form's "Default" sort
+  // is a pass-through (sortTargets in targets.svelte.ts), so whatever order this
+  // returns is the order surveyors count in. Without ORDER BY, Postgres hands
+  // back physical row order, and an UPDATE moves a row -- so a single firehose
+  // re-delivery (insertProtocolTarget's ON CONFLICT DO UPDATE) or a tombstone
+  // silently reshuffles a protocol's targets (issue #42).
+  //
+  // indexed_at is the order the appview first saw them and survives those
+  // upserts, which leave it untouched. rkey breaks ties: it is a TID, so it
+  // sorts by creation time, and it is the only signal left after a reindex,
+  // where every row gets the same transaction-timestamp now().
   return sql<ProtocolTargetRow[]>`
     SELECT protocol_uri, at_uri, record
     FROM protocol_targets
     WHERE protocol_uri = ANY(${protocolUris}) AND deleted_at IS NULL
+    ORDER BY indexed_at, rkey
   `;
 }
 

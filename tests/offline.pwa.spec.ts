@@ -24,9 +24,9 @@ test('app shell loads offline at an unvisited /app/* route', async ({
   // making every /app/* URL servable offline.
   await page.goto('/app/protocols');
 
-  // Wait until the SW is controlling the page. The layout fires
-  // window.location.reload() on controllerchange (first SW activation); then
-  // waitForFunction re-evaluates in the reloaded page context.
+  // Wait until the SW is controlling the page. A first activation does NOT
+  // reload the page: the layout only reloads when an update replaces a worker
+  // that was already controlling it (reloadOnControllerChange, issue #42).
   // 15 s: SW install runs cacheAssets() which fetches the shell + ~50 hashed
   // assets before the SW can activate, so first-activation is slower than usual.
   await page.waitForFunction(
@@ -35,8 +35,7 @@ test('app shell loads offline at an unvisited /app/* route', async ({
       timeout: 15000,
     },
   );
-  // Wait for the reload triggered by controllerchange to fully settle before
-  // evaluating anything.
+  // Let the install's asset fetching settle before evaluating anything.
   await page.waitForLoadState('networkidle', { timeout: 10000 });
 
   // Confirm the SW cached the /app/ shell during install before trusting the

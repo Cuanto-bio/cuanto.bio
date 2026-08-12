@@ -66,3 +66,40 @@ export function watchForUpdates(
     trackInstalling(registration.installing);
   });
 }
+
+// The subset of ServiceWorkerContainer we touch.
+export interface ControllerContainer {
+  addEventListener(type: 'controllerchange', listener: () => void): void;
+}
+
+// Reloads the page once a *different* service worker takes control, so it stops
+// running JS chunks the new worker has already evicted (issue #4).
+//
+// Like watchForUpdates, this hinges on telling an update apart from a first
+// install, because controllerchange fires for both:
+//
+//   - update: an old worker was controlling this page, so the assets it is
+//     running are the old worker's and may already be gone. Reload.
+//   - first install: nothing controlled the page, the new worker activated and
+//     called clients.claim(). The page is already running the newest assets, so
+//     a reload buys nothing and costs the visitor whatever they were doing --
+//     it aborts an in-flight navigation and drops unsaved form state (#42).
+//
+// The flag is not just the initial hasController() reading: after a first
+// install claims the page, the page *is* controlled, so a later update in that
+// same page session must reload.
+export function reloadOnControllerChange(
+  container: ControllerContainer,
+  hasController: () => boolean,
+  reload: () => void,
+): void {
+  let controlled = hasController();
+  let refreshing = false;
+  container.addEventListener('controllerchange', () => {
+    const wasControlled = controlled;
+    controlled = true;
+    if (!wasControlled || refreshing) return;
+    refreshing = true;
+    reload();
+  });
+}

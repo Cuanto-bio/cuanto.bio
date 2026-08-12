@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  type ControllerContainer,
   type InstallingWorker,
+  reloadOnControllerChange,
   type UpdatableRegistration,
   watchForUpdates,
 } from './swUpdate';
@@ -109,5 +111,74 @@ describe('watchForUpdates', () => {
     installing.state = 'installing';
     installing.fireStateChange();
     expect(onReady).not.toHaveBeenCalled();
+  });
+});
+
+function makeContainer(): ControllerContainer & {
+  fireControllerChange: () => void;
+} {
+  let listener: (() => void) | null = null;
+  return {
+    addEventListener: (_type: 'controllerchange', l: () => void) => {
+      listener = l;
+    },
+    fireControllerChange: () => listener?.(),
+  };
+}
+
+describe('reloadOnControllerChange', () => {
+  it('reloads when an update takes over an already-controlled page', () => {
+    const container = makeContainer();
+    const reload = vi.fn();
+
+    // A controller is already present: this page is running the old worker's
+    // assets, so once the new worker claims it the page must reload (issue #4).
+    reloadOnControllerChange(container, () => true, reload);
+    container.fireControllerChange();
+
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT reload when a first-install worker claims an uncontrolled page', () => {
+    const container = makeContainer();
+    const reload = vi.fn();
+
+    // First install: no controller when the page loaded. The service worker's
+    // activate handler calls clients.claim(), which fires controllerchange even
+    // though the page is already running the newest assets. Reloading here
+    // yanks the page out from under whatever the visitor just did -- it aborts
+    // an in-flight navigation and drops unsaved form state (issue #42).
+    reloadOnControllerChange(container, () => false, reload);
+    container.fireControllerChange();
+
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('reloads for an update that arrives after a first install claimed the page', () => {
+    const container = makeContainer();
+    const reload = vi.fn();
+
+    // Page opened with no worker, so the first controllerchange is the install
+    // claiming it and must not reload. But the page is controlled from then on,
+    // so a later update in this same session is the issue #4 case and must.
+    // Reading hasController() once up front would miss this.
+    reloadOnControllerChange(container, () => false, reload);
+    container.fireControllerChange();
+    expect(reload).not.toHaveBeenCalled();
+
+    container.fireControllerChange();
+
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads at most once when controllerchange fires repeatedly', () => {
+    const container = makeContainer();
+    const reload = vi.fn();
+
+    reloadOnControllerChange(container, () => true, reload);
+    container.fireControllerChange();
+    container.fireControllerChange();
+
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });

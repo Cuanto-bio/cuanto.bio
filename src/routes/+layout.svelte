@@ -19,7 +19,11 @@ import { Toaster } from '$lib/components/ui/sonner';
 import { useOnline } from '$lib/composables/online.svelte';
 import { isNative } from '$lib/platform';
 import { install } from '$lib/pwa/install.svelte';
-import { SKIP_WAITING, watchForUpdates } from '$lib/pwa/swUpdate';
+import {
+  reloadOnControllerChange,
+  SKIP_WAITING,
+  watchForUpdates,
+} from '$lib/pwa/swUpdate';
 
 let { children } = $props();
 
@@ -84,17 +88,13 @@ onMount(() => {
         );
       });
 
-    // Reload once the controlling SW changes. Registered unconditionally: the
-    // previous guard (`!controller`) only ran on first install, so updates never
-    // reloaded and the page kept running JS chunks the new SW had already
-    // evicted, silently breaking navigation (issue #4). `refreshing` guards
-    // against any double reload.
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (refreshing) return;
-      refreshing = true;
-      window.location.reload();
-    });
+    // Reload once the controlling SW changes, so the page stops running JS
+    // chunks the new SW has already evicted (issue #4).
+    reloadOnControllerChange(
+      navigator.serviceWorker,
+      () => !!navigator.serviceWorker.controller,
+      () => window.location.reload(),
+    );
   }
 });
 </script>

@@ -14,14 +14,43 @@ function authCookie(did: string) {
   };
 }
 
-// Removes `required` from all form fields so the browser doesn't block
-// submission, letting the server-side validation run and return fail().
-async function removeRequiredAttributes(page: import('@playwright/test').Page) {
-  await page.evaluate(() => {
-    for (const el of document.querySelectorAll('[required]')) {
+// Submits the protocol form with `required` stripped, so the browser's own
+// constraint validation doesn't block submission and the server-side check can
+// run and return fail().
+//
+// The stripping and the submit have to happen in a single evaluate. Input
+// applies its attributes through a {...restProps} spread, so Svelte puts
+// `required` straight back when it hydrates -- and hydration lands after
+// page.goto() resolves, late enough under a loaded dev server that a separate
+// strip-then-click would find the attributes restored and the submit blocked.
+// One evaluate is one task, which hydration cannot interleave with.
+async function submitWithoutClientValidation(
+  page: import('@playwright/test').Page,
+  { clearTitle = false } = {},
+) {
+  await page.evaluate((clear) => {
+    const title = document.querySelector(
+      '[name="title"]',
+    ) as HTMLInputElement | null;
+    const form = title?.form;
+    if (!form) throw new Error('protocol form not found');
+
+    for (const el of form.querySelectorAll('[required]')) {
       el.removeAttribute('required');
     }
-  });
+    if (clear && title) {
+      title.value = '';
+      // Keeps a hydrated bind:value in sync with the cleared DOM value.
+      title.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    const submit = form.querySelector<HTMLButtonElement>(
+      'button[type="submit"]',
+    );
+    // requestSubmit, not submit(): it still fires the submit event, so
+    // use:enhance is exercised whenever the form has already hydrated.
+    form.requestSubmit(submit ?? undefined);
+  }, clearTitle);
 }
 
 test.describe('protocol form error display', () => {
@@ -42,8 +71,7 @@ test.describe('protocol form error display', () => {
     await context.addCookies([authCookie(FORM_ERR_DID)]);
     await page.goto('/protocols/new');
 
-    await removeRequiredAttributes(page);
-    await page.click('button[type="submit"]');
+    await submitWithoutClientValidation(page);
 
     await expect(
       page.getByRole('alert').filter({ hasText: 'Title is required' }),
@@ -59,9 +87,7 @@ test.describe('protocol form error display', () => {
     const { protocolRkey } = await seedProtocol(sql, FORM_ERR_DID);
     await page.goto(`/protocols/${FORM_ERR_HANDLE}/${protocolRkey}/edit`);
 
-    await removeRequiredAttributes(page);
-    await page.fill('[name="title"]', '');
-    await page.click('button[type="submit"]', { force: true });
+    await submitWithoutClientValidation(page, { clearTitle: true });
 
     await expect(
       page.getByRole('alert').filter({ hasText: 'Title is required' }),
