@@ -58,6 +58,15 @@ steps:
   - name: "Install dependencies"
     command: docker exec runner pnpm install --frozen-lockfile
 
+  # `svelte-kit sync` types $env/dynamic/private from whatever variables happen
+  # to be set when it runs, declaring the ones it sees as `string` and leaving
+  # everything else to fall through to an `string | undefined` index signature.
+  # Without a .env the container sees neither DATABASE_URL, TAP_ADMIN_PASSWORD
+  # nor PUBLIC_URL, and svelte-check reports 8 errors that never appear on a dev
+  # machine. .env is gitignored, so seed one from the checked-in example.
+  - name: "Seed .env for type generation"
+    command: docker exec runner cp .env.example .env
+
   - name: "Run checks"
     command: docker exec runner pnpm check
 
