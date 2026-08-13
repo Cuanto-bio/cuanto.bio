@@ -37,3 +37,7 @@ test-results
 
 *.sublime-project
 *.sublime-workspace
+
+.tangledrc
+android/.idea/
+private-docs/
