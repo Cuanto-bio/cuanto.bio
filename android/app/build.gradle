@@ -19,6 +19,10 @@ def versionCodeFrom = { String semver ->
     return major * 1000000 + minor * 1000 + patch
 }
 
+// Read once at script scope. Two separate System.getenv calls could drift apart,
+// leaving a build type pointed at a signing config that declined to configure itself.
+def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+
 android {
     namespace = "bio.cuanto.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -38,8 +42,25 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+
+    signingConfigs {
+        release {
+            if (keystorePath) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            // Falls back to an unsigned APK when the env is not set, so a plain
+            // local `./gradlew assembleRelease` still succeeds.
+            if (keystorePath) {
+                signingConfig = signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

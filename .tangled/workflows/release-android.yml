@@ -1,0 +1,142 @@
+when:
+  - event: ["push"]
+    tag: ["v*"]
+
+engine: microvm
+image: nixos
+
+# The publish step needs these on the guest, outside both containers.
+dependencies:
+  - git
+  - curl
+  - jq
+
+# Same arrangement as test.yml, and for the same reason: the NixOS guest is only
+# a Docker host. See the Correction above.
+virtualisation:
+  docker: true
+
+environment:
+  NODE_IMAGE: "node:22-bookworm"
+  JDK_IMAGE: "eclipse-temurin:21-jdk"
+  # Build 15859902 is cmdline-tools 22.0, the current `latest` in Google's
+  # repository2-3.xml index. Verified to return HTTP 200.
+  CMDLINE_TOOLS_URL: "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip"
+  PUBLIC_URL: "https://cuanto.bio"
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+  PDS: "https://tngl.sh"
+  ATP_IDENTIFIER: "cuanto.bio"
+  REPO_AT_URI: "at://did:plc:dd7efi6wormdpmcyscnkjc6n/sh.tangled.repo/3mksu5zaint22"
+
+steps:
+  # ANDROID_HOME is set at container creation, not exported in a later step:
+  # each `docker exec` gets a fresh process environment but inherits the
+  # container's. Both containers mount the same workspace, so `cap sync` in one
+  # is visible to `gradlew` in the other.
+  - name: "Start containers"
+    command: |
+      set -euo pipefail
+      docker run -d --name node --network host -v "$PWD:/w" -w /w \
+        -e PUBLIC_URL -e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD \
+        "$NODE_IMAGE" sleep infinity
+      docker run -d --name jdk -v "$PWD:/w" -w /w \
+        -e ANDROID_HOME=/opt/android-sdk \
+        "$JDK_IMAGE" sleep infinity
+      docker exec node npm i -g pnpm@11
+
+  # sdkmanager insists on living at $ANDROID_HOME/cmdline-tools/latest/bin,
+  # while the zip unpacks to a bare `cmdline-tools/` directory, hence the move.
+  - name: "Install Android SDK"
+    command: |
+      set -euo pipefail
+      docker exec jdk bash -c '
+        set -euo pipefail
+        apt-get update -qq && apt-get install -y -qq unzip curl >/dev/null
+        curl -fsSL -o /tmp/tools.zip "'"$CMDLINE_TOOLS_URL"'"
+        mkdir -p "$ANDROID_HOME/cmdline-tools"
+        unzip -q /tmp/tools.zip -d /tmp/tools
+        mv /tmp/tools/cmdline-tools "$ANDROID_HOME/cmdline-tools/latest"
+        # Licenses are accepted non-interactively; `yes` answers each prompt.
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+          "platforms;android-36" "build-tools;36.1.0" "platform-tools" >/dev/null
+      '
+
+  - name: "Install deps"
+    command: docker exec node pnpm install --frozen-lockfile
+
+  # Plain `cap sync android`, not `pnpm cap:sync`: that script also runs the iOS
+  # app-bound-domains sync, which has nothing to do with an APK.
+  - name: "Sync Capacitor"
+    command: docker exec node pnpm exec cap sync android
+
+  - name: "Build signed APK"
+    command: |
+      set -euo pipefail
+      tag="${TANGLED_REF_NAME##*/}"
+      export ANDROID_VERSION_NAME="${tag#v}"
+      docker exec \
+        -e ANDROID_VERSION_NAME \
+        -e ANDROID_KEYSTORE_BASE64 -e ANDROID_KEYSTORE_PASSWORD \
+        -e ANDROID_KEY_ALIAS -e ANDROID_KEY_PASSWORD \
+        jdk bash -c '
+          set -euo pipefail
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > /tmp/release.keystore
+          export ANDROID_KEYSTORE_PATH=/tmp/release.keystore
+          cd android && ./gradlew --no-daemon assembleRelease
+        '
+
+  - name: "Verify signature"
+    command: |
+      set -euo pipefail
+      docker exec jdk bash -c '
+        set -euo pipefail
+        apksigner=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+        "$apksigner" verify --print-certs \
+          android/app/build/outputs/apk/release/app-release.apk
+      '
+
+  # Runs on the guest, not in a container: this is the only step that needs the
+  # git clone and the ATP secret, and neither image ships git or jq.
+  - name: "Publish artifact record"
+    command: |
+      set -euo pipefail
+      APK=android/app/build/outputs/apk/release/app-release.apk
+      tag="${TANGLED_REF_NAME##*/}"
+      version="${tag#v}"
+
+      # The `tag` field is the raw 20-byte SHA-1 of the annotated tag *object*,
+      # base64'd for the lexicon's $bytes type. `^{tag}` fails on a lightweight tag.
+      tag_sha=$(git rev-parse "${tag}^{tag}")
+      tag_b64=$(printf '%s' "$tag_sha" | tr 'a-f' 'A-F' \
+        | basenc --base16 -d | base64 | tr -d '=\n')
+
+      session=$(curl -fsS -X POST "$PDS/xrpc/com.atproto.server.createSession" \
+        -H 'Content-Type: application/json' \
+        -d "$(jq -n --arg id "$ATP_IDENTIFIER" --arg pw "$ATP_APP_PASSWORD" \
+                 '{identifier:$id, password:$pw}')")
+      jwt=$(printf '%s' "$session" | jq -r .accessJwt)
+      did=$(printf '%s' "$session" | jq -r .did)
+
+      # mimeType comes from Content-Type. `*/*` matches both the lexicon's
+      # `accept` and the one real-world record we could find.
+      blob=$(curl -fsS -X POST "$PDS/xrpc/com.atproto.repo.uploadBlob" \
+        -H "Authorization: Bearer $jwt" \
+        -H 'Content-Type: */*' \
+        --data-binary "@$APK" | jq .blob)
+
+      curl -fsS -X POST "$PDS/xrpc/com.atproto.repo.createRecord" \
+        -H "Authorization: Bearer $jwt" \
+        -H 'Content-Type: application/json' \
+        -d "$(jq -n \
+                --arg repo "$did" \
+                --arg uri "$REPO_AT_URI" \
+                --arg name "cuanto-${version}.apk" \
+                --arg tag "$tag_b64" \
+                --argjson blob "$blob" \
+                --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                '{repo:$repo, collection:"sh.tangled.repo.artifact",
+                  record:{"$type":"sh.tangled.repo.artifact",
+                          name:$name, repo:$uri,
+                          tag:{"$bytes":$tag}, artifact:$blob,
+                          createdAt:$now}}')"
