@@ -124,11 +124,15 @@ steps:
       jwt=$(printf '%s' "$session" | jq -r .accessJwt)
       did=$(printf '%s' "$session" | jq -r .did)
 
-      # mimeType comes from Content-Type. `*/*` matches both the lexicon's
-      # `accept` and the one real-world record we could find.
+      # mimeType is taken from this header, and the appview download proxy serves
+      # it back verbatim. Sending `*/*` is not a real type, so the PDS sniffed the
+      # bytes instead and stored `application/zip` (an APK is a zip). Firefox on
+      # Android then reconciled that against the filename and saved
+      # cuanto-1.0.1.apk.zip, which the package installer will not open. Declaring
+      # the real type keeps the .apk extension intact on device.
       blob=$(curl -fsS -X POST "$PDS/xrpc/com.atproto.repo.uploadBlob" \
         -H "Authorization: Bearer $jwt" \
-        -H 'Content-Type: */*' \
+        -H 'Content-Type: application/vnd.android.package-archive' \
         --data-binary "@$APK" | jq .blob)
 
       curl -fsS -X POST "$PDS/xrpc/com.atproto.repo.createRecord" \
