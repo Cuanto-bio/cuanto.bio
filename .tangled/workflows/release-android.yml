@@ -57,7 +57,13 @@ steps:
         unzip -q /tmp/tools.zip -d /tmp/tools
         mv /tmp/tools/cmdline-tools "$ANDROID_HOME/cmdline-tools/latest"
         # Licenses are accepted non-interactively; `yes` answers each prompt.
-        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+        # Process substitution, NOT `yes | sdkmanager`: sdkmanager exits first,
+        # `yes` then dies of SIGPIPE with 141, and `set -o pipefail` fails the
+        # step even though every license was accepted. With `< <(yes)` there is
+        # no pipeline, so the exit status comes from sdkmanager alone and a real
+        # failure is still caught.
+        # NOTE: no apostrophes in these comments; they would close the bash -c quote.
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses < <(yes) >/dev/null
         "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
           "platforms;android-36" "build-tools;36.1.0" "platform-tools" >/dev/null
       '
