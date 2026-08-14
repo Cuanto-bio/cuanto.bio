@@ -8,6 +8,7 @@ import InfoIcon from '@lucide/svelte/icons/info';
 import ListChecksIcon from '@lucide/svelte/icons/list-checks';
 import UserIcon from '@lucide/svelte/icons/user';
 import type { Component } from 'svelte';
+import { signInPath } from '$lib/auth/signin';
 
 export type LinkTab = {
   type: 'link';
@@ -96,7 +97,9 @@ export const SIGNED_OUT_TABS: LinkTab[] = [
   {
     type: 'link',
     key: 'signin',
-    href: '/auth/signin',
+    // Native has no /auth/signin in its bundle; signInPath() sends it to
+    // /app/signin instead. See $lib/auth/signin.ts.
+    href: signInPath(),
     label: 'Sign in',
     icon: UserIcon,
   },

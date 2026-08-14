@@ -6,6 +6,15 @@ import { clearIdbUser, getIdbUser, saveIdbUser } from '$lib/offline/db';
 import { syncOfflineData } from '$lib/offline/sync';
 import type { LayoutLoad } from './$types';
 
+// /app is the wrapper's launch target (server.url in capacitor.config.ts) and
+// the only route the service worker caches for offline launch
+// (service-worker.ts cacheAssets() / the fetch handler's /app/* branch — `/`
+// gets neither). Bouncing a signed-out visitor off it entirely would break
+// that offline-launch guarantee, so unlike the rest of /app/*, the root stays
+// public: +page.svelte renders the same content as `/` when `did` is unset
+// instead of forcing a redirect to sign-in.
+const APP_ROOT_PATH = '/app';
+
 export const load: LayoutLoad = async ({ fetch, url }) => {
   // The native sign-in route lives under /app (the bundle contains nothing
   // else), so it has to be exempt from the guard that would otherwise redirect
@@ -14,7 +23,9 @@ export const load: LayoutLoad = async ({ fetch, url }) => {
     return { did: undefined, handle: null as unknown as string };
   }
 
-  // All of /app is a signed in experience, so we check auth status
+  const isPublic = url.pathname === APP_ROOT_PATH;
+
+  // The rest of /app is a signed in experience, so we check auth status
   try {
     const abortCtrl = new AbortController();
     const timer = setTimeout(() => abortCtrl.abort(), 3000);
@@ -41,6 +52,8 @@ export const load: LayoutLoad = async ({ fetch, url }) => {
     if (res.status === 401) {
       // Server does *not* think we're signed in, clear local auth data
       await clearIdbUser();
+      if (isPublic)
+        return { did: undefined, handle: null as unknown as string };
       redirect(302, signInPath());
     }
   } catch {
@@ -49,6 +62,7 @@ export const load: LayoutLoad = async ({ fetch, url }) => {
   // Probably offline, check local auth data
   const user = await getIdbUser();
   if (!user) {
+    if (isPublic) return { did: undefined, handle: null as unknown as string };
     redirect(302, signInPath());
   }
   return user;

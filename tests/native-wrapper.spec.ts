@@ -34,17 +34,24 @@ test.describe('native wrapper sign-in flow', () => {
     await sql`DELETE FROM users WHERE did = ${DID}`;
   });
 
-  test('redirects an unauthenticated native user to the native sign-in route', async ({
+  test('shows home content at /app for a signed-out user instead of forcing sign-in', async ({
     page,
   }) => {
     await installNativeBridge(page);
     await page.goto('/app');
-    // /api/me is unauthenticated (no token, no cookie), so the guard bounces to
-    // the native sign-in route — not the web form.
-    await expect(page).toHaveURL(/\/app\/signin/);
+    // /api/me is unauthenticated (no token, no cookie). /app is the wrapper's
+    // launch target (capacitor.config.ts) and the only route the service
+    // worker caches for offline launch (service-worker.ts), so a signed-out
+    // visit renders the same content as `/` in place rather than redirecting
+    // to /app/signin — sign-in stays reachable from the nav (see nav-tabs.ts,
+    // sidebar.svelte).
+    await expect(page).toHaveURL(/\/app$/);
+    await expect(
+      page.getByRole('link', { name: /start counting/i }),
+    ).toBeVisible();
     await expect(
       page.getByRole('heading', { name: /sign in to cuanto/i }),
-    ).toBeVisible();
+    ).toHaveCount(0);
   });
 
   test('shows the native sign-in UI, not the web form', async ({ page }) => {

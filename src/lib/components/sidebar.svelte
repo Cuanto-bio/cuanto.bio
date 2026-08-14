@@ -10,6 +10,7 @@ import LogOutIcon from '@lucide/svelte/icons/log-out';
 import MessageSquarePlusIcon from '@lucide/svelte/icons/message-square-plus';
 import { onMount } from 'svelte';
 import { afterNavigate } from '$app/navigation';
+import { signInPath } from '$lib/auth/signin';
 import Handle from '$lib/components/handle.svelte';
 import {
   Sidebar,
@@ -241,7 +242,7 @@ onMount(() => {
         <SidebarMenuItem>
           <SidebarMenuButton>
             {#snippet child({ props })}
-              <a href="/auth/signin" {...props}>
+              <a href={signInPath()} {...props}>
                 <LogInIcon />
                 Sign in
               </a>
