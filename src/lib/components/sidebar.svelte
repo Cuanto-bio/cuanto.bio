@@ -8,6 +8,7 @@ import ListChecksIcon from '@lucide/svelte/icons/list-checks';
 import LogInIcon from '@lucide/svelte/icons/log-in';
 import LogOutIcon from '@lucide/svelte/icons/log-out';
 import MessageSquarePlusIcon from '@lucide/svelte/icons/message-square-plus';
+import StethoscopeIcon from '@lucide/svelte/icons/stethoscope';
 import { onMount } from 'svelte';
 import { afterNavigate } from '$app/navigation';
 import { signInPath } from '$lib/auth/signin';
@@ -187,6 +188,21 @@ onMount(() => {
               {/snippet}
             </SidebarMenuButton>
           </SidebarMenuItem>
+          <!-- Only worth offering to someone signed in: the log lives under
+               /app (so the cached shell serves it offline, which is when it
+               matters most), and signing out clears it. -->
+          {#if handle}
+            <SidebarMenuItem>
+              <SidebarMenuButton>
+                {#snippet child({ props })}
+                  <a href="/app/log" {...props}>
+                    <StethoscopeIcon size={24} />
+                    Log
+                  </a>
+                {/snippet}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          {/if}
           <SidebarMenuItem>
             <SidebarMenuButton>
               {#snippet child({ props })}

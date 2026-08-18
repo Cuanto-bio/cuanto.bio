@@ -116,6 +116,24 @@ export interface IdbUser {
   avatarUrl?: string;
 }
 
+export type DiagnosticKind =
+  | 'render-stall'
+  | 'render-recovered'
+  | 'error'
+  | 'rejection'
+  | 'visibility';
+
+export interface DiagnosticEntry {
+  id?: number;
+  at: number;
+  kind: DiagnosticKind;
+  message: string;
+}
+
+// Cap on the diagnostics ring buffer: enough to hold a field session's
+// breadcrumbs, small enough that it can never crowd out survey data.
+export const MAX_DIAGNOSTICS = 200;
+
 interface CuantoDB extends DBSchema {
   'cached-protocols': {
     key: string;
@@ -144,6 +162,11 @@ interface CuantoDB extends DBSchema {
   'gps-tracks': {
     key: string;
     value: { atUri: string; points: GpsTrackPoint[] };
+  };
+  diagnostics: {
+    key: number;
+    value: DiagnosticEntry;
+    autoIncrement: true;
   };
 }
 
@@ -188,6 +211,12 @@ async function getDB(): Promise<IDBPDatabase<CuantoDB>> {
         tx.objectStore('cached-surveys').clear();
         tx.objectStore('cached-protocols').clear();
         tx.objectStore('followed-protocols').clear();
+      }
+      if (oldVersion < 11) {
+        db.createObjectStore('diagnostics', {
+          keyPath: 'id',
+          autoIncrement: true,
+        });
       }
       // v8: occurrence shape changed from {count: number} to {organismQuantity: string}.
       // Data migration is handled lazily in getPendingSurveys() because the upgrade
@@ -446,6 +475,35 @@ export async function getGpsTrack(
   return db.get('gps-tracks', atUri);
 }
 
+export async function recordDiagnostic(
+  kind: DiagnosticKind,
+  message: string,
+): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction('diagnostics', 'readwrite');
+  await tx.store.add({ at: Date.now(), kind, message });
+  // Ring buffer: keys ascend with insertion, so the cursor reaches the oldest
+  // rows first and dropping the overflow from the front keeps the newest.
+  let excess = (await tx.store.count()) - MAX_DIAGNOSTICS;
+  let cursor = excess > 0 ? await tx.store.openCursor() : null;
+  while (cursor && excess > 0) {
+    await cursor.delete();
+    excess -= 1;
+    cursor = await cursor.continue();
+  }
+  await tx.done;
+}
+
+export async function getDiagnostics(): Promise<DiagnosticEntry[]> {
+  const db = await getDB();
+  return db.getAll('diagnostics');
+}
+
+export async function clearDiagnostics(): Promise<void> {
+  const db = await getDB();
+  await db.clear('diagnostics');
+}
+
 export async function clearIdbUser(): Promise<void> {
   const db = await getDB();
   await db.delete('user', 'current');
@@ -461,6 +519,7 @@ export async function clearIdb(): Promise<void> {
       'cached-surveys',
       'user',
       'gps-tracks',
+      'diagnostics',
     ],
     'readwrite',
   );
@@ -471,6 +530,7 @@ export async function clearIdb(): Promise<void> {
     tx.objectStore('cached-surveys').clear(),
     tx.objectStore('user').clear(),
     tx.objectStore('gps-tracks').clear(),
+    tx.objectStore('diagnostics').clear(),
     tx.done,
   ]);
 }

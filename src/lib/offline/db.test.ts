@@ -4,6 +4,7 @@ import {
   addCachedFollowedProtocol,
   cacheProtocol,
   cacheSurvey,
+  clearDiagnostics,
   clearIdb,
   clearIdbUser,
   deletePendingSurvey,
@@ -14,9 +15,12 @@ import {
   getCachedSurvey,
   getCachedSurveyByRkey,
   getCachedSurveys,
+  getDiagnostics,
   getIdbUser,
   getPendingSurveyById,
   getPendingSurveys,
+  MAX_DIAGNOSTICS,
+  recordDiagnostic,
   removeCachedFollowedProtocol,
   saveIdbUser,
   savePendingSurvey,
@@ -489,6 +493,39 @@ describe('cached-surveys store', () => {
   });
 });
 
+// ── diagnostics ───────────────────────────────────────────────────────────────
+
+describe('diagnostics store', () => {
+  test('records breadcrumbs in the order they happened', async () => {
+    await clearDiagnostics();
+    await recordDiagnostic('visibility', 'hidden');
+    await recordDiagnostic('render-stall', 'DOM updates stopped');
+
+    const entries = await getDiagnostics();
+
+    expect(entries.map((e) => [e.kind, e.message])).toEqual([
+      ['visibility', 'hidden'],
+      ['render-stall', 'DOM updates stopped'],
+    ]);
+  });
+
+  test('keeps the newest entries once the buffer is full', async () => {
+    await clearDiagnostics();
+    // One past the cap, so the very first breadcrumb is the one that has to go.
+    for (let i = 0; i <= MAX_DIAGNOSTICS; i++) {
+      await recordDiagnostic('visibility', `visible ${i}`);
+    }
+
+    const entries = await getDiagnostics();
+
+    expect(entries).toHaveLength(MAX_DIAGNOSTICS);
+    expect(entries[0].message).toBe('visible 1');
+    expect(entries[entries.length - 1].message).toBe(
+      `visible ${MAX_DIAGNOSTICS}`,
+    );
+  });
+});
+
 // ── clearIdb ──────────────────────────────────────────────────────────────────
 
 describe('clearIdb', () => {
@@ -498,6 +535,7 @@ describe('clearIdb', () => {
     await setCachedFollowedProtocols([protocol1]);
     await savePendingSurvey(pendingSurvey1);
     await cacheSurvey(survey1);
+    await recordDiagnostic('error', 'boom');
 
     await clearIdb();
 
@@ -506,5 +544,6 @@ describe('clearIdb', () => {
     expect(await getCachedFollowedProtocols()).toHaveLength(0);
     expect(await getPendingSurveys()).toHaveLength(0);
     expect(await getCachedSurveys()).toHaveLength(0);
+    expect(await getDiagnostics()).toHaveLength(0);
   });
 });

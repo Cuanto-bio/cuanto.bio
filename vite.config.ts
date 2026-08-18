@@ -1,5 +1,6 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
+import { defaultClientConditions } from 'vite';
 import { defineConfig } from 'vitest/config';
 import 'dotenv/config';
 
@@ -30,6 +31,25 @@ export default defineConfig({
           environment: 'node',
           include: ['src/**/*.{test,spec}.{js,ts}'],
           exclude: ['src/**/*.svelte.{test,spec}.{js,ts}'],
+        },
+      },
+      {
+        extends: './vite.config.ts',
+        // Without the browser condition, `svelte` resolves to its server entry,
+        // where `flushSync` is a no-op and effects are never flushed — so an
+        // effect-driven test passes or fails for reasons that have nothing to do
+        // with the code under test. Added to the defaults rather than replacing
+        // them, or dependencies here resolve to different entry points than the
+        // ones the app actually ships.
+        resolve: { conditions: ['browser', ...defaultClientConditions] },
+        test: {
+          // Runes that schedule effects need the *client* build of Svelte, which
+          // vitest only compiles for a browser-like environment: under `node`
+          // the same module compiles for SSR, where effects never run at all.
+          // Anything asserting on effects belongs here.
+          name: 'client',
+          environment: 'jsdom',
+          include: ['src/**/*.svelte.{test,spec}.{js,ts}'],
         },
       },
     ],

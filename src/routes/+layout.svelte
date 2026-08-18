@@ -17,6 +17,8 @@ import AppSidebar from '$lib/components/sidebar.svelte';
 import { SidebarProvider, SidebarTrigger } from '$lib/components/ui/sidebar';
 import { Toaster } from '$lib/components/ui/sonner';
 import { useOnline } from '$lib/composables/online.svelte';
+import { captureClientDiagnostics } from '$lib/diagnostics/errors';
+import { startRenderWatchdog } from '$lib/diagnostics/renderWatchdog.svelte';
 import { isNative } from '$lib/platform';
 import { install } from '$lib/pwa/install.svelte';
 import {
@@ -47,6 +49,18 @@ afterNavigate(({ from, to }) => {
 });
 
 onMount(() => {
+  // Both of these live at the root because what they watch for is app-wide: the
+  // UI can silently stop tracking state, and when it does, the only witness is a
+  // surveyor in a field who force quits to keep working.
+  // https://tangled.org/cuanto.bio/cuanto.bio/issues/50
+  //
+  // The watchdog runs on every platform, not just the wrapper where the freeze
+  // has been seen, because the queue it watches is Svelte's rather than
+  // Android's. That costs a beat per second everywhere, which is worth watching:
+  // if it ever shows up in battery or profiling, gate it on isNative().
+  const stopDiagnostics = captureClientDiagnostics();
+  const stopWatchdog = startRenderWatchdog();
+
   // The install prompt is suppressed on native — it would invite someone to
   // install the PWA from inside the already-installed native app. The service
   // worker, by contrast, is wanted on native in the wrapper: the app loads
@@ -96,6 +110,11 @@ onMount(() => {
       () => window.location.reload(),
     );
   }
+
+  return () => {
+    stopWatchdog();
+    stopDiagnostics();
+  };
 });
 </script>
 
