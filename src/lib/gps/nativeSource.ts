@@ -38,18 +38,25 @@ export function nativeGpsSource(): GpsSource {
 
     async start(onFix, onError) {
       try {
+        // Setting backgroundMessage below is what actually enables background
+        // delivery — without it the plugin only guarantees foreground fixes.
+        // On iOS it also makes the plugin's own start()-time permission
+        // handling call requestAlwaysAuthorization() instead of
+        // requestWhenInUseAuthorization(). That call is a silent no-op unless
+        // Info.plist also declares NSLocationAlwaysAndWhenInUseUsageDescription
+        // — it doesn't, deliberately, since this app only ever wants to ask
+        // "While Using App" (see phase 3 §3.2) — so left to itself it never
+        // prompts and never starts. We request permission ourselves instead
+        // and tell start() below not to.
+        await BackgroundGeolocation.requestPermissions({
+          permissions: ['location'],
+        });
+
         await BackgroundGeolocation.start(
           {
-            // Setting backgroundMessage is what actually enables background
-            // delivery — without it the plugin only guarantees foreground
-            // fixes. On iOS it also makes the plugin call
-            // requestAlwaysAuthorization(); we deliberately omit
-            // NSLocationAlwaysAndWhenInUseUsageDescription from Info.plist so
-            // that request is inert and the user is only ever asked for
-            // "While Using App". See phase 3 §3.2.
             backgroundMessage: 'Recording your survey track.',
             backgroundTitle: 'Cuanto',
-            requestPermissions: true,
+            requestPermissions: false,
             // Never hand us a cached fix: a stale position silently misplaces a
             // survey, and accumulate() has no way to tell one from a real fix.
             stale: false,
