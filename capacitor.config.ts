@@ -32,6 +32,17 @@ const config: CapacitorConfig = {
     // while Capacitor's local guard just checks that public/ exists.
     url: `${origin}/app`,
   },
+  android: {
+    // Capacitor otherwise gates WebView.setWebContentsDebuggingEnabled on
+    // ApplicationInfo.FLAG_DEBUGGABLE, so a release APK never registers with
+    // chrome://inspect. Field failures like issue #50 only reproduce on a real
+    // device after hours of backgrounding, and the release build is the only one
+    // that install over an existing one without wiping its IndexedDB, which is
+    // where the diagnostic log lives. Debugging costs an attacker with adb
+    // access to an unlocked device a look at the WebView; that trade is worth
+    // being able to read the log at all.
+    webContentsDebuggingEnabled: true,
+  },
   ios: {
     // Opts the WKWebView into App-Bound mode, which is what lets the site's
     // service worker run (offline launch). The Stage A spike confirmed on

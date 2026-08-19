@@ -29,7 +29,13 @@ export default defineConfig({
         test: {
           name: 'server',
           environment: 'node',
-          include: ['src/**/*.{test,spec}.{js,ts}'],
+          // scripts/ holds build tooling that runs in Node, not in the app —
+          // app-version.js is imported by svelte.config.js, so it needs
+          // covering here rather than in either app-facing project.
+          include: [
+            'src/**/*.{test,spec}.{js,ts}',
+            'scripts/**/*.{test,spec}.{js,ts}',
+          ],
           exclude: ['src/**/*.svelte.{test,spec}.{js,ts}'],
         },
       },

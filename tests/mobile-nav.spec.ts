@@ -162,6 +162,42 @@ test('highlights Explore (not Following) when signed in and viewing /protocols',
   }
 });
 
+// The desktop sidebar is the only other way to the log, and it never renders
+// on a phone. The native wrapper launches into /app with no address bar, so
+// this popover entry is the only route to the log on the device whose failures
+// it records — see https://tangled.org/cuanto.bio/cuanto.bio/issues/50.
+test('reaches the diagnostic log from the Explore popover', async ({
+  page,
+  sql,
+  context,
+}) => {
+  await teardownDid(sql, DID);
+  await context.addCookies([
+    {
+      name: 'did',
+      value: DID,
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  await sql`INSERT INTO users (did, handle) VALUES (${DID}, 'user-mobile-nav-spec') ON CONFLICT (did) DO NOTHING`;
+
+  try {
+    await page.goto('/app/surveys');
+    const nav = page.locator('.mobile-nav');
+    await nav.getByRole('button', { name: 'Explore' }).click();
+    // menuitem, not link: the popover is an ARIA menu, so its anchors take
+    // role="menuitem" from it. The sidebar's Log entry is a plain link.
+    await nav.getByRole('menuitem', { name: 'Log', exact: true }).click();
+
+    await expect(page).toHaveURL('/app/log');
+  } finally {
+    await teardownDid(sql, DID);
+  }
+});
+
 test('newly followed protocol appears in Following list immediately, without a reload', async ({
   page,
   sql,

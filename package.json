@@ -32,7 +32,7 @@
     "test:db:setup": "tsx scripts/setup-test-db.ts",
     "lex:gen": "lex build --out src/lib/lexicons --lexicons ./lexicons --indexFile --clear",
     "psql": "docker compose exec db psql -U cuanto -d cuanto",
-    "railway:deploy": "railway deployment up --service app --message \"Last commit: $(git rev-parse HEAD)\"",
+    "railway:deploy": "sha=$(git rev-parse HEAD) && railway variable set APP_COMMIT_SHA=\"$sha\" --service app --skip-deploys && railway deployment up --service app --message \"Last commit: $sha\"",
     "railway:deploy-info": "railway deployment list --service app --json --limit 1 | jq .[0].meta.cliMessage",
     "railway:migrate:up": "railway ssh --service app -- node --experimental-strip-types scripts/migrate.ts up",
     "railway:migrate:down": "railway ssh --service app -- node --experimental-strip-types scripts/migrate.ts down"

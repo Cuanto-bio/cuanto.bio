@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onMount } from 'svelte';
 import { toast } from 'svelte-sonner';
+import { version } from '$app/environment';
 import { Badge } from '$lib/components/ui/badge';
 import { Button } from '$lib/components/ui/button';
 import {
@@ -29,9 +30,14 @@ async function clear() {
 }
 
 async function copy() {
-  const text = (entries ?? [])
-    .map((e) => `${new Date(e.at).toISOString()}\t${e.kind}\t${e.message}`)
-    .join('\n');
+  // Leads with the build, because a log pasted into an issue without it leaves
+  // the same question unanswered that this page exists to settle.
+  const text = [
+    `build: ${version}`,
+    ...(entries ?? []).map(
+      (e) => `${new Date(e.at).toISOString()}\t${e.kind}\t${e.message}`,
+    ),
+  ].join('\n');
   try {
     await navigator.clipboard.writeText(text);
     toast.success('Copied. Paste it into an issue or a message.');
@@ -47,7 +53,7 @@ async function copy() {
   <title>{title}</title>
 </svelte:head>
 
-<main class="mx-auto max-w-2xl px-4 py-8">
+<main class="mx-auto w-full">
   <h1>{title}</h1>
   <p class="text-muted-foreground">
     Debugging info. Sign out to clear.
@@ -64,7 +70,7 @@ async function copy() {
     </div>
     <ul class="mt-4">
       {#each entries as entry (entry.id)}
-        <li class="border-t py-3">
+        <li class="border-t py-3 w-full">
           <div class="flex flex-wrap items-center gap-2">
             <Badge variant={entry.kind === 'visibility' ? 'secondary' : 'destructive'}>
               {entry.kind}
@@ -73,9 +79,16 @@ async function copy() {
               {new Date(entry.at).toLocaleString()}
             </time>
           </div>
-          <p class="mt-1 font-mono text-xs whitespace-pre-wrap break-words">{entry.message}</p>
+          <p class="mt-1 font-mono text-xs whitespace-pre-wrap wrap-break-word">{entry.message}</p>
         </li>
       {/each}
     </ul>
   {/if}
+
+  <!-- Outside the entries conditional: an empty log is exactly when you most
+       need to know whether you're running the build that would have written
+       to it. -->
+  <p class="text-muted-foreground mt-8 border-t pt-4 font-mono text-xs">
+    build <span data-testid="build-version">{version}</span>
+  </p>
 </main>

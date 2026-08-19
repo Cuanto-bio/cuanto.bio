@@ -109,6 +109,21 @@ test('clearing empties the log', async ({ page, sql, context }) => {
   await expect(page.getByText(/nothing recorded/i)).toBeVisible();
 });
 
+// The native wrapper loads the site live, so the APK's version number says
+// nothing about the web build inside it. Without this, "am I even running the
+// build I think I am?" is unanswerable from the device — which is how issue #50
+// got debugged against a deploy that predated the diagnostics entirely.
+test('names the build it is running', async ({ page, sql, context }) => {
+  await context.addCookies([authCookie()]);
+  await seedProtocol(sql, DID);
+
+  await page.goto('/app/log');
+
+  await expect(page.getByTestId('build-version')).toHaveText(
+    /^\d+\.\d+\.\d+\+\S+$/,
+  );
+});
+
 test('offers the log to a signed-in user from the sidebar', async ({
   page,
   sql,

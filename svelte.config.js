@@ -1,5 +1,6 @@
 import adapter from '@sveltejs/adapter-node';
 import 'dotenv/config';
+import { appVersion } from './scripts/app-version.js';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -27,6 +28,12 @@ const config = {
     // always registered at the correct absolute path (/service-worker.js)
     // and can use the right module type for dev vs production.
     serviceWorker: { register: false },
+
+    // Defaults to Date.now(), which invalidates the service worker's shell
+    // cache on every deploy but tells nobody which build they are running.
+    // A package-version-plus-commit string does both. See scripts/app-version.js
+    // for why the fallback must never be constant.
+    version: { name: appVersion() },
   },
 };
 

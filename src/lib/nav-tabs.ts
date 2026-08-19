@@ -6,6 +6,7 @@ import EllipsisIcon from '@lucide/svelte/icons/ellipsis';
 import HomeIcon from '@lucide/svelte/icons/home';
 import InfoIcon from '@lucide/svelte/icons/info';
 import ListChecksIcon from '@lucide/svelte/icons/list-checks';
+import StethoscopeIcon from '@lucide/svelte/icons/stethoscope';
 import UserIcon from '@lucide/svelte/icons/user';
 import type { Component } from 'svelte';
 import { signInPath } from '$lib/auth/signin';
@@ -60,6 +61,11 @@ export const SIGNED_IN_TABS: Tab[] = [
       { href: '/surveys', label: 'All Surveys', icon: ClipboardListIcon },
       { href: '/stats', label: 'Stats Explorer', icon: ChartColumnIcon },
       { href: '/about', label: 'About', icon: InfoIcon },
+      // Only these tabs render on mobile, and the native wrapper launches into
+      // /app with no address bar, so without this entry the log is unreachable
+      // on the device whose failures it records. Signed-in only, matching the
+      // sidebar: the log lives under /app and signing out clears it.
+      { href: '/app/log', label: 'Log', icon: StethoscopeIcon },
     ],
   },
   {

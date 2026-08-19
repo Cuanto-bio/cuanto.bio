@@ -16,6 +16,21 @@ beforeEach(() => {
   vi.resetModules();
 });
 
+describe('SIGNED_IN_TABS', () => {
+  // The mobile bottom nav renders only these tabs, and the native wrapper
+  // launches straight into /app with no address bar. Without an entry here the
+  // diagnostic log is unreachable on the exact device whose failures it exists
+  // to explain — see https://tangled.org/cuanto.bio/cuanto.bio/issues/50.
+  test('offers the diagnostic log under Explore', async () => {
+    const { SIGNED_IN_TABS } = await import('./nav-tabs');
+    const explore = SIGNED_IN_TABS.find((t) => t.key === 'explore');
+    expect(explore?.type).toBe('popover');
+    const hrefs =
+      explore?.type === 'popover' ? explore.items.map((i) => i.href) : [];
+    expect(hrefs).toContain('/app/log');
+  });
+});
+
 describe('SIGNED_OUT_TABS', () => {
   test('sends web users to the server-rendered sign-in form', async () => {
     env.native = false;
