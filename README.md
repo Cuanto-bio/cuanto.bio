@@ -160,8 +160,13 @@ loopback, IP-literal, or plain-http address (like the dev default
 
 On iOS the host must also appear in `WKAppBoundDomains` in
 `ios/App/App/Info.plist`, or App-Bound mode blocks the very page it loads (that
-mode is what lets the site's service worker run). The `pnpm cap:*` scripts below
-keep it in sync with `PUBLIC_URL` for you.
+mode is what lets the site's service worker run). `Info.plist` reads that value
+as `$(WK_APP_BOUND_DOMAIN)`, an Xcode build setting substituted at build time
+from the gitignored `ios/Env.xcconfig` (included by `ios/debug.xcconfig`) — the
+`pnpm cap:*` scripts below regenerate that file from `PUBLIC_URL` for you, so
+`Info.plist` itself never needs to change. Run one of them at least once after
+cloning or `PUBLIC_URL` will substitute empty and the WKWebView will show a
+blank screen.
 
 After changing `PUBLIC_URL` you must re-sync the native projects before
 building. The `pnpm cap:run:*` and `pnpm cap:open:*` scripts do this

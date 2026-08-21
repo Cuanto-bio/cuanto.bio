@@ -24,7 +24,8 @@ Domains, and background behavior (see
 
 1. Point the wrapper at the target host and sync. The host comes from
    `PUBLIC_URL`: `capacitor.config.ts` loads it as `server.url`, and `cap:sync`
-   regenerates `WKAppBoundDomains` from the same value before syncing.
+   regenerates `ios/Env.xcconfig` from the same value, which Xcode substitutes
+   into `WKAppBoundDomains` at build time (`Info.plist` itself doesn't change).
    ```
    # in .env, set both to https://<host>
    #   e.g. a Tailscale funnel for dev, https://cuanto.bio for prod
