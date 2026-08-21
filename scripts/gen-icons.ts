@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const svg = join(root, 'static', 'favicon.svg');
+const bwSvg = join(root, 'static', 'favicon-bw.svg');
 const out = join(root, 'static');
 const android = join(root, 'android');
 const ios = join(root, 'ios');
@@ -201,6 +202,81 @@ if (existsSync(androidRes)) {
   console.log(
     '  Android: skipped (no android/ platform; run `npx cap add android`)',
   );
+}
+
+// --- Android notification icon (background-geolocation foreground service) ---
+// @capgo/background-geolocation's foreground-service notification defaults its
+// small icon to mipmap/ic_launcher when no
+// capacitor_background_geolocation_notification_icon string resource is set.
+// Notification icons must be a flat alpha-mask silhouette (opaque = drawn,
+// transparent = hidden), so handing it the full-color launcher icon renders as
+// a solid blob in the status bar. favicon-bw.svg is a hand-built single-path
+// monochrome silhouette (correct winding, so the dot and the "B"'s counters
+// render as real holes under the default nonzero fill rule) — pull its path
+// data straight into a VectorDrawable rather than rasterizing, since minSdk 24
+// (android/variables.gradle) is well past the API 21 floor for vector icons.
+if (existsSync(androidRes) && existsSync(bwSvg)) {
+  const bwSvgText = readFileSync(bwSvg, 'utf8');
+  const pathMatch = bwSvgText.match(/<path[^>]*\sd="([^"]+)"/);
+  if (!pathMatch) {
+    console.error(`Error: no <path d="..."> found in ${bwSvg}`);
+    process.exit(1);
+  }
+  const path = pathMatch[1];
+  const viewBoxMatch = bwSvgText.match(
+    /viewBox="[\d.-]+ [\d.-]+ ([\d.-]+) ([\d.-]+)"/,
+  );
+  if (!viewBoxMatch) {
+    console.error(`Error: no viewBox found in ${bwSvg}`);
+    process.exit(1);
+  }
+  const [srcW, srcH] = [Number(viewBoxMatch[1]), Number(viewBoxMatch[2])];
+
+  writeFileSync(
+    join(androidRes, 'drawable', 'ic_stat_notify.xml'),
+    '<?xml version="1.0" encoding="utf-8"?>\n' +
+      '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n' +
+      '    android:width="24dp"\n' +
+      '    android:height="24dp"\n' +
+      '    android:viewportWidth="24"\n' +
+      '    android:viewportHeight="24">\n' +
+      '    <path\n' +
+      '        android:fillColor="#FFFFFF"\n' +
+      `        android:pathData="${path}" />\n` +
+      '</vector>\n',
+  );
+  console.log('  Android notification icon');
+
+  // Themed/"minimal" launcher icon (Android 13+ Material You): the OS paints
+  // this single-color layer with its own tint instead of the full-color
+  // icon. Without one it falls back to auto-silhouetting the color
+  // foreground, which reads poorly for a two-tone logo like this. Same
+  // silhouette as the notification icon, but placed in the adaptive icon's
+  // 108dp canvas at the same 72%-of-canvas safe-zone scale rasterizeForeground
+  // uses for the color foreground layer, via a <group> transform rather than
+  // rewriting every path coordinate.
+  const canvas = 108;
+  const inner = Math.round(canvas * 0.72);
+  const scale = inner / srcW;
+  const translateX = (canvas - srcW * scale) / 2;
+  const translateY = (canvas - srcH * scale) / 2;
+  writeFileSync(
+    join(androidRes, 'drawable', 'ic_launcher_monochrome.xml'),
+    '<?xml version="1.0" encoding="utf-8"?>\n' +
+      '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n' +
+      `    android:width="${canvas}dp"\n` +
+      `    android:height="${canvas}dp"\n` +
+      `    android:viewportWidth="${canvas}"\n` +
+      `    android:viewportHeight="${canvas}">\n` +
+      `    <group android:translateX="${translateX}" android:translateY="${translateY}"\n` +
+      `        android:scaleX="${scale}" android:scaleY="${scale}">\n` +
+      '        <path\n' +
+      '            android:fillColor="#FF000000"\n' +
+      `            android:pathData="${path}" />\n` +
+      '    </group>\n' +
+      '</vector>\n',
+  );
+  console.log('  Android themed (monochrome) launcher icon');
 }
 
 console.log('Done.');

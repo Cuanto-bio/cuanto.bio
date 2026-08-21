@@ -48,8 +48,15 @@ export function nativeGpsSource(): GpsSource {
         // "While Using App" (see phase 3 §3.2) — so left to itself it never
         // prompts and never starts. We request permission ourselves instead
         // and tell start() below not to.
+        //
+        // 'notification' is Android's foreground-service notification
+        // permission (API 33+, a no-op on iOS). Declaring it in the manifest
+        // isn't enough — on 13+ it's a runtime permission like location, so
+        // without requesting it here the tracking notification is silently
+        // suppressed while the foreground service keeps running regardless,
+        // making it look like the notification is simply missing.
         await BackgroundGeolocation.requestPermissions({
-          permissions: ['location'],
+          permissions: ['location', 'notification'],
         });
 
         await BackgroundGeolocation.start(

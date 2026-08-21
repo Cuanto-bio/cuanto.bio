@@ -4,4 +4,8 @@
     <string name="title_activity_main">Cuanto</string>
     <string name="package_name">bio.cuanto.app</string>
     <string name="custom_url_scheme">bio.cuanto.app</string>
+    <!-- Read by @capgo/background-geolocation's foreground-service notification;
+         see scripts/gen-icons.ts for how ic_stat_notify.xml is generated. -->
+    <string name="capacitor_background_geolocation_notification_icon">drawable/ic_stat_notify</string>
+    <string name="capacitor_background_geolocation_notification_color">#C5892E</string>
 </resources>

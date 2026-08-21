@@ -82,7 +82,7 @@ describe('nativeGpsSource', () => {
     await nativeGpsSource().start(vi.fn(), vi.fn());
 
     expect(requestPermissions).toHaveBeenCalledWith({
-      permissions: ['location'],
+      permissions: ['location', 'notification'],
     });
     expect(start).toHaveBeenCalledWith(
       expect.objectContaining({ requestPermissions: false }),
