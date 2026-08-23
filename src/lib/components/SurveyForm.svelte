@@ -580,7 +580,15 @@ function buildNewSurveyPayload(complete: boolean): PendingSurvey {
 }
 
 async function autoSave() {
-  if (saving || navigatingAway) return;
+  // `submitting` matters as much as `navigatingAway`: finish() writes
+  // complete: true and then awaits checkConnectivity(), which offline runs to
+  // its 5s abort rather than failing fast. A tick landing in that window used
+  // to rewrite the row with complete: resumingComplete (false) and a null
+  // duration, stranding a finished survey under "In progress" for good.
+  // `submitting` is set synchronously before that first await, so checking it
+  // closes the window; `navigatingAway` only closes it once the upload
+  // decision is already made.
+  if (saving || submitting || navigatingAway) return;
   saving = true;
   try {
     const payload = buildNewSurveyPayload(resumingComplete);

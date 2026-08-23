@@ -1,5 +1,9 @@
 import { expect, seedProtocol, teardownDid, test } from '../fixtures.js';
-import { cacheAndOpenNewSurvey, confirmFinishSurvey } from './helpers.js';
+import {
+  cacheAndOpenNewSurvey,
+  confirmFinishSurvey,
+  readPendingSurveys,
+} from './helpers.js';
 
 test('can create a survey and see it in the surveys list', async ({
   page,
@@ -484,6 +488,74 @@ test('does not leave an orphaned in-progress draft when auto-save fires during n
   );
 
   expect(pending).toHaveLength(0);
+});
+
+// ── Race condition: auto-save reverting a finished survey to in progress ─────
+
+test('does not revert a finished survey to in progress when auto-save fires during the connectivity check', async ({
+  page,
+  protocolRkey,
+}) => {
+  // Fake clock so the form's 10s auto-save interval fires where the test wants
+  // it to, instead of wherever the wall clock happens to put it.
+  await page.clock.install({ time: Date.now() });
+
+  // Hold /api/ping open so the finish flow parks inside checkConnectivity().
+  // That is what offline looks like in the field: not a fetch that fails
+  // instantly, but one that hangs until its 5s abort while the interval keeps
+  // ticking. The route is never fulfilled — the abort timer ends the fetch.
+  let releasePing = () => {};
+  const pingHeld = new Promise<void>((resolve) => {
+    releasePing = resolve;
+  });
+  await page.route('**/api/ping', async (route) => {
+    await pingHeld;
+    await route.abort('failed').catch(() => {});
+  });
+
+  await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+  await page.fill(
+    '[placeholder="e.g. Mission Dolores Park"]',
+    'Stuck Draft Meadow',
+  );
+  await page.locator('[aria-label="Increase count"]').first().click();
+
+  // One interval tick writes the in-progress draft.
+  await page.clock.runFor(11_000);
+  await expect
+    .poll(async () => (await readPendingSurveys(page)).length, {
+      timeout: 5_000,
+    })
+    .toBe(1);
+
+  // Advance to 3s before the next tick, so that after Finish is clicked the
+  // tick lands inside the 5s connectivity check rather than after it.
+  await page.clock.runFor(6_000);
+
+  await page.getByRole('button', { name: 'Finish Survey' }).click();
+  await page.getByRole('button', { name: 'Finish', exact: true }).click();
+
+  // Finish has written complete: true and is now parked on the held ping.
+  await expect
+    .poll(async () => (await readPendingSurveys(page))[0]?.complete, {
+      timeout: 5_000,
+    })
+    .toBe(true);
+
+  // Fire the interval tick (3s away) and then the connectivity abort (5s away),
+  // in that order. The tick is the one that used to rewrite the row.
+  await page.clock.runFor(6_000);
+
+  await page.waitForURL(/\/app\/surveys$/);
+  // Let any auto-save write that is still in flight land before reading.
+  await page.waitForTimeout(500);
+
+  const pending = await readPendingSurveys(page);
+  expect(pending).toHaveLength(1);
+  expect(pending[0].complete).toBe(true);
+  expect(pending[0].eventDurationValue).not.toBeNull();
+
+  releasePing();
 });
 
 // ── Idempotent retry after a lost response (#13) ──────────────────────────────

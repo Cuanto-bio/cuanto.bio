@@ -1,6 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import type { GpsTrackPoint } from '../../src/lib/gpx';
 import { CUANTO_IDB_VERSION } from '../../src/lib/offline/constants';
+import type { PendingSurvey } from '../../src/lib/offline/db';
 
 // Writes a device-local GPS track straight into IndexedDB, as recording a
 // survey would. The page must already have visited the app so the DB exists.
@@ -103,4 +104,24 @@ export async function waitForRecordedPoint(page: Page) {
       return Number(text?.match(/\d+/)?.[0] ?? 0);
     })
     .toBeGreaterThan(0);
+}
+
+// Reads every pending-survey row straight out of IndexedDB. Assertions about
+// whether a survey is still "in progress" have to look here rather than at the
+// page: /app/surveys reads IDB once on mount, so a write that lands afterwards
+// never shows up in the DOM.
+export async function readPendingSurveys(page: Page): Promise<PendingSurvey[]> {
+  return page.evaluate(
+    () =>
+      new Promise<PendingSurvey[]>((resolve, reject) => {
+        const req = indexedDB.open('cuanto');
+        req.onsuccess = () => {
+          const tx = req.result.transaction('pending-surveys', 'readonly');
+          const getAll = tx.objectStore('pending-surveys').getAll();
+          getAll.onsuccess = () => resolve(getAll.result);
+          getAll.onerror = () => reject(getAll.error);
+        };
+        req.onerror = () => reject(req.error);
+      }),
+  );
 }
