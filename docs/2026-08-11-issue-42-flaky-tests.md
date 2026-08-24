@@ -82,7 +82,7 @@ so the order surveyors count in was whatever order Postgres happened to return.
 
 That is stable right up until a row moves. `insertProtocolTarget` upserts with
 `ON CONFLICT (at_uri) DO UPDATE` on every firehose re-delivery, and
-`deleteProtocolTargetsByUris` tombstones with a plain `UPDATE`. In Postgres an
+`tombstoneProtocolTargetsByUris` tombstones with a plain `UPDATE`. In Postgres an
 `UPDATE` writes a new row version at a new physical location, and an unordered
 `SELECT` returns rows in physical order. Demonstrated on a scratch database:
 

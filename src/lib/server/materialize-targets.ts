@@ -51,16 +51,28 @@ export async function materializeSurveyTargets(
     getSurveyTargetsByDidAndProtocol(did, protocolUri),
   ]);
 
-  const existingRkeys = new Set(existing.map((t) => t.rkey));
+  const existingByRkey = new Map(existing.map((t) => [t.rkey, t]));
 
   for (const pt of protocolTargets) {
     const { rkey } = parseAtUri(pt.at_uri);
-    if (existingRkeys.has(rkey)) continue;
+    const existingTarget = existingByRkey.get(rkey);
+    // A live row means this target is already materialized. A tombstoned one
+    // means the record was deleted on the surveyor's PDS (issue #41), so it gets
+    // recreated -- carrying the original adoption time forward rather than
+    // stamping "now", which would retroactively suppress the notDetected rows of
+    // every survey conducted before the deletion. The row is the only thing that
+    // still knows that time, but the recreated record carries it, so the record
+    // stays the source of truth. insertSurveyTarget clears the tombstone.
+    if (existingTarget && !existingTarget.deleted_at) continue;
+
+    const createdAt = (existingTarget?.record.createdAt ??
+      existingTarget?.created_at?.toISOString() ??
+      new Date().toISOString()) as l.DatetimeString;
 
     await writeSurveyTarget(did, rkey, pt.at_uri, {
       protocol: protocolUri as l.AtUriString,
       protocolTargetID: pt.at_uri as l.AtUriString,
-      createdAt: new Date().toISOString() as l.DatetimeString,
+      createdAt,
       scope: pt.record.scope,
     });
   }
@@ -80,7 +92,7 @@ export async function materializeSurveyTargets(
 // erroneous or transient delete, not history worth preserving).
 //
 // Keyed on protocol_targets.deleted_at (a tombstone left by
-// deleteProtocolTargetsByUris) rather than presence/absence in the live-only
+// tombstoneProtocolTargetsByUris) rather than presence/absence in the live-only
 // view, so "deleted" and "not indexed yet" are distinguishable: a target with
 // no protocol_targets row at all -- live or tombstoned -- is left untouched,
 // because we simply don't have enough information yet (see
@@ -139,6 +151,13 @@ async function reconcileRetirements(
 // no longer engaged with it (not following AND no surveys remain). Keying on
 // survey existence (not occurrence existence) preserves sought-but-not-found
 // targets. Call after an unfollow or a survey deletion.
+//
+// Still a hard delete, deliberately, even though a PDS-side deletion now only
+// tombstones (issue #41). Zero surveys means zero occurrences
+// (occurrences.survey_uri is NOT NULL with an FK to surveys), so there is no
+// detection to keep joinable and no adoption time worth remembering here, and
+// tombstoning would defeat the point of a cleanup path. The PDS deletions below
+// come back as delete events, where the tombstone update simply matches no row.
 export async function gcSurveyTargetsIfUnused(
   did: string,
   protocolUri: string,

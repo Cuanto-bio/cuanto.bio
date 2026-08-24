@@ -165,6 +165,90 @@ describe('materializeSurveyTargets', () => {
   });
 });
 
+// Issue #41: a deleted surveyTarget leaves a tombstoned index row behind. The
+// row is what remembers the true adoption time across the gap, so recreating the
+// record must carry that time forward rather than stamping "now" -- a fresh
+// createdAt would retroactively suppress the notDetected rows of every survey
+// conducted between the original adoption and the delete.
+describe('materializeSurveyTargets: deletion recovery', () => {
+  test('recreates a tombstoned surveyTarget with its original created_at', async () => {
+    const adoptedAt = new Date('2026-01-01T00:00:00.000Z');
+    const deletedAt = new Date('2026-06-01T00:00:00.000Z');
+
+    vi.mocked(getProtocolTargetsForProtocols).mockResolvedValue([
+      protocolTargetRow,
+    ] as unknown as Awaited<ReturnType<typeof getProtocolTargetsForProtocols>>);
+    vi.mocked(getSurveyTargetsByDidAndProtocol).mockResolvedValue([
+      {
+        at_uri: ST_URI,
+        rkey: 't1',
+        protocol_uri: PROTOCOL_URI,
+        protocol_target_uri: PT_URI,
+        created_at: adoptedAt,
+        deleted_at: deletedAt,
+        record: {
+          $type: 'bio.cuanto.surveyTarget',
+          protocol: PROTOCOL_URI,
+          protocolTargetID: PT_URI,
+          createdAt: adoptedAt.toISOString(),
+          scope: [],
+        },
+      },
+    ] as unknown as Awaited<
+      ReturnType<typeof getSurveyTargetsByDidAndProtocol>
+    >);
+
+    await materializeSurveyTargets(DID, PROTOCOL_URI);
+
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      'bio.cuanto.surveyTarget',
+      't1',
+      expect.objectContaining({
+        protocolTargetID: PT_URI,
+        createdAt: adoptedAt.toISOString(),
+      }),
+    );
+    expect(insertSurveyTarget).toHaveBeenCalledWith(
+      DID,
+      't1',
+      expect.objectContaining({ createdAt: adoptedAt.toISOString() }),
+      ST_URI,
+      PT_URI,
+    );
+  });
+
+  test('leaves a live surveyTarget alone', async () => {
+    vi.mocked(getProtocolTargetsForProtocols).mockResolvedValue([
+      protocolTargetRow,
+    ] as unknown as Awaited<ReturnType<typeof getProtocolTargetsForProtocols>>);
+    vi.mocked(getSurveyTargetsByDidAndProtocol).mockResolvedValue([
+      {
+        at_uri: ST_URI,
+        rkey: 't1',
+        protocol_uri: PROTOCOL_URI,
+        protocol_target_uri: PT_URI,
+        created_at: new Date('2026-01-01T00:00:00.000Z'),
+        deleted_at: null,
+        record: {
+          $type: 'bio.cuanto.surveyTarget',
+          protocol: PROTOCOL_URI,
+          protocolTargetID: PT_URI,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          scope: [],
+        },
+      },
+    ] as unknown as Awaited<
+      ReturnType<typeof getSurveyTargetsByDidAndProtocol>
+    >);
+
+    await materializeSurveyTargets(DID, PROTOCOL_URI);
+
+    expect(putRecord).not.toHaveBeenCalled();
+    expect(insertSurveyTarget).not.toHaveBeenCalled();
+  });
+});
+
 describe('materializeSurveyTargets: retirement reconciliation', () => {
   test('retires a surveyTarget whose protocolTarget was tombstoned, stamping the true deletion time', async () => {
     vi.mocked(getProtocolTargetsForProtocols).mockResolvedValue([]);

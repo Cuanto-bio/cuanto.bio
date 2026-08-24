@@ -12,6 +12,9 @@ export default defineConfig({
     env: {
       DATABASE_URL: 'postgresql://cuanto:cuanto@localhost:5432/cuanto_test',
       PDS_MOCK: 'true',
+      // Pinned here rather than read from .env so tests that post tap events to
+      // /api/tap/webhook don't depend on a developer's local password.
+      TAP_ADMIN_PASSWORD: 'devpassword',
     },
   },
   testMatch: '**/*.spec.{ts,js}',

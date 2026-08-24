@@ -6,10 +6,10 @@ import * as SurveyProtocol from '$lib/lexicons/bio/cuanto/surveyProtocol';
 import logger from '$lib/logger';
 import sql from '$lib/server/db';
 import {
-  deleteProtocolTargetsByUris,
   getProtocolDetailByHandleAndRkey,
   insertProtocol,
   insertProtocolTarget,
+  tombstoneProtocolTargetsByUris,
 } from '$lib/server/db/survey-protocols';
 import { parseLocationOptions } from '$lib/server/locationOptions';
 import {
@@ -129,7 +129,7 @@ export const actions: Actions = {
       );
     });
 
-    await deleteProtocolTargetsByUris(toDelete.map((t) => t.atUri));
+    await tombstoneProtocolTargetsByUris(toDelete.map((t) => t.atUri));
     for (const target of toDelete) {
       try {
         await deleteRecord(target.atUri);

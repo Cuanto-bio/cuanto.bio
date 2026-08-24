@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 vi.mock('$lib/server/db/survey-protocols', () => ({
   insertProtocol: vi.fn(),
   insertProtocolTarget: vi.fn(),
-  deleteProtocolTargetsByUris: vi.fn(),
+  tombstoneProtocolTargetsByUris: vi.fn(),
 }));
 
 // backfillProtocol wraps its writes in sql.begin; stand in a fake transaction
@@ -17,6 +17,17 @@ vi.mock('$lib/server/db/surveys', () => ({
   insertSurvey: vi.fn(),
   insertOccurrence: vi.fn(),
   deleteOccurrenceByAtUri: vi.fn(),
+  countOccurrencesBySurveyTargetUri: vi.fn(),
+}));
+
+// Hoisted so the vi.mock factory below can close over it: every log.child()
+// call returns this same object, so tests can assert on what was logged.
+const { logMock } = vi.hoisted(() => ({
+  logMock: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
+vi.mock('$lib/server/logger', () => ({
+  default: { child: () => logMock },
 }));
 
 vi.mock('$lib/server/db/protocol-follows', () => ({
@@ -26,7 +37,7 @@ vi.mock('$lib/server/db/protocol-follows', () => ({
 
 vi.mock('$lib/server/db/survey-targets', () => ({
   insertSurveyTarget: vi.fn(),
-  deleteSurveyTargetByUri: vi.fn(),
+  tombstoneSurveyTargetByUri: vi.fn(),
 }));
 
 vi.mock('$env/dynamic/private', () => ({
@@ -60,15 +71,16 @@ import {
 } from '$lib/server/db/identifications';
 import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
 import {
-  deleteProtocolTargetsByUris,
   insertProtocol,
   insertProtocolTarget,
+  tombstoneProtocolTargetsByUris,
 } from '$lib/server/db/survey-protocols';
 import {
-  deleteSurveyTargetByUri,
   insertSurveyTarget,
+  tombstoneSurveyTargetByUri,
 } from '$lib/server/db/survey-targets';
 import {
+  countOccurrencesBySurveyTargetUri,
   deleteOccurrenceByAtUri,
   insertOccurrence,
   insertSurvey,
@@ -345,7 +357,7 @@ describe('POST /api/tap/webhook', () => {
     expect(insertProtocol).not.toHaveBeenCalled();
   });
 
-  test('calls deleteProtocolTargetsByUris for a protocolTarget delete event', async () => {
+  test('calls tombstoneProtocolTargetsByUris for a protocolTarget delete event', async () => {
     const deleteEvent = {
       ...targetEvent,
       record: { ...targetEvent.record, action: 'delete', record: undefined },
@@ -354,7 +366,7 @@ describe('POST /api/tap/webhook', () => {
       request: makeRequest(deleteEvent, VALID_AUTH),
     } as Parameters<typeof POST>[0]);
     expect(resp.status).toBe(200);
-    expect(deleteProtocolTargetsByUris).toHaveBeenCalledWith([
+    expect(tombstoneProtocolTargetsByUris).toHaveBeenCalledWith([
       'at://did:plc:abc123/bio.cuanto.protocolTarget/3def',
     ]);
     expect(insertProtocolTarget).not.toHaveBeenCalled();
@@ -378,23 +390,55 @@ describe('POST /api/tap/webhook', () => {
     );
   });
 
-  test('calls deleteSurveyTargetByUri for a surveyTarget delete event', async () => {
-    const deleteEvent = {
-      ...surveyTargetEvent,
-      record: {
-        ...surveyTargetEvent.record,
-        action: 'delete',
-        record: undefined,
-      },
-    };
+  const surveyTargetDeleteEvent = {
+    ...surveyTargetEvent,
+    record: {
+      ...surveyTargetEvent.record,
+      action: 'delete',
+      record: undefined,
+    },
+  };
+
+  test('calls tombstoneSurveyTargetByUri with the event rev for a surveyTarget delete event', async () => {
     const resp = await POST({
-      request: makeRequest(deleteEvent, VALID_AUTH),
+      request: makeRequest(surveyTargetDeleteEvent, VALID_AUTH),
     } as Parameters<typeof POST>[0]);
     expect(resp.status).toBe(200);
-    expect(deleteSurveyTargetByUri).toHaveBeenCalledWith(
+    // evt.rev is threaded through for the same reason the create path does it:
+    // now that the delete tombstones rather than removes the row (issue #41), a
+    // replayed delete could otherwise re-tombstone a record a newer create
+    // already revived.
+    expect(tombstoneSurveyTargetByUri).toHaveBeenCalledWith(
       'at://did:plc:abc123/bio.cuanto.surveyTarget/3tgt',
+      'revabc',
     );
     expect(insertSurveyTarget).not.toHaveBeenCalled();
+  });
+
+  // Issue #41, decision 4: the tombstone is what actually preserves the data,
+  // but a delete that would have severed real detections is worth surfacing.
+  test('warns when the deleted surveyTarget had occurrences', async () => {
+    vi.mocked(countOccurrencesBySurveyTargetUri).mockResolvedValue(2);
+    const resp = await POST({
+      request: makeRequest(surveyTargetDeleteEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(logMock.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        atUri: 'at://did:plc:abc123/bio.cuanto.surveyTarget/3tgt',
+        occurrences: 2,
+      }),
+      expect.any(String),
+    );
+  });
+
+  test('does not warn when the deleted surveyTarget had no occurrences', async () => {
+    vi.mocked(countOccurrencesBySurveyTargetUri).mockResolvedValue(0);
+    const resp = await POST({
+      request: makeRequest(surveyTargetDeleteEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(logMock.warn).not.toHaveBeenCalled();
   });
 
   test('calls insertSurvey for a survey update event', async () => {

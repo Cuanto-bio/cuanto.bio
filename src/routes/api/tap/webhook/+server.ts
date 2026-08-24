@@ -16,15 +16,16 @@ import {
 } from '$lib/server/db/identifications';
 import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
 import {
-  deleteProtocolTargetsByUris,
   insertProtocol,
   insertProtocolTarget,
+  tombstoneProtocolTargetsByUris,
 } from '$lib/server/db/survey-protocols';
 import {
-  deleteSurveyTargetByUri,
   insertSurveyTarget,
+  tombstoneSurveyTargetByUri,
 } from '$lib/server/db/survey-targets';
 import {
+  countOccurrencesBySurveyTargetUri,
   deleteOccurrenceByAtUri,
   insertOccurrence,
   insertSurvey,
@@ -254,14 +255,24 @@ export const POST: RequestHandler = async ({ request }) => {
       );
       log.info({ atUri }, 'ingested survey target');
     } else if (evt.action === 'delete') {
-      await deleteSurveyTargetByUri(atUri);
-      log.info({ atUri }, 'deleted survey target');
+      // Tombstoned, not removed: the row is what keeps already-recorded
+      // detections joinable and remembers the original adoption time (#41).
+      const occurrences = await countOccurrencesBySurveyTargetUri(atUri);
+      await tombstoneSurveyTargetByUri(atUri, evt.rev);
+      if (occurrences > 0) {
+        log.warn(
+          { atUri, occurrences },
+          'tombstoned survey target that has occurrences',
+        );
+      } else {
+        log.info({ atUri }, 'tombstoned survey target');
+      }
     }
     return json({ ok: true });
   }
 
   if (evt.collection === PROTOCOL_TARGET_NSID && evt.action === 'delete') {
-    await deleteProtocolTargetsByUris([atUri]);
+    await tombstoneProtocolTargetsByUris([atUri]);
     log.info({ atUri }, 'deleted protocol target');
     return json({ ok: true });
   }

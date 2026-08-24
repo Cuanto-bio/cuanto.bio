@@ -1,8 +1,10 @@
 import { Readable } from 'node:stream';
 import { createGunzip } from 'node:zlib';
+import type { APIRequestContext, APIResponse } from '@playwright/test';
 import { extract } from 'tar-stream';
 import {
   expect,
+  seedOccurrence,
   seedProtocol,
   seedSurvey,
   seedSurveyTarget,
@@ -12,6 +14,8 @@ import {
 
 const EXPORT_DID = 'did:test:export-spec';
 const EXPORT_HANDLE = 'user-export-spec';
+// Matches the value playwright.config.ts hands the dev server.
+const TAP_PASSWORD = 'devpassword';
 
 function authCookie(did: string) {
   return {
@@ -51,6 +55,40 @@ function csvRows(csv: string): string[][] {
     .split('\n')
     .slice(1)
     .map((line) => line.split(','));
+}
+
+// Posts a tap firehose record event to the webhook. This is the production path
+// by which a PDS-side record write or deletion reaches our index, so tests that
+// care about deletion semantics have to go through it rather than issuing their
+// own DELETE.
+function postTapEvent(
+  request: APIRequestContext,
+  record: Record<string, unknown>,
+): Promise<APIResponse> {
+  return request.post('/api/tap/webhook', {
+    headers: {
+      Authorization: `Basic ${Buffer.from(`admin:${TAP_PASSWORD}`).toString('base64')}`,
+    },
+    data: { id: 1, type: 'record', record },
+  });
+}
+
+function surveyTargetEvent(
+  did: string,
+  rkey: string,
+  action: 'create' | 'delete',
+  rev: string,
+  record?: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    did,
+    rev,
+    collection: 'bio.cuanto.surveyTarget',
+    rkey,
+    action,
+    live: true,
+    ...(record ? { record } : {}),
+  };
 }
 
 test.describe('DwC-DP export endpoint', () => {
@@ -249,5 +287,158 @@ test.describe('DwC-DP export endpoint', () => {
       fields.some((f) => f.includes('targetrkeye')),
     );
     expect(targetERows).toHaveLength(2);
+  });
+
+  // Issue #41: nothing stops a surveyTarget record from being deleted directly
+  // on the surveyor's PDS by any AT Protocol client. The recorded detection is
+  // still in the occurrences table and must still reach the export.
+  test('detection survives deletion of its surveyTarget record', async ({
+    context,
+    sql,
+  }) => {
+    await context.addCookies([authCookie(EXPORT_DID)]);
+
+    const { protocolRkey } = await seedProtocol(sql, EXPORT_DID);
+    const protocolUri = `at://${EXPORT_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+    const ptUriF = `at://${EXPORT_DID}/bio.cuanto.protocolTarget/targetrkeyf`;
+
+    const { surveyAtUri } = await seedSurvey(sql, EXPORT_DID, protocolUri);
+    const { occUri } = await seedOccurrence(
+      sql,
+      EXPORT_DID,
+      surveyAtUri,
+      protocolUri,
+      ptUriF,
+      '7',
+    );
+
+    const deleteResponse = await postTapEvent(
+      context.request,
+      surveyTargetEvent(EXPORT_DID, 'targetrkeyf', 'delete', 'aaaa2'),
+    );
+    expect(deleteResponse.status()).toBe(200);
+
+    const response = await context.request.get(
+      `/api/protocols/${EXPORT_HANDLE}/${protocolRkey}/export`,
+    );
+    expect(response.status()).toBe(200);
+
+    const buf = Buffer.from(await response.body());
+    const files = await extractTarGz(buf);
+    const rows = csvRows(files.get('occurrence.csv')!);
+
+    // occurrenceID (field 0) is the occurrence's at-uri for detections. Assert on
+    // the specific occurrence rather than a count: the bug is an omission.
+    const detection = rows.find((fields) => fields[0] === occUri);
+    expect(detection).toBeDefined();
+    expect(detection!).toContain('detected');
+    // The quantity is the data that silently disappears with the row.
+    expect(detection!).toContain('7');
+  });
+
+  // Issue #41, decision 2: a deleted surveyTarget does not retroactively unmake
+  // the surveys conducted while it was live, so their notDetected rows stand.
+  test('notDetected survives deletion of the surveyTarget record', async ({
+    context,
+    sql,
+  }) => {
+    await context.addCookies([authCookie(EXPORT_DID)]);
+
+    const { protocolRkey } = await seedProtocol(sql, EXPORT_DID);
+    const protocolUri = `at://${EXPORT_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+    const ptUriG = `at://${EXPORT_DID}/bio.cuanto.protocolTarget/targetrkeyg`;
+
+    const adoptedAt = new Date('2026-01-10T00:00:00Z');
+    const surveyTime = new Date('2026-01-15T12:00:00Z');
+
+    await seedSurveyTarget(sql, EXPORT_DID, protocolUri, ptUriG, adoptedAt);
+    await seedSurvey(
+      sql,
+      EXPORT_DID,
+      protocolUri,
+      'Test Location',
+      surveyTime.toISOString(),
+    );
+
+    const deleteResponse = await postTapEvent(
+      context.request,
+      surveyTargetEvent(EXPORT_DID, 'targetrkeyg', 'delete', 'aaaa2'),
+    );
+    expect(deleteResponse.status()).toBe(200);
+
+    const response = await context.request.get(
+      `/api/protocols/${EXPORT_HANDLE}/${protocolRkey}/export`,
+    );
+    expect(response.status()).toBe(200);
+
+    const buf = Buffer.from(await response.body());
+    const files = await extractTarGz(buf);
+    const rows = csvRows(files.get('occurrence.csv')!);
+
+    const notDetectedRows = rows.filter((fields) =>
+      fields.some((f) => f === 'notDetected'),
+    );
+    const targetGRows = notDetectedRows.filter((fields) =>
+      fields.some((f) => f.includes('targetrkeyg')),
+    );
+    expect(targetGRows).toHaveLength(1);
+  });
+
+  // Issue #41: once the row survives a delete, event ordering starts to matter.
+  // A replayed delete carrying an older rev than the row's must not tombstone a
+  // record a newer create already revived.
+  test('a stale delete event does not tombstone a newer surveyTarget', async ({
+    context,
+    sql,
+  }) => {
+    const { protocolRkey } = await seedProtocol(sql, EXPORT_DID);
+    const protocolUri = `at://${EXPORT_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+    const ptUriH = `at://${EXPORT_DID}/bio.cuanto.protocolTarget/targetrkeyh`;
+    const targetUri = `at://${EXPORT_DID}/bio.cuanto.surveyTarget/targetrkeyh`;
+
+    const createResponse = await postTapEvent(
+      context.request,
+      surveyTargetEvent(EXPORT_DID, 'targetrkeyh', 'create', 'aaaa2', {
+        $type: 'bio.cuanto.surveyTarget',
+        protocol: protocolUri,
+        protocolTargetID: ptUriH,
+        createdAt: '2026-01-10T00:00:00.000Z',
+        scope: [],
+      }),
+    );
+    expect(createResponse.status()).toBe(200);
+
+    const staleResponse = await postTapEvent(
+      context.request,
+      surveyTargetEvent(EXPORT_DID, 'targetrkeyh', 'delete', 'aaaa1'),
+    );
+    expect(staleResponse.status()).toBe(200);
+
+    const [row] = await sql`
+      SELECT deleted_at FROM survey_targets WHERE at_uri = ${targetUri}
+    `;
+    expect(row).toBeDefined();
+    expect(row.deleted_at).toBeNull();
+  });
+
+  // gcSurveyTargetsIfUnused hard-deletes the row and the PDS record together, so
+  // its own delete events arrive after the row is already gone. Tombstoning must
+  // stay an update of an existing row, never an insert that resurrects one.
+  test('a delete event for an unknown surveyTarget creates no row', async ({
+    context,
+    sql,
+  }) => {
+    const targetUri = `at://${EXPORT_DID}/bio.cuanto.surveyTarget/targetrkeyi`;
+
+    const response = await postTapEvent(
+      context.request,
+      surveyTargetEvent(EXPORT_DID, 'targetrkeyi', 'delete', 'aaaa2'),
+    );
+    expect(response.status()).toBe(200);
+
+    const rows = await sql`
+      SELECT at_uri FROM survey_targets WHERE at_uri = ${targetUri}
+    `;
+    expect(rows).toHaveLength(0);
   });
 });

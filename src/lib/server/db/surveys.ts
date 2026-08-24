@@ -570,6 +570,20 @@ export async function deleteOccurrenceByAtUri(atUri: string): Promise<void> {
   await sql`DELETE FROM occurrences WHERE at_uri = ${atUri}`;
 }
 
+// Counts the detections that point at a surveyTarget. Used to tell a routine
+// surveyTarget deletion apart from one that would have severed real recorded
+// data if the row were not tombstoned (issue #41).
+export async function countOccurrencesBySurveyTargetUri(
+  atUri: string,
+): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    SELECT COUNT(*)::int AS count
+    FROM occurrences
+    WHERE record->>'surveyTargetID' = ${atUri}
+  `;
+  return row?.count ?? 0;
+}
+
 export async function insertOccurrence(
   did: string,
   rkey: string,

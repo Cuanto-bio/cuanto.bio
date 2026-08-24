@@ -15,7 +15,7 @@ vi.mock('$lib/server/db/survey-protocols', () => ({
   getProtocolDetailByHandleAndRkey: vi.fn(),
   insertProtocol: vi.fn(),
   insertProtocolTarget: vi.fn(),
-  deleteProtocolTargetsByUris: vi.fn().mockResolvedValue(undefined),
+  tombstoneProtocolTargetsByUris: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('$lib/server/db', () => ({

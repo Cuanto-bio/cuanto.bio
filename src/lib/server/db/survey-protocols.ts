@@ -68,7 +68,7 @@ export async function insertProtocolTarget(
 // Tombstones rather than hard-deletes: reconcileRetirements (materialize-targets.ts)
 // needs to tell "the author deleted this target" (deleted_at set) apart from "we
 // haven't indexed it yet" (no row at all).
-export async function deleteProtocolTargetsByUris(
+export async function tombstoneProtocolTargetsByUris(
   uris: string[],
 ): Promise<void> {
   if (uris.length === 0) return;
