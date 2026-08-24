@@ -58,11 +58,11 @@ export default defineRailway(() => {
   const app = service('app', {
     replicas: { 'asia-southeast1-eqsg3a': 1 },
     domains: ['cuanto.bio'],
-    build: { builder: 'DOCKERFILE' },
+    // Builder is Dockerfile via Railway auto-detection; declaring it explicitly
+    // creates permanent plan drift because Railway won't store the value.
     deploy: {
       healthcheckPath: '/',
       healthcheckTimeout: 30,
-      restartPolicyType: 'ON_FAILURE',
     },
     env: {
       APP_COMMIT_SHA: preserve(),
