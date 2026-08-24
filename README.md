@@ -109,13 +109,23 @@ Create three Railway services in a project:
 Run migrations via the Railway CLI before or after deploying:
 
 ```sh
-# Requires PUBLIC_DATABASE_URL var on the app service that references the TCP
-# proxy URL of the db service
-railway run --service app -- sh -c 'DATABASE_URL=$PUBLIC_DATABASE_URL pnpm migrate:up'
-
-# also present as pnpm scripts:
 pnpm railway:migrate:up
 pnpm railway:migrate:down
+```
+
+These run `scripts/migrate.ts` inside the app container over `railway ssh`, so they
+use the private-network `DATABASE_URL` and need no public database access.
+
+### Connecting to the production database
+
+The database has no public TCP proxy, so connect over an SSH tunnel instead:
+
+```sh
+# psql shell
+railway connect PostGIS --ssh
+
+# local tunnel for GUI clients (TablePlus, DBeaver, pgAdmin), Ctrl+C to close
+railway connect PostGIS --tunnel-only -P 5433
 ```
 
 ### Replaying historical data
