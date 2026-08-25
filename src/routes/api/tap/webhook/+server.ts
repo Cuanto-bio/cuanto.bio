@@ -163,9 +163,21 @@ async function backfillSurvey(surveyUri: string): Promise<boolean> {
     await insertSurvey(did, rkey, surveyRecord, rec.uri);
   } catch (e) {
     if (isFkViolation(e)) {
-      const backfilled = await backfillProtocol(surveyRecord.protocol.uri);
-      if (!backfilled) return false;
-      await insertSurvey(did, rkey, surveyRecord, rec.uri);
+      // The protocol backfill, and the insertSurvey retry after it, can each
+      // fail on their own (a genuinely missing/unexpected protocol, or an FK
+      // that's still unsatisfiable for reasons the retry can't fix). Either
+      // failure means the survey could not be backfilled, not a 500 (#43).
+      try {
+        const backfilled = await backfillProtocol(surveyRecord.protocol.uri);
+        if (!backfilled) return false;
+        await insertSurvey(did, rkey, surveyRecord, rec.uri);
+      } catch (retryErr) {
+        log.warn(
+          { surveyUri, err: retryErr },
+          'survey backfill retry failed; skipping backfill',
+        );
+        return false;
+      }
     } else {
       throw e;
     }
@@ -336,26 +348,36 @@ export const POST: RequestHandler = async ({ request }) => {
     const occurrence = evt.record as unknown as Occurrence;
     const surveyUri = occurrence.eventID;
     let inserted = false;
+    let backfillErr: unknown;
     try {
       await insertOccurrence(evt.did, evt.rkey, occurrence, atUri);
       inserted = true;
     } catch (e) {
       if (isFkViolation(e) && surveyUri) {
-        const backfilled = await backfillSurvey(surveyUri);
-        if (backfilled) {
-          await insertOccurrence(evt.did, evt.rkey, occurrence, atUri);
-          inserted = true;
+        // backfillSurvey, and the insertOccurrence retry after it, can each
+        // fail on their own: a genuinely missing/unexpected survey, or an FK
+        // that's still unsatisfiable for reasons the retry can't fix. Either
+        // failure means the occurrence could not be ingested, not a 500 (#43).
+        try {
+          const backfilled = await backfillSurvey(surveyUri);
+          if (backfilled) {
+            await insertOccurrence(evt.did, evt.rkey, occurrence, atUri);
+            inserted = true;
+          }
+        } catch (retryErr) {
+          backfillErr = retryErr;
         }
       } else throw e;
     }
     if (inserted) {
       log.info({ atUri }, 'ingested occurrence');
     } else {
-      // backfillSurvey returned false: the eventID resolved to a missing record
-      // or one from an unexpected collection (#22), so the occurrence's survey
-      // FK can't be satisfied and it was not ingested.
+      // backfillSurvey returned false, or the recovery attempt itself failed
+      // (backfillErr): the eventID resolved to a missing record or one from
+      // an unexpected collection (#22), or its FK was otherwise unsatisfiable,
+      // so the occurrence was not ingested.
       log.warn(
-        { atUri, surveyUri },
+        { atUri, surveyUri, ...(backfillErr ? { err: backfillErr } : {}) },
         'occurrence references unknown survey; skipping ingestion',
       );
     }

@@ -930,6 +930,59 @@ describe('POST /api/tap/webhook', () => {
     expect(insertOccurrence).toHaveBeenCalledTimes(2);
   });
 
+  // Regression for #43: backfillSurvey can report success while the
+  // occurrence's FK is still unsatisfiable (root cause undetermined), so the
+  // retry after a "successful" backfill must not be allowed to 500.
+  test('returns 200 and skips ingestion when the occurrence retry still violates the FK after a successful survey backfill', async () => {
+    vi.mocked(insertOccurrence)
+      .mockRejectedValueOnce(fkError)
+      .mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord).mockResolvedValueOnce(fetchedSurveyRecord);
+    vi.mocked(listAtRecords).mockResolvedValueOnce([]);
+    const resp = await POST({
+      request: makeRequest(occurrenceEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertSurvey).toHaveBeenCalledOnce();
+    expect(insertOccurrence).toHaveBeenCalledTimes(2); // 1 fail + 1 failed retry
+    expect(logMock.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        atUri: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.occurrence/3occ',
+        surveyUri: 'at://did:plc:abc123/bio.cuanto.survey/3svy',
+      }),
+      expect.stringContaining('skipping ingestion'),
+    );
+  });
+
+  // Regression for #43: the insertSurvey retry inside backfillSurvey, after a
+  // successful protocol backfill, is equally capable of hitting an
+  // unsatisfiable FK and must not be allowed to 500 either.
+  test('returns 200 and skips ingestion when the survey retry still violates the FK after a successful protocol backfill', async () => {
+    vi.mocked(insertOccurrence).mockRejectedValueOnce(fkError);
+    vi.mocked(insertSurvey)
+      .mockRejectedValueOnce(fkError)
+      .mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord)
+      .mockResolvedValueOnce(fetchedSurveyRecord)
+      .mockResolvedValueOnce(fetchedProtocolRecord);
+    const resp = await POST({
+      request: makeRequest(occurrenceEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertProtocol).toHaveBeenCalledOnce();
+    expect(insertSurvey).toHaveBeenCalledTimes(2);
+    // The survey backfill ultimately failed, so the occurrence FK can't be
+    // satisfied and the retry must not be attempted.
+    expect(insertOccurrence).toHaveBeenCalledTimes(1);
+    expect(logMock.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        atUri: 'at://did:plc:abc123/bio.lexicons.temp.v0-1.occurrence/3occ',
+        surveyUri: 'at://did:plc:abc123/bio.cuanto.survey/3svy',
+      }),
+      expect.stringContaining('skipping ingestion'),
+    );
+  });
+
   test('calls insertIdentification for an identification create event', async () => {
     const resp = await POST({
       request: makeRequest(identificationEvent, VALID_AUTH),
