@@ -4,6 +4,10 @@ Run this on a real device before shipping a native build, or before a web deploy
 that changes native-aware code (the wrapper loads cuanto.bio live, so a deploy
 reaches app users without an App Store round trip).
 
+For getting a build to TestFlight in the first place — archiving, the App
+Store Connect dialogs, and verifying an archive before uploading it — see
+`docs/testflight-release.md`. This checklist assumes a build already exists.
+
 This checklist covers **only what a browser or simulator cannot prove**. The
 handoff state machine, token storage, platform gating, and the sign-in routing
 are already covered by fast automated tests that run with no device:
