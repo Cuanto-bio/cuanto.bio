@@ -37,7 +37,11 @@ steps:
       workspace="$PWD"
       git clone --depth 1 https://tangled.org/onev.cat/tang /tmp/tang-src
       mkdir -p "$workspace/.ci-tools"
-      (cd /tmp/tang-src && go build -o "$workspace/.ci-tools/tang" ./cmd/tang)
+      # CGO_ENABLED=0: nixpkgs' go defaults to cgo on, which needs gcc just to
+      # build the always-linked runtime/cgo package -- even though nothing we
+      # actually run (tang issue view) touches cgo. Rather than add a whole C
+      # toolchain to `dependencies:`, build fully static instead.
+      (cd /tmp/tang-src && CGO_ENABLED=0 go build -o "$workspace/.ci-tools/tang" ./cmd/tang)
 
   - name: "Close issues referenced in the last commit"
     command: |
