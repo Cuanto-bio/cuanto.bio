@@ -22,6 +22,13 @@ environment:
   # under Settings -> Secrets for that workflow.
   PDS: "https://tngl.sh"
   ATP_IDENTIFIER: "cuanto.bio"
+  # nixpkgs' generated /etc/bash_logout guards its own re-entry with a bare
+  # $__ETC_BASHLOGOUT_SOURCED read (no ${VAR:-} default). Under our set -u it's
+  # fatal the moment this step's login shell exits, and under set -e that
+  # turns into the shell's real exit status -- silently replacing our
+  # intended `exit 0` with a `1` and failing the step for no real reason.
+  # NOSYSBASHLOGOUT is nixpkgs' own documented escape hatch to skip that file.
+  NOSYSBASHLOGOUT: "1"
 
 steps:
   # tang (tangled.org/onev.cat/tang) ships no Linux binary and isn't in
