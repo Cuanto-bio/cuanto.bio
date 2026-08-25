@@ -5,6 +5,7 @@ import type { Main as AtProtocolTarget } from '$lib/lexicons/bio/cuanto/protocol
 import type { Main as AtSurvey } from '$lib/lexicons/bio/cuanto/survey.defs.js';
 import type { Main as AtSurveyProtocol } from '$lib/lexicons/bio/cuanto/surveyProtocol.defs.js';
 import type { Main as AtOccurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs.js';
+import logger from '$lib/logger';
 import type { IncidentalOccurrence } from '$lib/surveys';
 import type { TargetFilterState } from '$lib/targets.svelte';
 import { generateTid } from '$lib/tid';
@@ -170,11 +171,31 @@ interface CuantoDB extends DBSchema {
   };
 }
 
-let _db: IDBPDatabase<CuantoDB> | null = null;
+let _dbPromise: Promise<IDBPDatabase<CuantoDB>> | null = null;
 
-async function getDB(): Promise<IDBPDatabase<CuantoDB>> {
-  if (_db) return _db;
-  _db = await openDB<CuantoDB>('cuanto', CUANTO_IDB_VERSION, {
+function getDB(): Promise<IDBPDatabase<CuantoDB>> {
+  if (_dbPromise) return _dbPromise;
+  _dbPromise = openDB<CuantoDB>('cuanto', CUANTO_IDB_VERSION, {
+    blocked(currentVersion, blockedVersion) {
+      // Another tab still holds a connection at an older version, so this
+      // open request is waiting on it to close (see `blocking` below).
+      logger.warn(
+        { currentVersion, blockedVersion },
+        'IDB open blocked by a connection at an older version in another tab',
+      );
+    },
+    blocking(currentVersion, blockedVersion, event) {
+      // A newer tab wants to open a later version. Close our stale
+      // connection so its open request isn't blocked forever, and drop the
+      // memoized promise so the next call in this tab reopens at the new
+      // version instead of reusing a closed connection.
+      logger.warn(
+        { currentVersion, blockedVersion },
+        'Closing IDB connection to unblock a newer version opened in another tab',
+      );
+      (event.target as IDBDatabase).close();
+      _dbPromise = null;
+    },
     upgrade(db, oldVersion, _newVersion, tx) {
       if (oldVersion < 1) {
         db.createObjectStore('cached-protocols', { keyPath: 'atUri' });
@@ -223,7 +244,7 @@ async function getDB(): Promise<IDBPDatabase<CuantoDB>> {
       // callback is synchronous and cannot await IDB requests.
     },
   });
-  return _db;
+  return _dbPromise;
 }
 
 export async function cacheProtocol(protocol: Protocol): Promise<void> {
