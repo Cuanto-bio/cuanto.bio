@@ -39,7 +39,6 @@
   },
   "devDependencies": {
     "@atproto/jwk-jose": "^0.1.11",
-    "@atproto/lex": "latest",
     "@biomejs/biome": "^2.4.11",
     "@capacitor/cli": "^8.4.2",
     "@fontsource-variable/inter": "^5.2.8",
@@ -79,9 +78,10 @@
   "dependencies": {
     "@atproto/common-web": "^0.4.20",
     "@atproto/identity": "^0.4.12",
+    "@atproto/lex": "^0.3.6",
     "@atproto/lexicon": "^0.6.2",
     "@atproto/oauth-client-node": "^0.3.17",
-    "@atproto/syntax": "^0.5.4",
+    "@atproto/syntax": "^0.7.4",
     "@atproto/tap": "^0.2.12",
     "@capacitor/android": "^8.4.2",
     "@capacitor/app": "^8.1.1",
