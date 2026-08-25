@@ -1,0 +1,172 @@
+when:
+  # `git push -o skip-ci` skips this (and every other workflow) for one push.
+  - event: ["push", "manual"]
+    branch: ["main"]
+
+engine: microvm
+image: nixos
+
+# No docker needed here: git log, tang, and curl/jq all run directly on the
+# guest, unlike test.yml/release-android.yml which need Playwright/Android
+# images.
+dependencies:
+  - git
+  - curl
+  - jq
+  - go
+
+environment:
+  # Same PDS and identity release-android.yml authenticates as to publish
+  # artifacts. That account owns cuanto.bio/cuanto.bio, so it has authority to
+  # close its own issues; ATP_APP_PASSWORD is the same secret already set
+  # under Settings -> Secrets for that workflow.
+  PDS: "https://tngl.sh"
+  ATP_IDENTIFIER: "cuanto.bio"
+
+steps:
+  # tang (tangled.org/onev.cat/tang) ships no Linux binary and isn't in
+  # nixpkgs, so it's built from source. Only `tang issue view` is used below,
+  # an anonymous AppView read that needs no session. `tang issue close` is
+  # deliberately NOT used: its session store is OS-keyring only
+  # (zalando/go-keyring, no file fallback, no env var or flag escape hatch),
+  # and this guest has no D-Bus secret-service daemon, so `tang auth login`
+  # would read the piped app password fine and then fail saving the session.
+  - name: "Build tang"
+    command: |
+      set -euo pipefail
+      workspace="$PWD"
+      git clone --depth 1 https://tangled.org/onev.cat/tang /tmp/tang-src
+      mkdir -p "$workspace/.ci-tools"
+      (cd /tmp/tang-src && go build -o "$workspace/.ci-tools/tang" ./cmd/tang)
+
+  - name: "Close issues referenced in the last commit"
+    command: |
+      # Ensure errors, unset variable reads, and mid-pipe failures all cause the
+      # entire script to fail
+      set -euo pipefail
+
+      # GitHub-style closing keywords: "Closes #12", "fixed #7", "Resolves: #3".
+      # Push-triggered workflows only get TANGLED_SHA, the tip commit -- no
+      # before/after range -- so a multi-commit push only has its tip commit
+      # scanned. Same as GitHub for a squash-merged PR; a direct multi-commit
+      # push can bury a closing keyword mid-stack and it won't be seen.
+      msg=$(git log -1 --format=%B "$TANGLED_SHA")
+      # grep exits 1 on no match, and pipefail is on: `|| true` turns "found
+      # nothing" into an empty $refs instead of aborting the step.
+      refs=$(printf '%s\n' "$msg" \
+        | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]*:?[[:space:]]*#[0-9]+' \
+        | grep -oE '[0-9]+' \
+        | sort -un || true)
+
+      if [ -z "$refs" ]; then
+        echo "No closing references in commit $TANGLED_SHA"
+        exit 0
+      fi
+
+      session=$(curl -fsS -X POST "$PDS/xrpc/com.atproto.server.createSession" \
+        -H 'Content-Type: application/json' \
+        -d "$(jq -n --arg id "$ATP_IDENTIFIER" --arg pw "$ATP_APP_PASSWORD" \
+                 '{identifier:$id, password:$pw}')")
+      jwt=$(printf '%s' "$session" | jq -r .accessJwt)
+      did=$(printf '%s' "$session" | jq -r .did)
+
+      # Resolves a DID to its PDS base URL: did:plc via the PLC directory,
+      # did:web via its own domain's well-known document. Needed below
+      # because the account that last closed/reopened an issue (e.g. a
+      # repo collaborator, via the Tangled web UI) isn't necessarily
+      # $ATP_IDENTIFIER. Every curl here is best-effort: on any failure it
+      # falls through to empty output rather than aborting the step, so a
+      # transient lookup failure just means we skip the idempotency check
+      # and close the issue anyway, same as if this function didn't exist.
+      resolve_pds() {
+        case "$1" in
+          did:plc:*)
+            curl -fsS "https://plc.directory/$1" \
+              | jq -r '.service[]? | select(.id == "#atproto_pds") | .serviceEndpoint' \
+              || true
+            ;;
+          did:web:*)
+            domain=$(printf '%s' "$1" | sed 's/^did:web://')
+            curl -fsS "https://$domain/.well-known/did.json" \
+              | jq -r '.service[]? | select(.id == "#atproto_pds") | .serviceEndpoint' \
+              || true
+            ;;
+        esac
+      }
+
+      for n in $refs; do
+        # Resolves the AppView-only issue number to a PDS-native AT URI;
+        # needs no session (see "Build tang" above).
+        view=$(.ci-tools/tang issue view "$n" -R cuanto.bio/cuanto.bio --json)
+        uri=$(printf '%s' "$view" | jq -r '.uri // empty')
+
+        if [ -z "$uri" ]; then
+          echo "::warning::commit $TANGLED_SHA references #$n, but it did not resolve" >&2
+          continue
+        fi
+
+        # tang's own numeric `issue view` never reports real state (always
+        # "open" -- confirmed by reading its source, not documented), so
+        # ask Constellation for the most recent sh.tangled.repo.issue.state
+        # record targeting this issue and read its actual state. This is a
+        # cruft-avoidance measure, not a correctness one: Tangled's AppView
+        # applies state records as an unconditional upsert, so closing an
+        # already-closed issue is harmless either way, just an extra
+        # permanent record sitting in the PDS for no visible effect.
+        latest=$(curl -fsS -G "https://constellation.microcosm.blue/links" \
+          --data-urlencode "target=$uri" \
+          --data-urlencode "collection=sh.tangled.repo.issue.state" \
+          --data-urlencode "path=.issue" \
+          --data-urlencode "limit=1" \
+          --data-urlencode "reverse=true" || echo '{}')
+        state_did=$(printf '%s' "$latest" | jq -r '.linking_records[0].did // empty')
+        state_rkey=$(printf '%s' "$latest" | jq -r '.linking_records[0].rkey // empty')
+
+        current_state=""
+        if [ -n "$state_did" ] && [ -n "$state_rkey" ]; then
+          state_pds=$(resolve_pds "$state_did")
+          if [ -n "$state_pds" ]; then
+            state_record=$(curl -fsS -G "$state_pds/xrpc/com.atproto.repo.getRecord" \
+              --data-urlencode "repo=$state_did" \
+              --data-urlencode "collection=sh.tangled.repo.issue.state" \
+              --data-urlencode "rkey=$state_rkey" || echo '{}')
+            current_state=$(printf '%s' "$state_record" | jq -r '.value.state // empty')
+          fi
+        fi
+        if [ "$current_state" = "sh.tangled.repo.issue.state.closed" ]; then
+          echo "Issue #$n is already closed"
+          continue
+        fi
+
+        # Closing is an append, not an edit: a new sh.tangled.repo.issue.state
+        # record pointing at the issue, same shape as an issue comment.
+        curl -fsS -X POST "$PDS/xrpc/com.atproto.repo.createRecord" \
+          -H "Authorization: Bearer $jwt" \
+          -H 'Content-Type: application/json' \
+          -d "$(jq -n \
+                  --arg repo "$did" \
+                  --arg issue "$uri" \
+                  --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                  '{repo:$repo, collection:"sh.tangled.repo.issue.state",
+                    record:{"$type":"sh.tangled.repo.issue.state",
+                            issue:$issue, state:"sh.tangled.repo.issue.state.closed",
+                            createdAt:$now}}')" \
+          > /dev/null
+
+        # Leave a comment pointing at the commit that closed it: Tangled
+        # doesn't linkify a bare hash in issue text, so this is a full URL.
+        commit_url="https://tangled.org/cuanto.bio/cuanto.bio/commit/$TANGLED_SHA"
+        curl -fsS -X POST "$PDS/xrpc/com.atproto.repo.createRecord" \
+          -H "Authorization: Bearer $jwt" \
+          -H 'Content-Type: application/json' \
+          -d "$(jq -n \
+                  --arg repo "$did" \
+                  --arg issue "$uri" \
+                  --arg body "Closed in $commit_url" \
+                  --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                  '{repo:$repo, collection:"sh.tangled.repo.issue.comment",
+                    record:{"$type":"sh.tangled.repo.issue.comment",
+                            issue:$issue, body:$body, createdAt:$now}}')" \
+          > /dev/null
+        echo "Closed issue #$n ($uri), commented with $commit_url"
+      done
