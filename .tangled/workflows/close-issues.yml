@@ -22,13 +22,6 @@ environment:
   # under Settings -> Secrets for that workflow.
   PDS: "https://tngl.sh"
   ATP_IDENTIFIER: "cuanto.bio"
-  # nixpkgs' generated /etc/bash_logout guards its own re-entry with a bare
-  # $__ETC_BASHLOGOUT_SOURCED read (no ${VAR:-} default). Under our set -u it's
-  # fatal the moment this step's login shell exits, and under set -e that
-  # turns into the shell's real exit status -- silently replacing our
-  # intended `exit 0` with a `1` and failing the step for no real reason.
-  # NOSYSBASHLOGOUT is nixpkgs' own documented escape hatch to skip that file.
-  NOSYSBASHLOGOUT: "1"
 
 steps:
   # tang (tangled.org/onev.cat/tang) ships no Linux binary and isn't in
@@ -41,6 +34,17 @@ steps:
   - name: "Build tang"
     command: |
       set -euo pipefail
+      # nixpkgs' generated /etc/bash_logout guards its own re-entry with a bare
+      # $__ETC_BASHLOGOUT_SOURCED read (no ${VAR:-} default). Under our set -u
+      # that's fatal the moment this step's login shell exits, and under set -e
+      # that becomes the shell's real exit status -- silently replacing our
+      # script's own successful exit with a spurious step failure.
+      # NOSYSBASHLOGOUT (nixpkgs' documented escape hatch) skips that file, but
+      # only when set inside this script: setting it in the workflow-level
+      # `environment:` block didn't survive to the shell that sources it --
+      # spindle's step wrapper likely resets the environment (e.g. via
+      # `su -l`) before running this command.
+      export NOSYSBASHLOGOUT=1
       workspace="$PWD"
       git clone --depth 1 https://tangled.org/onev.cat/tang /tmp/tang-src
       mkdir -p "$workspace/.ci-tools"
@@ -55,6 +59,8 @@ steps:
       # Ensure errors, unset variable reads, and mid-pipe failures all cause the
       # entire script to fail
       set -euo pipefail
+      # Same /etc/bash_logout workaround as "Build tang" above.
+      export NOSYSBASHLOGOUT=1
 
       # GitHub-style closing keywords: "Closes #12", "fixed #7", "Resolves: #3".
       # Push-triggered workflows only get TANGLED_SHA, the tip commit -- no
