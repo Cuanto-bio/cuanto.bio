@@ -12,4 +12,4 @@ include ':capacitor-haptics'
 project(':capacitor-haptics').projectDir = new File('../node_modules/.pnpm/@capacitor+haptics@8.0.2_@capacitor+core@8.4.2/node_modules/@capacitor/haptics/android')
 
 include ':capgo-background-geolocation'
-project(':capgo-background-geolocation').projectDir = new File('../node_modules/.pnpm/@capgo+background-geolocation@8.3.1_@capacitor+core@8.4.2/node_modules/@capgo/background-geolocation/android')
+project(':capgo-background-geolocation').projectDir = new File('../node_modules/.pnpm/@capgo+background-geolocation@8.3.1_patch_hash=a03e194c9b42ea7411fe4b32b7fc676e51023654_64dd6e1d89da58cc1d1b64faedf054fd/node_modules/@capgo/background-geolocation/android')
