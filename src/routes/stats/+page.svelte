@@ -8,6 +8,9 @@ import ProtocolAutocomplete, {
 import SparkbarDialog from '$lib/components/SparkbarDialog.svelte';
 import SparkbarInfo from '$lib/components/SparkbarInfo.svelte';
 import Taxon from '$lib/components/Taxon.svelte';
+import UserAutocomplete, {
+  type UserResult,
+} from '$lib/components/UserAutocomplete.svelte';
 import * as Card from '$lib/components/ui/card';
 import { Input } from '$lib/components/ui/input';
 import { Label } from '$lib/components/ui/label';
@@ -26,6 +29,9 @@ let selectedProtocols = $state<ProtocolResult[]>(
 let startDate = $state(untrack(() => data.initialStart));
 let endDate = $state(untrack(() => data.initialEnd));
 let bbox = $state<Bbox | null>(untrack(() => data.initialBbox));
+let surveyedBy = $state<{ did: string; handle: string } | null>(
+  untrack(() => data.initialSurveyedBy),
+);
 let loading = $state(false);
 let errorMsg = $state<string | null>(null);
 let stats = $state<StatsResult | null>(null);
@@ -40,13 +46,19 @@ function removeProtocol(atUri: string) {
   selectedProtocols = selectedProtocols.filter((p) => p.atUri !== atUri);
 }
 
+function selectSurveyor(user: UserResult) {
+  surveyedBy = user;
+}
+
 async function loadStats() {
   loading = true;
   errorMsg = null;
   stats = null;
 
   const params = new URLSearchParams();
-  params.set('protocols', selectedProtocols.map((p) => p.atUri).join(','));
+  if (selectedProtocols.length > 0) {
+    params.set('protocols', selectedProtocols.map((p) => p.atUri).join(','));
+  }
   if (startDate) params.set('start', `${startDate}T00:00:00Z`);
   if (endDate) params.set('end', `${endDate}T23:59:59.999Z`);
   if (bbox) {
@@ -55,6 +67,7 @@ async function loadStats() {
     params.set('bboxEast', bbox.east);
     params.set('bboxWest', bbox.west);
   }
+  if (surveyedBy) params.set('surveyedBy', surveyedBy.did);
 
   const resp = await fetch(`/api/stats?${params}`);
   if (!resp.ok) {
@@ -82,12 +95,13 @@ $effect(() => {
     params.set('bboxEast', bbox.east);
     params.set('bboxWest', bbox.west);
   }
+  if (surveyedBy) params.set('surveyedBy', surveyedBy.did);
   const qs = params.toString();
   history.replaceState(history.state, '', qs ? `?${qs}` : location.pathname);
 });
 
 $effect(() => {
-  if (selectedProtocols.length === 0) {
+  if (selectedProtocols.length === 0 && !surveyedBy) {
     stats = null;
     errorMsg = null;
     return;
@@ -107,9 +121,12 @@ const targetSparkbarMax = $derived(seriesMax(stats?.targetWeekly));
 
 function surveysUrl(extraParams: Record<string, string> = {}): string {
   const p = new URLSearchParams({
-    protocols: selectedProtocols.map((pr) => pr.atUri).join(','),
+    ...(selectedProtocols.length > 0
+      ? { protocols: selectedProtocols.map((pr) => pr.atUri).join(',') }
+      : {}),
     ...extraParams,
   });
+  if (surveyedBy) p.set('surveyedBy', surveyedBy.did);
   if (startDate) p.set('start', startDate);
   if (endDate) p.set('stop', endDate);
   if (bbox) {
@@ -240,6 +257,25 @@ function surveysUrl(extraParams: Record<string, string> = {}): string {
         {/if}
       </div>
 
+      <div class="flex flex-col gap-1.5">
+        <Label>Surveyor</Label>
+        {#if surveyedBy}
+          <span class="flex w-fit items-center gap-1 rounded-full border bg-secondary px-2.5 py-0.5 text-sm">
+            <span>Surveys by @{surveyedBy.handle}</span>
+            <button
+              type="button"
+              class="ml-0.5 rounded-full hover:bg-muted p-0.5"
+              onclick={() => (surveyedBy = null)}
+              aria-label="Clear surveyor filter"
+            >
+              <XIcon class="size-3" />
+            </button>
+          </span>
+        {:else}
+          <UserAutocomplete onSelectUser={selectSurveyor} />
+        {/if}
+      </div>
+
       <div class="grid grid-cols-2 gap-3">
         <div class="flex flex-col gap-1.5">
           <Label for="start-date">Start</Label>
@@ -274,7 +310,7 @@ function surveysUrl(extraParams: Record<string, string> = {}): string {
     </Card.Content>
   </Card.Root>
 
-  {#if selectedProtocols.length === 0}
+  {#if selectedProtocols.length === 0 && !surveyedBy}
     <p class="text-sm text-muted-foreground">Select a protocol to load stats.</p>
   {:else if loading}
     <p class="text-sm text-muted-foreground">Loading…</p>

@@ -3,11 +3,22 @@ import SurveyCard from '$lib/components/SurveyCard.svelte';
 
 let { data } = $props();
 
-const { protocols, taxonID, taxonName, startDate, stopDate, bbox } = $derived(
-  data.filters,
-);
+const {
+  protocols,
+  taxonID,
+  taxonName,
+  startDate,
+  stopDate,
+  bbox,
+  surveyedByHandle,
+} = $derived(data.filters);
 const hasFilters = $derived(
-  protocols.length > 0 || !!taxonID || !!startDate || !!stopDate || !!bbox,
+  protocols.length > 0 ||
+    !!taxonID ||
+    !!startDate ||
+    !!stopDate ||
+    !!bbox ||
+    !!surveyedByHandle,
 );
 </script>
 
@@ -21,6 +32,11 @@ const hasFilters = $derived(
           Protocol: {protocol.title} <span class="text-muted-foreground">(@{protocol.handle})</span>
         </span>
       {/each}
+      {#if surveyedByHandle}
+        <span class="rounded-full border bg-secondary px-2.5 py-0.5">
+          Surveyor: @{surveyedByHandle}
+        </span>
+      {/if}
       {#if startDate || stopDate}
         <span class="rounded-full border bg-secondary px-2.5 py-0.5">
           {#if startDate && stopDate}

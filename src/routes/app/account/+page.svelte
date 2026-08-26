@@ -16,6 +16,11 @@ let { data } = $props();
       </div>
     {/if}
     <p class="text-lg font-bold">@{data.handle}</p>
+    {#if data.handle}
+      <a href="/profile/{data.handle}" class="text-primary text-sm hover:underline">
+        View public profile
+      </a>
+    {/if}
   </div>
 
   <Button onclick={signOut} variant="outline" class="w-full">

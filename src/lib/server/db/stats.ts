@@ -5,6 +5,9 @@ export type StatsParams = {
   start?: Date;
   end?: Date;
   bbox?: { north: number; south: number; east: number; west: number };
+  // Restricts to surveys authored by this DID, e.g. for a profile page's
+  // "Stats Explorer filtered by surveys the user has created" link.
+  surveyedBy?: string;
 };
 
 export type TaxonStat = {
@@ -159,6 +162,16 @@ export function densifyWeekly(
 export async function getProtocolStats(
   params: StatsParams,
 ): Promise<StatsResult> {
+  // The HTTP layer validates this too, but that's a caller, not this
+  // function's own contract -- without this, a future direct caller that
+  // skips that check would silently get an unscoped, database-wide
+  // aggregate instead of an error.
+  if (params.protocolUris.length === 0 && !params.surveyedBy) {
+    throw new Error(
+      'getProtocolStats requires at least one protocol URI or a surveyedBy filter',
+    );
+  }
+
   const startFilter = params.start
     ? sql`AND COALESCE(s.event_date, s.created_at) >= ${params.start}`
     : sql``;
@@ -177,6 +190,20 @@ export async function getProtocolStats(
   const bboxSurveyFilter = bboxEnvelope
     ? sql`AND ST_Within(s.geom, ${bboxEnvelope})`
     : sql``;
+
+  const didFilter = params.surveyedBy
+    ? sql`AND s.did = ${params.surveyedBy}`
+    : sql``;
+
+  // When no protocols are selected, surveyedBy alone should return every
+  // survey by that user across all protocols rather than none, so the
+  // protocol restriction is dropped entirely instead of matching an empty
+  // array. Used against surveys (aliased s); protocol_targets (aliased pt)
+  // gets its own filter below since it's a different table/alias.
+  const protocolFilter =
+    params.protocolUris.length > 0
+      ? sql`AND s.protocol_uri = ANY(${`{${params.protocolUris.join(',')}}`}::text[])`
+      : sql``;
 
   // Anchor the series on the end of the filtered range rather than "now", so a
   // filter over a historical period still charts that period.
@@ -199,10 +226,12 @@ export async function getProtocolStats(
           'YYYY-MM-DD'
         ) AS week_start
       FROM surveys s
-      WHERE s.protocol_uri = ANY(${`{${params.protocolUris.join(',')}}`}::text[])
+      WHERE TRUE
+        ${protocolFilter}
         ${startFilter}
         ${endFilter}
         ${bboxSurveyFilter}
+        ${didFilter}
         AND COALESCE(s.event_date, s.created_at) >= ${firstWeekStart}
         AND COALESCE(s.event_date, s.created_at) < ${lastWeekEnd}
     )
@@ -224,10 +253,12 @@ export async function getProtocolStats(
       WITH matching_surveys AS (
         SELECT s.at_uri, s.record
         FROM surveys s
-        WHERE s.protocol_uri = ANY(${params.protocolUris})
+        WHERE TRUE
+          ${protocolFilter}
           ${startFilter}
           ${endFilter}
           ${bboxSurveyFilter}
+          ${didFilter}
       ),
       survey_agg AS (
         SELECT COUNT(*)::int AS survey_count
@@ -284,10 +315,12 @@ export async function getProtocolStats(
       LEFT JOIN identifications i
         ON i.occurrence_uri = o.at_uri
        AND i.at_uri = o.record->'acceptedIdentificationID'->>'uri'
-      WHERE s.protocol_uri = ANY(${`{${params.protocolUris.join(',')}}`}::text[])
+      WHERE TRUE
+        ${protocolFilter}
         ${startFilter}
         ${endFilter}
         ${bboxSurveyFilter}
+        ${didFilter}
         AND COALESCE(
           i.record->>'taxonID',
           o.record->>'taxonID',
@@ -334,10 +367,12 @@ export async function getProtocolStats(
       JOIN occurrences o ON o.survey_uri = s.at_uri
       JOIN survey_targets st ON st.at_uri = o.record->>'surveyTargetID'
       LEFT JOIN protocol_targets pt ON pt.at_uri = st.protocol_target_uri
-      WHERE s.protocol_uri = ANY(${`{${params.protocolUris.join(',')}}`}::text[])
+      WHERE TRUE
+        ${protocolFilter}
         ${startFilter}
         ${endFilter}
         ${bboxSurveyFilter}
+        ${didFilter}
         AND st.protocol_target_uri IS NOT NULL
       GROUP BY st.protocol_target_uri
       ORDER BY total_count DESC
@@ -418,11 +453,17 @@ export async function getProtocolStats(
       taxon_protocols AS (
         SELECT DISTINCT taxon_id, protocol_uri FROM counted
         UNION
+        -- Restricted to protocols actually present in binned (already
+        -- did/protocol/date/bbox-scoped) rather than the raw protocolUris
+        -- list or an unrestricted scan: any protocol_targets row for a
+        -- protocol outside that set can never match protocol_weeks below
+        -- anyway, so scanning it at all -- system-wide, when protocolUris is
+        -- empty -- was pure waste.
         SELECT DISTINCT
           pt.record->'scope'->0->>'taxonID' AS taxon_id,
           pt.protocol_uri
         FROM protocol_targets pt
-        WHERE pt.protocol_uri = ANY(${`{${params.protocolUris.join(',')}}`}::text[])
+        WHERE pt.protocol_uri IN (SELECT DISTINCT protocol_uri FROM binned)
           AND pt.record->'scope'->0->>'taxonID' IS NOT NULL
       ),
       -- Surveys per protocol-week, counted once. Joining binned surveys

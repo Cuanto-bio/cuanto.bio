@@ -177,6 +177,9 @@ export interface SurveyParams {
     south: string | null;
   };
   taxonID?: string | null;
+  // Restricts to surveys authored by this DID, e.g. for the Stats Explorer
+  // "Surveys" drill-down when only a surveyor (no protocol) is selected.
+  surveyedBy?: string;
 }
 
 export function urlToSurveyParams(url: URL): SurveyParams {
@@ -199,5 +202,6 @@ export function urlToSurveyParams(url: URL): SurveyParams {
     stopDate: url.searchParams.get('stop') ?? '',
     bbox: { north, south, east, west },
     taxonID: url.searchParams.get('taxonID'),
+    surveyedBy: url.searchParams.get('surveyedBy') ?? undefined,
   };
 }

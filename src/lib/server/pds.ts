@@ -6,9 +6,12 @@ import {
 } from '@atproto/oauth-client-node';
 import { parseAtUri } from '$lib/atUri';
 import sql from '$lib/server/db';
+import logger from '$lib/server/logger';
 import { getClient, isScopeSufficient } from './auth.js';
 
 export { parseAtUri };
+
+const log = logger.child({ component: 'pds' });
 
 export class PdsSessionExpiredError extends Error {
   constructor(message = 'AT Protocol session expired. Please sign in again.') {
@@ -99,17 +102,51 @@ export async function resolveHandle(did: string): Promise<string | null> {
   }
 }
 
-/** Returns the Bluesky avatar URL for a DID, or null if unavailable. */
-export async function fetchAvatarUrl(did: string): Promise<string | null> {
+export interface BskyProfile {
+  avatar: string | null;
+  displayName: string | null;
+  description: string | null;
+}
+
+/** Returns the public app.bsky.actor.profile view for a DID, or null if unavailable. */
+export async function fetchBskyProfile(
+  did: string,
+): Promise<BskyProfile | null> {
   try {
     const url = `https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=${encodeURIComponent(did)}`;
     const resp = await fetch(url);
-    if (!resp.ok) return null;
-    const data = (await resp.json()) as { avatar?: string };
-    return data.avatar ?? null;
-  } catch {
+    if (!resp.ok) {
+      log.warn(
+        { did, status: resp.status },
+        'Bluesky getProfile returned a non-ok response',
+      );
+      return null;
+    }
+    const data = (await resp.json()) as {
+      avatar?: string;
+      displayName?: string;
+      description?: string;
+    };
+    // getProfile returns displayName/description as "" (not an absent field)
+    // for a user who never set one, so treat blank the same as missing.
+    const avatar = data.avatar || null;
+    const displayName = data.displayName || null;
+    const description = data.description || null;
+    // No avatar, displayName, or description means there's nothing
+    // resembling an app.bsky.actor.profile record worth showing as a
+    // Bluesky profile.
+    if (!avatar && !displayName && !description) return null;
+    return { avatar, displayName, description };
+  } catch (err) {
+    log.error({ did, err }, 'Bluesky getProfile fetch failed');
     return null;
   }
+}
+
+/** Returns the Bluesky avatar URL for a DID, or null if unavailable. */
+export async function fetchAvatarUrl(did: string): Promise<string | null> {
+  const profile = await fetchBskyProfile(did);
+  return profile?.avatar ?? null;
 }
 
 export async function listAtRecords(

@@ -63,6 +63,43 @@ test.describe('/api/protocols', () => {
   });
 });
 
+// ── /api/users search ─────────────────────────────────────────────────────────
+
+test.describe('/api/users', () => {
+  test.beforeEach(async ({ sql }) => {
+    await sql`
+      INSERT INTO users (did, handle) VALUES (${DID}, ${`user-${DID.split(':').pop()}`})
+      ON CONFLICT (did) DO NOTHING
+    `;
+  });
+
+  test.afterEach(async ({ sql }) => {
+    await teardownDid(sql, DID);
+  });
+
+  test('returns no results when q is omitted', async ({ request }) => {
+    const resp = await request.get('/api/users');
+    expect(resp.status()).toBe(200);
+    const body = await resp.json();
+    expect(body.results).toEqual([]);
+  });
+
+  test('returns matching users for a query', async ({ request }) => {
+    const resp = await request.get('/api/users?q=stats-spec');
+    expect(resp.status()).toBe(200);
+    const body = await resp.json();
+    const handles = body.results.map((r: { handle: string }) => r.handle);
+    expect(handles).toContain(`user-${DID.split(':').pop()}`);
+  });
+
+  test('returns each result with a did and handle', async ({ request }) => {
+    const resp = await request.get('/api/users?q=stats-spec');
+    const body = await resp.json();
+    const match = body.results.find((r: { did: string }) => r.did === DID);
+    expect(match).toEqual({ did: DID, handle: `user-${DID.split(':').pop()}` });
+  });
+});
+
 // ── /stats page load with protocol URI in URL ─────────────────────────────────
 
 test.describe('/stats page', () => {
@@ -98,6 +135,39 @@ test.describe('/stats page', () => {
     const params = new URLSearchParams({ protocols: protocolAtUri });
     await page.goto(`/stats?${params}`);
     await expect(page.getByText('Test Protocol')).toBeVisible();
+  });
+
+  test('loads stats from surveyedBy alone, with no protocol pill and no "select a protocol" placeholder', async ({
+    page,
+    sql,
+  }) => {
+    await seedSurvey(sql, DID, protocolAtUri);
+    const handle = `user-${DID.split(':').pop()}`;
+    const params = new URLSearchParams({ surveyedBy: DID });
+    await page.goto(`/stats?${params}`);
+    await expect(page.getByText(`Surveys by @${handle}`)).toBeVisible();
+    await expect(page.getByText('Test Protocol')).not.toBeVisible();
+    await expect(
+      page.getByText('Select a protocol to load stats.'),
+    ).not.toBeVisible();
+  });
+
+  test('lets you pick a surveyor from the autocomplete and see it applied', async ({
+    page,
+    sql,
+  }) => {
+    await seedSurvey(sql, DID, protocolAtUri);
+    const handle = `user-${DID.split(':').pop()}`;
+
+    await page.goto('/stats');
+    await page.getByPlaceholder('Search surveyors…').fill(handle);
+    await page.getByRole('button', { name: `@${handle}`, exact: true }).click();
+
+    await expect(page.getByText(`Surveys by @${handle}`)).toBeVisible();
+    await expect(page.getByPlaceholder('Search surveyors…')).not.toBeVisible();
+    await expect(page).toHaveURL(
+      new RegExp(`surveyedBy=${encodeURIComponent(DID)}`),
+    );
   });
 });
 
@@ -283,5 +353,71 @@ test.describe('/api/stats', () => {
     const body = await resp.json();
     const taxonIds = body.taxa.map((t: { taxonId: string }) => t.taxonId);
     expect(taxonIds).not.toContain('https://www.inaturalist.org/taxa/99999');
+  });
+
+  test('returns 422 when surveyedBy is not a valid DID', async ({
+    request,
+  }) => {
+    const params = new URLSearchParams({
+      protocols: protocolAtUri,
+      surveyedBy: 'not-a-did',
+    });
+    const resp = await request.get(`/api/stats?${params}`);
+    expect(resp.status()).toBe(422);
+  });
+
+  test('surveyedBy restricts survey counts to that surveyor alone', async ({
+    request,
+    sql,
+  }) => {
+    const otherDid = 'did:test:stats-spec-other';
+    await sql`
+      INSERT INTO users (did, handle) VALUES (${otherDid}, 'other-surveyor')
+      ON CONFLICT (did) DO NOTHING
+    `;
+    try {
+      await seedSurvey(sql, otherDid, protocolAtUri);
+
+      // beforeEach already seeded one survey for DID, so with both surveyors
+      // counted the protocol shows two.
+      const unfiltered = await request.get(
+        `/api/stats?${new URLSearchParams({ protocols: protocolAtUri })}`,
+      );
+      expect((await unfiltered.json()).surveyCount).toBe(2);
+
+      const filteredToDid = await request.get(
+        `/api/stats?${new URLSearchParams({ protocols: protocolAtUri, surveyedBy: DID })}`,
+      );
+      expect((await filteredToDid.json()).surveyCount).toBe(1);
+
+      const filteredToOther = await request.get(
+        `/api/stats?${new URLSearchParams({ protocols: protocolAtUri, surveyedBy: otherDid })}`,
+      );
+      expect((await filteredToOther.json()).surveyCount).toBe(1);
+    } finally {
+      await teardownDid(sql, otherDid);
+    }
+  });
+
+  test('surveyedBy alone (no protocols) aggregates across every protocol the user has surveyed under', async ({
+    request,
+    sql,
+  }) => {
+    const { protocolRkey: secondRkey } = await seedProtocol(
+      sql,
+      DID,
+      'Second Test Protocol',
+    );
+    const secondProtocolAtUri = `at://${DID}/bio.cuanto.surveyProtocol/${secondRkey}`;
+    await seedSurvey(sql, DID, secondProtocolAtUri);
+
+    // beforeEach already seeded one survey under protocolAtUri; this adds a
+    // second survey under a different protocol, so a surveyCount of 2 here
+    // only holds if surveyedBy alone isn't implicitly scoped to one protocol.
+    const params = new URLSearchParams({ surveyedBy: DID });
+    const resp = await request.get(`/api/stats?${params}`);
+    expect(resp.status()).toBe(200);
+    const body = await resp.json();
+    expect(body.surveyCount).toBe(2);
   });
 });

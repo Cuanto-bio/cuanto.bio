@@ -16,10 +16,17 @@ vi.mock('./auth', () => ({
   isScopeSufficient: vi.fn(),
 }));
 
+const mockLog = vi.hoisted(() => ({ warn: vi.fn(), error: vi.fn() }));
+vi.mock('$lib/server/logger', () => ({
+  default: { child: () => mockLog },
+}));
+
 import sql from '$lib/server/db';
 import { getClient, isScopeSufficient } from './auth';
 import {
   createRecord,
+  fetchAvatarUrl,
+  fetchBskyProfile,
   fetchWithRetry,
   isPdsSessionError,
   PdsScopeInsufficientError,
@@ -214,5 +221,168 @@ describe('withSessionErrorHandling scope check (via createRecord)', () => {
 
     expect(result).toEqual({ uri: 'at://x/bio.cuanto.survey/z', cid: 'bafy' });
     expect(fetchHandler).toHaveBeenCalledOnce();
+  });
+});
+
+describe('fetchBskyProfile', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test('returns avatar, displayName, and description on success', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            avatar: 'https://example.com/avatar.jpg',
+            displayName: 'Ken-ichi',
+            description: 'Naturalist',
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    const profile = await fetchBskyProfile('did:plc:test');
+
+    expect(profile).toEqual({
+      avatar: 'https://example.com/avatar.jpg',
+      displayName: 'Ken-ichi',
+      description: 'Naturalist',
+    });
+    vi.unstubAllGlobals();
+  });
+
+  // An account with no avatar, displayName, or description has nothing
+  // resembling an app.bsky.actor.profile worth showing as a Bluesky profile,
+  // so callers should treat it the same as no profile at all.
+  test('returns null when avatar, displayName, and description are all absent', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({}), { status: 200 })),
+    );
+
+    expect(await fetchBskyProfile('did:plc:test')).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  test('returns a profile when only description is set', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ description: 'Naturalist' }), {
+          status: 200,
+        }),
+      ),
+    );
+
+    const profile = await fetchBskyProfile('did:plc:test');
+
+    expect(profile).toEqual({
+      avatar: null,
+      displayName: null,
+      description: 'Naturalist',
+    });
+    vi.unstubAllGlobals();
+  });
+
+  // Bluesky's getProfile returns displayName: "" (not an absent field) for an
+  // account that never set one, e.g. {"displayName":"","avatar":"..."}. Only
+  // nullish-coalescing that would leave callers rendering an empty heading.
+  test('treats an empty-string displayName/description as absent', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            avatar: 'https://example.com/avatar.jpg',
+            displayName: '',
+            description: '',
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    const profile = await fetchBskyProfile('did:plc:test');
+
+    expect(profile).toEqual({
+      avatar: 'https://example.com/avatar.jpg',
+      displayName: null,
+      description: null,
+    });
+    vi.unstubAllGlobals();
+  });
+
+  // A non-ok response and a genuinely absent profile both return null, which
+  // otherwise makes a rate limit or outage indistinguishable from "this
+  // account has no Bluesky profile" -- both from the profile page and from
+  // whoever is trying to debug why it's not showing up.
+  test('returns null and logs a warning when the profile request fails', async () => {
+    mockLog.warn.mockClear();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('not found', { status: 404 })),
+    );
+
+    expect(await fetchBskyProfile('did:plc:test')).toBeNull();
+    expect(mockLog.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ did: 'did:plc:test', status: 404 }),
+      expect.any(String),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  test('returns null and logs an error when the fetch throws', async () => {
+    mockLog.error.mockClear();
+    const err = new Error('network down');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(err));
+
+    expect(await fetchBskyProfile('did:plc:test')).toBeNull();
+    expect(mockLog.error).toHaveBeenCalledWith(
+      expect.objectContaining({ did: 'did:plc:test', err }),
+      expect.any(String),
+    );
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('fetchAvatarUrl', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  test('returns just the avatar from the Bluesky profile', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            avatar: 'https://example.com/avatar.jpg',
+            displayName: 'Ken-ichi',
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    expect(await fetchAvatarUrl('did:plc:test')).toBe(
+      'https://example.com/avatar.jpg',
+    );
+  });
+
+  test('returns null when there is no avatar', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({}), { status: 200 })),
+    );
+
+    expect(await fetchAvatarUrl('did:plc:test')).toBeNull();
   });
 });

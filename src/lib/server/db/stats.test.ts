@@ -48,10 +48,11 @@ const targetRow = {
 
 // The implementation creates sql fragments (for conditional clauses and the
 // shared CTE/expression) before running the five main queries. Without optional
-// params: 5 fragment calls + 5 main = 10. With bbox: 6 fragment calls + 5 main
-// = 11. Each call to sql() is counted by the mock.
-const FRAGMENT_CALLS_BASE = 5; // startFilter, endFilter, bboxSurveyFilter (empty), binned, sum
-const FRAGMENT_CALLS_BBOX = 6; // the above plus bboxEnvelope
+// params: 7 fragment calls + 5 main = 12. With bbox: 8 fragment calls + 5 main
+// = 13. Each call to sql() is counted by the mock.
+const FRAGMENT_CALLS_BASE = 7; // startFilter, endFilter, bboxSurveyFilter (empty),
+// didFilter (empty), protocolFilter, binned, sum
+const FRAGMENT_CALLS_BBOX = 8; // the above plus bboxEnvelope
 
 function setupMockWithData(extraFragments = 0) {
   const totalFragments = FRAGMENT_CALLS_BASE + extraFragments;
@@ -73,6 +74,16 @@ beforeEach(() => {
 });
 
 describe('getProtocolStats', () => {
+  // The HTTP layer (/api/stats/+server.ts) already validates this, but that
+  // guard living only there meant any future direct caller -- a script, a
+  // new route -- would silently get an unscoped, database-wide aggregate
+  // instead of an error. Enforce it here too.
+  test('throws when neither protocolUris nor surveyedBy is provided', async () => {
+    await expect(getProtocolStats({ protocolUris: [] })).rejects.toThrow(
+      /protocol|surveyedBy/i,
+    );
+  });
+
   test('returns correctly shaped result with data', async () => {
     setupMockWithData();
     const result = await getProtocolStats({ protocolUris: [PROTOCOL_URI] });
@@ -158,6 +169,63 @@ describe('getProtocolStats', () => {
     expect(result.surveyCount).toBe(2);
     expect(result.taxa).toHaveLength(1);
     expect(result.targets).toHaveLength(1);
+  });
+
+  test('accepts optional surveyedBy without error', async () => {
+    setupMockWithData();
+    const result = await getProtocolStats({
+      protocolUris: [PROTOCOL_URI],
+      surveyedBy: 'did:test:surveyor',
+    });
+    expect(result.surveyCount).toBe(2);
+    expect(result.taxa).toHaveLength(1);
+    expect(result.targets).toHaveLength(1);
+  });
+
+  test('threads the surveyedBy did into a surveys.did filter fragment', async () => {
+    setupMockWithData();
+    await getProtocolStats({
+      protocolUris: [PROTOCOL_URI],
+      surveyedBy: 'did:test:surveyor',
+    });
+    // biome-ignore lint/suspicious/noExplicitAny: sql mock needs any cast
+    const mock = vi.mocked(sql as any);
+    const didFilterCall = mock.mock.calls.find(
+      (call: unknown[]) =>
+        Array.isArray(call[0]) &&
+        (call[0] as string[]).join('').includes('s.did ='),
+    );
+    expect(didFilterCall).toBeDefined();
+    expect(didFilterCall?.[1]).toBe('did:test:surveyor');
+  });
+
+  // Empty protocolUris + surveyedBy is how a profile page links to "all my
+  // surveys" without enumerating every protocol the user has ever used.
+  test('accepts an empty protocolUris array when surveyedBy is set', async () => {
+    setupMockWithData();
+    const result = await getProtocolStats({
+      protocolUris: [],
+      surveyedBy: 'did:test:surveyor',
+    });
+    expect(result.surveyCount).toBe(2);
+    expect(result.taxa).toHaveLength(1);
+    expect(result.targets).toHaveLength(1);
+  });
+
+  test('omits the protocol filter fragments when protocolUris is empty', async () => {
+    setupMockWithData();
+    await getProtocolStats({
+      protocolUris: [],
+      surveyedBy: 'did:test:surveyor',
+    });
+    // biome-ignore lint/suspicious/noExplicitAny: sql mock needs any cast
+    const mock = vi.mocked(sql as any);
+    const protocolFilterCall = mock.mock.calls.find(
+      (call: unknown[]) =>
+        Array.isArray(call[0]) &&
+        (call[0] as string[]).join('').includes('protocol_uri = ANY'),
+    );
+    expect(protocolFilterCall).toBeUndefined();
   });
 });
 

@@ -276,6 +276,13 @@ export async function getProtocolsPageByDid(
   return rows.map((r) => toProtocol(r, []));
 }
 
+export async function countProtocolsByDid(did: string): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    SELECT COUNT(*)::int AS count FROM survey_protocols WHERE did = ${did}
+  `;
+  return row?.count ?? 0;
+}
+
 export type ProtocolSearchResult = {
   atUri: string;
   handle: string;

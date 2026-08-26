@@ -350,7 +350,7 @@ const collapsibleActions = $derived.by(() => {
 
   <div class="text-muted-foreground text-xs mb-1">PROTOCOL</div>
   <h1>{protocol.record.title}</h1>
-  <Handle handle={protocol.handle} avatarUrl={protocol.avatarUrl} />
+  <Handle handle={protocol.handle} avatarUrl={protocol.avatarUrl} link />
   {@html sanitizeHtml(protocol.record.description ?? '')}
 
   <div class="mt-2 flex flex-col items-start gap-3">

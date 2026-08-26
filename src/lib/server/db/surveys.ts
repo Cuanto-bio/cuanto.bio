@@ -161,6 +161,13 @@ export async function countSurveysByDidAndProtocol(
   return row?.count ?? 0;
 }
 
+export async function countSurveysByDid(did: string): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    SELECT COUNT(*)::int AS count FROM surveys WHERE did = ${did}
+  `;
+  return row?.count ?? 0;
+}
+
 export function groupOccurrencesBySurvey(
   occurrences: (OccurrenceRowForSurvey & {
     identification?: Occurrence['identification'];
@@ -232,6 +239,9 @@ export async function getSurveysPage(
   const wheres = [];
   if (params.protocolUris && params.protocolUris.length > 0) {
     wheres.push(sql`s.protocol_uri IN ${sql(params.protocolUris)}`);
+  }
+  if (params.surveyedBy) {
+    wheres.push(sql`s.did = ${params.surveyedBy}`);
   }
   if (params.taxonID) {
     wheres.push(sql`EXISTS (

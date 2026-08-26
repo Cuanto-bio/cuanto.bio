@@ -11,8 +11,12 @@ type Props = {
     avatarUrl?: string | null;
   };
   children?: Snippet;
+  // Every call site but one already wraps its <SurveyCard> in its own <a> to
+  // the survey itself, where a self-link on the handle would nest anchors.
+  // Defaults to false to match; the unwrapped call site opts in.
+  linkHandle?: boolean;
 };
-let { survey, currentUser, children }: Props = $props();
+let { survey, currentUser, children, linkHandle = false }: Props = $props();
 
 const isSurvey = (s: Survey | PendingSurvey): s is Survey => 'record' in s;
 
@@ -50,9 +54,9 @@ function formatDuration(value: number | null, unit: string | null): string {
 <Card.Root class="hover:bg-muted transition-colors">
   <Card.Header>
     {#if isSurvey(survey)}
-      <Handle handle={survey.handle} avatarUrl={survey.avatarUrl} />
+      <Handle handle={survey.handle} avatarUrl={survey.avatarUrl} link={linkHandle} />
     {:else if currentUser}
-      <Handle handle={currentUser.handle} avatarUrl={currentUser.avatarUrl} />
+      <Handle handle={currentUser.handle} avatarUrl={currentUser.avatarUrl} link={linkHandle} />
     {/if}
     <Card.Title>{survey.protocolTitle}</Card.Title>
   </Card.Header>

@@ -109,6 +109,18 @@ describe('GET /api/stats — validation', () => {
     );
     expect(resp.status).toBe(422);
   });
+
+  test('returns 422 when surveyedBy is not a valid DID', async () => {
+    const resp = await callGet(
+      `?protocols=${PROTOCOL_URI}&surveyedBy=not-a-did`,
+    );
+    expect(resp.status).toBe(422);
+  });
+
+  test('returns 422 when neither protocols nor surveyedBy is provided', async () => {
+    const resp = await callGet('?start=2026-06-01T00:00:00Z');
+    expect(resp.status).toBe(422);
+  });
 });
 
 describe('GET /api/stats — success', () => {
@@ -156,6 +168,33 @@ describe('GET /api/stats — success', () => {
     await callGet(`?protocols=${PROTOCOL_URI}`);
     expect(getProtocolStats).toHaveBeenCalledWith(
       expect.objectContaining({ bbox: undefined }),
+    );
+  });
+
+  test('passes surveyedBy to getProtocolStats when provided', async () => {
+    await callGet(`?protocols=${PROTOCOL_URI}&surveyedBy=did:plc:abc123`);
+    expect(getProtocolStats).toHaveBeenCalledWith(
+      expect.objectContaining({ surveyedBy: 'did:plc:abc123' }),
+    );
+  });
+
+  test('passes undefined surveyedBy to getProtocolStats when absent', async () => {
+    await callGet(`?protocols=${PROTOCOL_URI}`);
+    expect(getProtocolStats).toHaveBeenCalledWith(
+      expect.objectContaining({ surveyedBy: undefined }),
+    );
+  });
+
+  // The profile page links here with only surveyedBy, so this must not
+  // require a protocols list.
+  test('returns 200 with an empty protocolUris list when only surveyedBy is provided', async () => {
+    const resp = await callGet('?surveyedBy=did:plc:abc123');
+    expect(resp.status).toBe(200);
+    expect(getProtocolStats).toHaveBeenCalledWith(
+      expect.objectContaining({
+        protocolUris: [],
+        surveyedBy: 'did:plc:abc123',
+      }),
     );
   });
 });

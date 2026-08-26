@@ -7,6 +7,7 @@ import {
   hasUnresolvedIncidentals,
   shouldResumeTrackRecording,
   surveyGeometry,
+  urlToSurveyParams,
   validatePastTiming,
   validateSurveyorCount,
 } from './surveys';
@@ -342,5 +343,19 @@ describe('surveyGeometry', () => {
     expect(geom.latitude).toBe('37.5');
     expect(geom.bbox).toBeUndefined();
     expect(geom.track).toBeUndefined();
+  });
+});
+
+describe('urlToSurveyParams', () => {
+  test('parses surveyedBy from the URL', () => {
+    const params = urlToSurveyParams(
+      new URL('https://example.com/surveys?surveyedBy=did:plc:abc123'),
+    );
+    expect(params.surveyedBy).toBe('did:plc:abc123');
+  });
+
+  test('leaves surveyedBy undefined when absent', () => {
+    const params = urlToSurveyParams(new URL('https://example.com/surveys'));
+    expect(params.surveyedBy).toBeUndefined();
   });
 });

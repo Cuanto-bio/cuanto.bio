@@ -259,7 +259,7 @@ const externalLinkProps =
                 <Table.Row data-testid="survey-surveyors">
                   <Table.Head>Surveyors</Table.Head>
                   <Table.Cell class="flex flex-row gap-1">
-                    <Handle handle={survey.handle} avatarUrl={survey.avatarUrl} />
+                    <Handle handle={survey.handle} avatarUrl={survey.avatarUrl} link />
                     {#if otherSurveyorCount > 0}
                       and {otherSurveyorCount}
                       {otherSurveyorCount === 1 ? 'other' : 'others'}

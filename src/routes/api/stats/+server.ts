@@ -1,18 +1,26 @@
+import { isValidDid } from '@atproto/syntax';
 import { error, json } from '@sveltejs/kit';
 import { getProtocolStats } from '$lib/server/db/stats';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ url }) => {
   const protocolsParam = url.searchParams.get('protocols');
-  if (!protocolsParam?.trim()) {
-    error(422, 'protocols parameter is required');
-  }
   const protocolUris = protocolsParam
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (protocolUris.length === 0) {
-    error(422, 'at least one protocol URI is required');
+    ? protocolsParam
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
+
+  const surveyedByParam = url.searchParams.get('surveyedBy');
+  if (surveyedByParam && !isValidDid(surveyedByParam)) {
+    error(422, 'surveyedBy must be a valid DID');
+  }
+
+  // A surveyor alone is enough to scope the query (across every protocol
+  // they've used), so protocols is only required when surveyedBy is absent.
+  if (protocolUris.length === 0 && !surveyedByParam) {
+    error(422, 'protocols or surveyedBy parameter is required');
   }
 
   const startParam = url.searchParams.get('start');
@@ -87,6 +95,12 @@ export const GET: RequestHandler = async ({ url }) => {
     bbox = { north, south, east, west };
   }
 
-  const stats = await getProtocolStats({ protocolUris, start, end, bbox });
+  const stats = await getProtocolStats({
+    protocolUris,
+    start,
+    end,
+    bbox,
+    surveyedBy: surveyedByParam ?? undefined,
+  });
   return json(stats);
 };

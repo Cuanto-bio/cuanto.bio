@@ -261,6 +261,7 @@ async function togglePublishField(
                       ? { avatarUrl: data.avatarUrl, handle: data.handle! }
                       : undefined
                     }
+                    linkHandle
                   >
                     {#if survey.latitude && survey.longitude}
                       <label class="flex cursor-pointer items-center gap-2 text-xs text-primary-foreground/80">
