@@ -36,7 +36,6 @@ export const GET: RequestHandler = async ({ params, locals }) => {
 
   return json({
     protocol,
-    handle: params.handle,
     followerCount,
     followerPreview,
     isFollowing,

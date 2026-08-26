@@ -15,7 +15,7 @@ function formatDuration(value: number | null, unit: string | null): string {
 </script>
 
 <main>
-  <h1 class="mb-6 text-2xl font-semibold">@{data.handle}'s Surveys</h1>
+  <h1 class="mb-6 text-2xl font-semibold">@{data.ownerHandle}'s Surveys</h1>
 
   {#if data.surveys.length === 0}
     <p class="text-muted-foreground text-sm">No surveys yet.</p>
@@ -23,11 +23,11 @@ function formatDuration(value: number | null, unit: string | null): string {
     <ul class="flex flex-col gap-3">
       {#each data.surveys as survey (survey.atUri)}
         <li>
-          <a href="/surveys/{data.handle}/{survey.rkey}">
+          <a href="/surveys/{data.ownerHandle}/{survey.rkey}">
             <SurveyCard
               survey={survey}
-              currentUser={data.handle
-                ? { avatarUrl: data.avatarUrl, handle: data.handle! }
+              currentUser={data.ownerHandle
+                ? { avatarUrl: data.avatarUrl, handle: data.ownerHandle! }
                 : undefined
               }
             />

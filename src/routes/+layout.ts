@@ -4,6 +4,17 @@ import type { LayoutLoad } from './$types';
 
 // No root server layout exists, so this load only runs client-side.
 export const load: LayoutLoad = async ({ url }) => {
+  // did/handle/avatarUrl carry the *signed-in visitor's* identity all the way
+  // down the layout chain (app/+layout.ts and the per-section
+  // protocols|stats|surveys/+layout.server.ts each re-derive and reassert
+  // them). SvelteKit merges page data over layout data by key, so any
+  // descendant `load` that reuses one of these three bare names for a
+  // different subject (a profile being viewed, a protocol's owner, etc.)
+  // silently overwrites the visitor's own identity for the sidebar and nav.
+  // Prefix it instead (profileHandle, ownerHandle, ...). Bitten by this four
+  // separate times: 6929a35 (profile pages), and
+  // https://tangled.org/cuanto.bio/cuanto.bio/issues/60 (protocol/survey
+  // list and detail pages) and #62 (the /app protocol detail page too).
   const signedOut = {
     did: undefined,
     handle: null as string | null,

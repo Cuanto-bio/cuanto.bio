@@ -39,6 +39,10 @@
 # Frontend
 * ALWAYS look for an appropriate shadcn component, even if not installed
 * ALWAYS try to use appropriate theme colors in layout.css; if tempted to add custom colors, ask the user
+* NEVER return a bare `did`, `handle`, or `avatarUrl` from a `load` function unless it's the
+  signed-in visitor's own identity. SvelteKit merges page data over layout data by key, and those
+  three keys carry the visitor's identity down from src/routes/+layout.ts. Prefix it instead
+  (`profileHandle`, `ownerHandle`, ...). See the comment in src/routes/+layout.ts.
 
 # Logging
 * Use the pino-based logger in src/lib/logger.ts

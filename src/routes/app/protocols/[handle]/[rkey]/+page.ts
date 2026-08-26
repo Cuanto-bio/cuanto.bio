@@ -26,7 +26,6 @@ function toPageData(
 ) {
   return {
     protocol: cachedProtocol,
-    handle: cachedProtocol.handle,
     isFollowing,
     offline,
   };

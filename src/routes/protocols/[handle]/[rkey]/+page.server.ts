@@ -31,7 +31,6 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 
   return {
     protocol,
-    handle: params.handle,
     followerCount,
     followerPreview,
     activity,
