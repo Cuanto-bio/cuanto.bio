@@ -36,13 +36,38 @@ function haversineMeters(a: GpsTrackPoint, b: GpsTrackPoint): number {
   return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
-// Straight-line distance between consecutive fixes, summed. Gaps (app
-// backgrounded, signal lost) are bridged rather than skipped: the surveyor
-// still walked that ground, even if we have no fixes along it.
+// Points may lack accuracy (e.g. resumed or parsed tracks). Treat a missing
+// value as zero radius so we never filter out movement we can't vouch for.
+function accuracyOf(p: GpsTrackPoint): number {
+  return p.accuracy ?? 0;
+}
+
+// Straight-line distance between fixes, summed, with an accuracy-aware noise
+// gate: consecutive fixes recorded while standing still still wander within
+// their reported accuracy circle, and without this that wander gets counted
+// as distance traveled. We keep an anchor point fixed until a fix falls
+// outside the *combined* accuracy circle of the anchor and the candidate (the
+// sum of their radii, below which the two fixes can't be distinguished from
+// the same true location), then count the full jump from the anchor and move
+// it there. Comparing against a persistent anchor, rather than only the
+// immediately preceding point, means slow real drift still accumulates and
+// eventually registers once it clears the anchor's noise circle, instead of
+// being silently absorbed one sub-threshold hop at a time forever.
+//
+// Gaps (app backgrounded, signal lost) are bridged rather than skipped: the
+// surveyor still walked that ground, even if we have no fixes along it.
 export function trackDistanceMeters(points: GpsTrackPoint[]): number {
+  if (points.length === 0) return 0;
+  let anchor = points[0];
   let total = 0;
   for (let i = 1; i < points.length; i++) {
-    total += haversineMeters(points[i - 1], points[i]);
+    const cand = points[i];
+    const distance = haversineMeters(anchor, cand);
+    const threshold = accuracyOf(anchor) + accuracyOf(cand);
+    if (distance > threshold) {
+      total += distance;
+      anchor = cand;
+    }
   }
   return total;
 }

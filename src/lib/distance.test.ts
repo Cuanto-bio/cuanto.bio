@@ -11,9 +11,23 @@ import type { GpsTrackPoint } from './gpx';
 
 const t0 = new Date('2026-05-27T10:00:00.000Z').getTime();
 
-function pt(lat: number, lng: number, offsetMs = 0): GpsTrackPoint {
-  return { lat, lng, timestamp: t0 + offsetMs };
+function pt(
+  lat: number,
+  lng: number,
+  offsetMs = 0,
+  accuracy?: number,
+): GpsTrackPoint {
+  return { lat, lng, timestamp: t0 + offsetMs, accuracy };
 }
+
+// Latitude reached by moving `meters` due north of `lat`, for building test
+// points at a known, small distance apart without depending on the function
+// under test to compute it.
+function northOf(lat: number, meters: number): number {
+  return lat + (meters / 6_371_008.8) * (180 / Math.PI);
+}
+
+const sf = { lat: 37.7749, lng: -122.4194 };
 
 describe('trackDistanceMeters', () => {
   test('returns 0 for an empty track', () => {
@@ -73,6 +87,47 @@ describe('trackDistanceMeters', () => {
     const meters = trackDistanceMeters([pt(0, 179.5), pt(0, -179.5, 1000)]);
     // One degree apart, not 359.
     expect(meters).toBeLessThan(112_000);
+  });
+});
+
+describe('trackDistanceMeters accuracy-aware jitter filtering', () => {
+  test('ignores jitter within the combined accuracy circle (stationary)', () => {
+    const p0 = pt(sf.lat, sf.lng, 0, 8);
+    const p1 = pt(northOf(sf.lat, 5), sf.lng, 1000, 8);
+    const p2 = pt(northOf(sf.lat, -3), sf.lng, 2000, 8);
+    const p3 = pt(northOf(sf.lat, 6), sf.lng, 3000, 8);
+    expect(trackDistanceMeters([p0, p1, p2, p3])).toBe(0);
+  });
+
+  test('still counts a movement that exceeds the combined accuracy circle', () => {
+    const p0 = pt(sf.lat, sf.lng, 0, 5);
+    const p1 = pt(northOf(sf.lat, 50), sf.lng, 1000, 5);
+    expect(trackDistanceMeters([p0, p1])).toBeCloseTo(50, 0);
+  });
+
+  test('does not inflate a real walk with jitter before or after it', () => {
+    const p0 = pt(sf.lat, sf.lng, 0, 8);
+    const p1 = pt(northOf(sf.lat, 4), sf.lng, 1000, 8); // jitter near start
+    const p2 = pt(northOf(sf.lat, 100), sf.lng, 2000, 8); // real walk
+    const p3 = pt(northOf(sf.lat, 105), sf.lng, 3000, 8); // jitter near end
+    expect(trackDistanceMeters([p0, p1, p2, p3])).toBeCloseTo(100, 0);
+  });
+
+  test('accumulates slow real drift once it clears the noise threshold, even though each step alone would not', () => {
+    const acc = 2; // combined threshold with itself: 4 m
+    const points = [0, 1.5, 3, 4.5, 6, 7.5, 9].map((meters, i) =>
+      pt(northOf(sf.lat, meters), sf.lng, i * 1000, acc),
+    );
+    // Real distance traveled is 9 m, even though a filter that only compared
+    // each point to its immediate predecessor (1.5 m hops, each under the
+    // 4 m threshold) would never register any movement at all.
+    expect(trackDistanceMeters(points)).toBeCloseTo(9, 0);
+  });
+
+  test('does not filter movement when accuracy is missing on either point', () => {
+    const p0 = pt(sf.lat, sf.lng, 0);
+    const p1 = pt(northOf(sf.lat, 3), sf.lng, 1000);
+    expect(trackDistanceMeters([p0, p1])).toBeCloseTo(3, 0);
   });
 });
 
