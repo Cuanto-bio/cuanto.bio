@@ -1,0 +1,31 @@
+{
+  "lexicon": 1,
+  "id": "bio.cuanto.authFull",
+  "defs": {
+    "main": {
+      "type": "permission-set",
+      "title": "Full Cuanto.bio access",
+      "title:langs": {
+        "es-ES": "Acceso completo a Cuanto.bio",
+        "es-MX": "Acceso completo a Cuanto.bio"
+      },
+      "detail": "Create and update Cuanto.bio surveys and protocols and follow protocols.",
+      "detail:langs": {
+        "es-ES": "Crea y actualiza encuestas y protocolos en Cuanto.bio y sigue los protocolos.",
+        "es-MX": "Crea y actualiza encuestas y protocolos en Cuanto.bio y sigue los protocolos."
+      },
+      "permissions": [
+        {
+          "resource": "repo",
+          "type": "permission",
+          "collection": [
+            "bio.cuanto.survey",
+            "bio.cuanto.surveyProtocol",
+            "bio.cuanto.surveyProtocol.follow",
+            "bio.cuanto.surveyTarget"
+          ]
+        }
+      ]
+    }
+  }
+}

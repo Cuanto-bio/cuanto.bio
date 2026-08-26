@@ -57,16 +57,13 @@ class PgSessionStore {
   }
 }
 
-// Collections Cuanto reads and writes in the user's own repo. Keep in sync with
-// the lexicons under src/lib/lexicons/bio (their $nsid values). Used to build a
-// granular OAuth scope so the consent screen names only what the app touches,
-// instead of the alarming, do-anything `transition:generic` (issue #18).
+// Collections Cuanto reads and writes in the user's own repo *except* for
+// those specified in the bio.cuanto.authFull permission set. Keep in sync
+// with the lexicons under src/lib/lexicons/bio (their $nsid values). Used to
+// build a granular OAuth scope so the consent screen names only what the app
+// touches, instead of the alarming, do-anything `transition:generic`
+// (issue #18).
 const REPO_COLLECTIONS = [
-  'bio.cuanto.surveyProtocol',
-  'bio.cuanto.surveyProtocol.follow',
-  'bio.cuanto.protocolTarget',
-  'bio.cuanto.survey',
-  'bio.cuanto.surveyTarget',
   'bio.lexicons.temp.v0-1.occurrence',
   'bio.lexicons.temp.v0-1.identification',
   'bio.lexicons.temp.v0-1.media',
@@ -85,20 +82,17 @@ const LEGACY_DELETE_COLLECTIONS = [
   'bio.lexicons.temp.survey',
 ];
 
-// Granular permission scope (https://atproto.com/specs/permission):
-// - `atproto`: required base scope (session + identity resolution).
-// - `repo:<nsid>`: create/update/delete records in each collection above. All
-//   of the app's PDS writes go through com.atproto.repo.* which this covers.
-// - `repo:<legacy>?action=delete`: let the migration cleanup delete old records.
-// - `blob:*/*`: upload GPX track blobs and photos (com.atproto.repo.uploadBlob).
-// NOTE: not yet verified against a live PDS OAuth flow — see
-// docs/2026-07-05-issue-18-oauth-scopes.md before deploying. `identity`/`rpc`
-// (guessed in the issue) appear unnecessary: the app never changes the user's
-// handle and makes no appview RPC calls.
+// Granular permission scope (https://atproto.com/specs/permission)
 const SCOPE = [
+  // required for basic identity resolution
   'atproto',
+  // atproto permission set of bio.cuanto.* lexicons
+  'include:bio.cuanto.authFull',
+  // all the other lexicons we need full access to, including bio.lexicons.*
   ...REPO_COLLECTIONS.map((nsid) => `repo:${nsid}`),
+  // lexicons we've used in the past that we might need to clean up
   ...LEGACY_DELETE_COLLECTIONS.map((nsid) => `repo:${nsid}?action=delete`),
+  // we use blobs for GPX tracks
   'blob:*/*',
 ].join(' ');
 
@@ -141,6 +135,7 @@ function buildClientMetadata() {
     client_id: publicEnv.PUBLIC_OAUTH_CLIENT_ID,
     client_name: 'Cuanto.bio',
     client_uri: publicEnv.PUBLIC_URL,
+    logo_uri: `${publicEnv.PUBLIC_URL}/favicon.svg`,
     redirect_uris: [`${publicEnv.PUBLIC_URL}/oauth/callback`],
     scope: SCOPE,
     grant_types: ['authorization_code', 'refresh_token'],
