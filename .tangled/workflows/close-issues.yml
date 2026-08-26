@@ -118,6 +118,7 @@ steps:
         # needs no session (see "Build tang" above).
         view=$(.ci-tools/tang issue view "$n" -R cuanto.bio/cuanto.bio --json)
         uri=$(printf '%s' "$view" | jq -r '.uri // empty')
+        cid=$(printf '%s' "$view" | jq -r '.cid // empty')
 
         if [ -z "$uri" ]; then
           echo "::warning::commit $TANGLED_SHA references #$n, but it did not resolve" >&2
@@ -158,7 +159,7 @@ steps:
         fi
 
         # Closing is an append, not an edit: a new sh.tangled.repo.issue.state
-        # record pointing at the issue, same shape as an issue comment.
+        # record pointing at the issue.
         curl -fsS -X POST "$PDS/xrpc/com.atproto.repo.createRecord" \
           -H "Authorization: Bearer $jwt" \
           -H 'Content-Type: application/json' \
@@ -174,18 +175,36 @@ steps:
 
         # Leave a comment pointing at the commit that closed it: Tangled
         # doesn't linkify a bare hash in issue text, so this is a full URL.
+        # Comments live in sh.tangled.feed.comment now, not
+        # sh.tangled.repo.issue.comment: the old collection is still a
+        # defined lexicon (the state-closing record above still works), but
+        # the AppView no longer renders new records posted to it -- confirmed
+        # against the current lexicon source and two independent third-party
+        # SDKs that already build against sh.tangled.feed.comment, after a
+        # comment posted to the old collection here didn't show up on the
+        # issue page. Its "subject" is a com.atproto.repo.strongRef, so it
+        # needs the issue's cid, not just its uri.
         commit_url="https://tangled.org/cuanto.bio/cuanto.bio/commit/$TANGLED_SHA"
-        curl -fsS -X POST "$PDS/xrpc/com.atproto.repo.createRecord" \
-          -H "Authorization: Bearer $jwt" \
-          -H 'Content-Type: application/json' \
-          -d "$(jq -n \
-                  --arg repo "$did" \
-                  --arg issue "$uri" \
-                  --arg body "Closed in $commit_url" \
-                  --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-                  '{repo:$repo, collection:"sh.tangled.repo.issue.comment",
-                    record:{"$type":"sh.tangled.repo.issue.comment",
-                            issue:$issue, body:$body, createdAt:$now}}')" \
-          > /dev/null
-        echo "Closed issue #$n ($uri), commented with $commit_url"
+        if [ -n "$cid" ]; then
+          curl -fsS -X POST "$PDS/xrpc/com.atproto.repo.createRecord" \
+            -H "Authorization: Bearer $jwt" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n \
+                    --arg repo "$did" \
+                    --arg issueUri "$uri" \
+                    --arg issueCid "$cid" \
+                    --arg body "Closed in $commit_url" \
+                    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                    '{repo:$repo, collection:"sh.tangled.feed.comment",
+                      record:{"$type":"sh.tangled.feed.comment",
+                              subject:{uri:$issueUri, cid:$issueCid},
+                              body:{"$type":"sh.tangled.markup.markdown",
+                                    text:$body, original:$body},
+                              createdAt:$now}}')" \
+            > /dev/null
+          echo "Closed issue #$n ($uri), commented with $commit_url"
+        else
+          echo "::warning::closed issue #$n ($uri) but its cid didn't" \
+               "resolve, so no comment was left" >&2
+        fi
       done
