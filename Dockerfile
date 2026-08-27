@@ -2,6 +2,9 @@ FROM node:22-alpine AS builder
 RUN corepack enable
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# pnpm-workspace.yaml references patches/ via patchedDependencies; pnpm hashes
+# those files during install, so they must be present before pnpm install runs.
+COPY patches ./patches
 RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY . .
 # Railway injects service variables into the build only for stages that declare
@@ -16,6 +19,7 @@ FROM node:22-alpine
 RUN corepack enable
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches ./patches
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 COPY --from=builder /app/build ./build
 COPY scripts/migrate.ts ./scripts/migrate.ts
