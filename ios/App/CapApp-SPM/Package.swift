@@ -15,7 +15,7 @@ let package = Package(
         .package(name: "CapacitorApp", path: "../../../node_modules/.pnpm/@capacitor+app@8.1.1_@capacitor+core@8.4.2/node_modules/@capacitor/app"),
         .package(name: "CapacitorBrowser", path: "../../../node_modules/.pnpm/@capacitor+browser@8.0.4_@capacitor+core@8.4.2/node_modules/@capacitor/browser"),
         .package(name: "CapacitorHaptics", path: "../../../node_modules/.pnpm/@capacitor+haptics@8.0.2_@capacitor+core@8.4.2/node_modules/@capacitor/haptics"),
-        .package(name: "CapgoBackgroundGeolocation", path: "../../../node_modules/.pnpm/@capgo+background-geolocation@8.3.1_@capacitor+core@8.4.2/node_modules/@capgo/background-geolocation")
+        .package(name: "CapgoBackgroundGeolocation", path: "../../../node_modules/.pnpm/@capgo+background-geolocation@8.3.1_patch_hash=a03e194c9b42ea7411fe4b32b7fc676e51023654_64dd6e1d89da58cc1d1b64faedf054fd/node_modules/@capgo/background-geolocation")
     ],
     targets: [
         .target(
