@@ -7,6 +7,8 @@ import * as RepoStrongRef from '../../../../com/atproto/repo/strongRef.defs.js'
 
 const $nsid = 'bio.lexicons.temp.v0-1.identification'
 
+type $nsid = typeof $nsid
+
 export { $nsid }
 
 /** An identification suggestion for an existing observation. Used to propose or agree with a taxonomic identification. */
@@ -63,15 +65,17 @@ type Main = {
 export type { Main }
 
 /** An identification suggestion for an existing observation. Used to propose or agree with a taxonomic identification. */
-const main = l.record<'tid', Main>(
+const main = /*#__PURE__*/ l.record<'tid', Main>(
   'tid',
   $nsid,
-  l.object({
-    occurrence: l.ref<RepoStrongRef.Main>((() => RepoStrongRef.main) as any),
-    scientificName: l.string({ maxLength: 256 }),
-    taxonRank: l.optional(
-      l.withDefault(
-        l.string<{
+  /*#__PURE__*/ l.object({
+    occurrence: /*#__PURE__*/ l.ref<RepoStrongRef.Main>(
+      (() => RepoStrongRef.main) as any,
+    ),
+    scientificName: /*#__PURE__*/ l.string({ maxLength: 256 }),
+    taxonRank: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.withDefault(
+        /*#__PURE__*/ l.string<{
           knownValues: [
             'kingdom',
             'phylum',
@@ -89,24 +93,37 @@ const main = l.record<'tid', Main>(
         'species',
       ),
     ),
-    kingdom: l.optional(l.string({ maxLength: 64 })),
-    taxonID: l.optional(l.string({ format: 'uri' })),
-    identificationRemarks: l.optional(l.string({ maxLength: 3000 })),
-    vernacularName: l.optional(l.string({ maxLength: 256 })),
+    kingdom: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string({ maxLength: 64 }),
+    ),
+    taxonID: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string({ format: 'uri' }),
+    ),
+    identificationRemarks: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string({ maxLength: 3000 }),
+    ),
+    vernacularName: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string({ maxLength: 256 }),
+    ),
   }),
 )
 
 export { main }
 
-export const $isTypeOf = /*#__PURE__*/ main.isTypeOf.bind(main),
-  $build = /*#__PURE__*/ main.build.bind(main),
-  $type = /*#__PURE__*/ main.$type
-export const $assert = /*#__PURE__*/ main.assert.bind(main),
-  $check = /*#__PURE__*/ main.check.bind(main),
-  $cast = /*#__PURE__*/ main.cast.bind(main),
-  $ifMatches = /*#__PURE__*/ main.ifMatches.bind(main),
-  $matches = /*#__PURE__*/ main.matches.bind(main),
-  $parse = /*#__PURE__*/ main.parse.bind(main),
-  $safeParse = /*#__PURE__*/ main.safeParse.bind(main),
-  $validate = /*#__PURE__*/ main.validate.bind(main),
-  $safeValidate = /*#__PURE__*/ main.safeValidate.bind(main)
+const $type = $nsid
+
+type $type = typeof $type
+
+export { $type }
+
+export const $isTypeOf = /*#__PURE__*/ main.isTypeOf.bind(main)
+export const $build = /*#__PURE__*/ main.build.bind(main)
+export const $assert = /*#__PURE__*/ main.assert.bind(main)
+export const $check = /*#__PURE__*/ main.check.bind(main)
+export const $cast = /*#__PURE__*/ main.cast.bind(main)
+export const $ifMatches = /*#__PURE__*/ main.ifMatches.bind(main)
+export const $matches = /*#__PURE__*/ main.matches.bind(main)
+export const $parse = /*#__PURE__*/ main.parse.bind(main)
+export const $safeParse = /*#__PURE__*/ main.safeParse.bind(main)
+export const $validate = /*#__PURE__*/ main.validate.bind(main)
+export const $safeValidate = /*#__PURE__*/ main.safeValidate.bind(main)

@@ -7,6 +7,8 @@ import * as RepoStrongRef from '../../../../com/atproto/repo/strongRef.defs.js'
 
 const $nsid = 'bio.lexicons.temp.v0-1.occurrence'
 
+type $nsid = typeof $nsid
+
 export { $nsid }
 
 /** A biodiversity observation record following Darwin Core standards. Represents a single occurrence of an organism. */
@@ -72,43 +74,63 @@ type Main = {
 export type { Main }
 
 /** A biodiversity observation record following Darwin Core standards. Represents a single occurrence of an organism. */
-const main = l.record<'tid', Main>(
+const main = /*#__PURE__*/ l.record<'tid', Main>(
   'tid',
   $nsid,
-  l.object({
-    eventDate: l.optional(l.string()),
-    decimalLatitude: l.optional(l.string()),
-    decimalLongitude: l.optional(l.string()),
-    coordinateUncertaintyInMeters: l.optional(l.integer({ minimum: 0 })),
-    media: l.optional(
-      l.array(l.ref<RepoStrongRef.Main>((() => RepoStrongRef.main) as any), {
-        maxLength: 10,
-      }),
+  /*#__PURE__*/ l.object({
+    eventDate: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    decimalLatitude: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    decimalLongitude: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    coordinateUncertaintyInMeters: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.integer({ minimum: 0 }),
     ),
-    taxonID: l.optional(l.string({ format: 'uri' })),
-    acceptedIdentificationID: l.optional(
-      l.ref<RepoStrongRef.Main>((() => RepoStrongRef.main) as any),
+    media: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.array(
+        /*#__PURE__*/ l.ref<RepoStrongRef.Main>(
+          (() => RepoStrongRef.main) as any,
+        ),
+        { maxLength: 10 },
+      ),
     ),
-    surveyTargetID: l.optional(l.string({ format: 'at-uri' })),
-    eventID: l.optional(l.string({ format: 'at-uri' })),
-    organismQuantity: l.optional(l.string()),
-    organismQuantityType: l.optional(
-      l.string<{ knownValues: ['individuals', 'percent-cover'] }>(),
+    taxonID: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string({ format: 'uri' }),
+    ),
+    acceptedIdentificationID: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.ref<RepoStrongRef.Main>(
+        (() => RepoStrongRef.main) as any,
+      ),
+    ),
+    surveyTargetID: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string({ format: 'at-uri' }),
+    ),
+    eventID: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string({ format: 'at-uri' }),
+    ),
+    organismQuantity: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    organismQuantityType: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string<{
+        knownValues: ['individuals', 'percent-cover']
+      }>(),
     ),
   }),
 )
 
 export { main }
 
-export const $isTypeOf = /*#__PURE__*/ main.isTypeOf.bind(main),
-  $build = /*#__PURE__*/ main.build.bind(main),
-  $type = /*#__PURE__*/ main.$type
-export const $assert = /*#__PURE__*/ main.assert.bind(main),
-  $check = /*#__PURE__*/ main.check.bind(main),
-  $cast = /*#__PURE__*/ main.cast.bind(main),
-  $ifMatches = /*#__PURE__*/ main.ifMatches.bind(main),
-  $matches = /*#__PURE__*/ main.matches.bind(main),
-  $parse = /*#__PURE__*/ main.parse.bind(main),
-  $safeParse = /*#__PURE__*/ main.safeParse.bind(main),
-  $validate = /*#__PURE__*/ main.validate.bind(main),
-  $safeValidate = /*#__PURE__*/ main.safeValidate.bind(main)
+const $type = $nsid
+
+type $type = typeof $type
+
+export { $type }
+
+export const $isTypeOf = /*#__PURE__*/ main.isTypeOf.bind(main)
+export const $build = /*#__PURE__*/ main.build.bind(main)
+export const $assert = /*#__PURE__*/ main.assert.bind(main)
+export const $check = /*#__PURE__*/ main.check.bind(main)
+export const $cast = /*#__PURE__*/ main.cast.bind(main)
+export const $ifMatches = /*#__PURE__*/ main.ifMatches.bind(main)
+export const $matches = /*#__PURE__*/ main.matches.bind(main)
+export const $parse = /*#__PURE__*/ main.parse.bind(main)
+export const $safeParse = /*#__PURE__*/ main.safeParse.bind(main)
+export const $validate = /*#__PURE__*/ main.validate.bind(main)
+export const $safeValidate = /*#__PURE__*/ main.safeValidate.bind(main)

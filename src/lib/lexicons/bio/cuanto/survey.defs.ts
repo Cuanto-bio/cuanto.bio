@@ -8,6 +8,8 @@ import * as AtgeoPlace from '../../org/atgeo/place.defs.js'
 
 const $nsid = 'bio.cuanto.survey'
 
+type $nsid = typeof $nsid
+
 export { $nsid }
 
 /** An event where participants collect data required by a Survey Protocol. */
@@ -63,36 +65,49 @@ type Main = {
 export type { Main }
 
 /** An event where participants collect data required by a Survey Protocol. */
-const main = l.record<'tid', Main>(
+const main = /*#__PURE__*/ l.record<'tid', Main>(
   'tid',
   $nsid,
-  l.object({
-    protocol: l.ref<RepoStrongRef.Main>((() => RepoStrongRef.main) as any),
-    createdAt: l.string({ format: 'datetime' }),
-    samplingPerformedBy: l.optional(l.array(l.string({ format: 'did' }))),
-    surveyorCount: l.optional(l.integer()),
-    eventDate: l.optional(l.string()),
-    eventDurationUnit: l.optional(l.string()),
-    eventDurationValue: l.optional(l.integer()),
-    location: l.ref<AtgeoPlace.Main>((() => AtgeoPlace.main) as any),
-    track: l.optional(l.ref<Track>((() => track) as any)),
+  /*#__PURE__*/ l.object({
+    protocol: /*#__PURE__*/ l.ref<RepoStrongRef.Main>(
+      (() => RepoStrongRef.main) as any,
+    ),
+    createdAt: /*#__PURE__*/ l.string({ format: 'datetime' }),
+    samplingPerformedBy: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.array(/*#__PURE__*/ l.string({ format: 'did' })),
+    ),
+    surveyorCount: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.integer()),
+    eventDate: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    eventDurationUnit: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    eventDurationValue: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.integer()),
+    location: /*#__PURE__*/ l.ref<AtgeoPlace.Main>(
+      (() => AtgeoPlace.main) as any,
+    ),
+    track: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.ref<Track>((() => track) as any),
+    ),
   }),
 )
 
 export { main }
 
-export const $isTypeOf = /*#__PURE__*/ main.isTypeOf.bind(main),
-  $build = /*#__PURE__*/ main.build.bind(main),
-  $type = /*#__PURE__*/ main.$type
-export const $assert = /*#__PURE__*/ main.assert.bind(main),
-  $check = /*#__PURE__*/ main.check.bind(main),
-  $cast = /*#__PURE__*/ main.cast.bind(main),
-  $ifMatches = /*#__PURE__*/ main.ifMatches.bind(main),
-  $matches = /*#__PURE__*/ main.matches.bind(main),
-  $parse = /*#__PURE__*/ main.parse.bind(main),
-  $safeParse = /*#__PURE__*/ main.safeParse.bind(main),
-  $validate = /*#__PURE__*/ main.validate.bind(main),
-  $safeValidate = /*#__PURE__*/ main.safeValidate.bind(main)
+const $type = $nsid
+
+type $type = typeof $type
+
+export { $type }
+
+export const $isTypeOf = /*#__PURE__*/ main.isTypeOf.bind(main)
+export const $build = /*#__PURE__*/ main.build.bind(main)
+export const $assert = /*#__PURE__*/ main.assert.bind(main)
+export const $check = /*#__PURE__*/ main.check.bind(main)
+export const $cast = /*#__PURE__*/ main.cast.bind(main)
+export const $ifMatches = /*#__PURE__*/ main.ifMatches.bind(main)
+export const $matches = /*#__PURE__*/ main.matches.bind(main)
+export const $parse = /*#__PURE__*/ main.parse.bind(main)
+export const $safeParse = /*#__PURE__*/ main.safeParse.bind(main)
+export const $validate = /*#__PURE__*/ main.validate.bind(main)
+export const $safeValidate = /*#__PURE__*/ main.safeValidate.bind(main)
 
 /** A spatial path recorded during a survey. */
 type Track = {
@@ -112,12 +127,15 @@ type Track = {
 export type { Track }
 
 /** A spatial path recorded during a survey. */
-const track = l.typedObject<Track>(
+const track = /*#__PURE__*/ l.typedObject<Track>(
   $nsid,
   'track',
-  l.object({
-    gpx: l.blob({ accept: ['application/gpx+xml'], maxSize: 10000000 }),
-    source: l.string<{ knownValues: ['device', 'uploaded'] }>(),
+  /*#__PURE__*/ l.object({
+    gpx: /*#__PURE__*/ l.blob({
+      accept: ['application/gpx+xml'],
+      maxSize: 10000000,
+    }),
+    source: /*#__PURE__*/ l.string<{ knownValues: ['device', 'uploaded'] }>(),
   }),
 )
 

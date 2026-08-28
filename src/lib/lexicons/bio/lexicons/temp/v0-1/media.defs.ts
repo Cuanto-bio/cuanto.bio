@@ -6,6 +6,8 @@ import { l } from '@atproto/lex'
 
 const $nsid = 'bio.lexicons.temp.v0-1.media'
 
+type $nsid = typeof $nsid
+
 export { $nsid }
 
 /** A media record for a biodiversity observation. Stores image blobs with metadata such as alt text, aspect ratio, and license. */
@@ -38,18 +40,20 @@ type Main = {
 export type { Main }
 
 /** A media record for a biodiversity observation. Stores image blobs with metadata such as alt text, aspect ratio, and license. */
-const main = l.record<'tid', Main>(
+const main = /*#__PURE__*/ l.record<'tid', Main>(
   'tid',
   $nsid,
-  l.object({
-    image: l.blob({
+  /*#__PURE__*/ l.object({
+    image: /*#__PURE__*/ l.blob({
       accept: ['image/jpeg', 'image/png', 'image/webp'],
       maxSize: 10000000,
     }),
-    alt: l.optional(l.string({ maxLength: 1000 })),
-    aspectRatio: l.optional(l.ref<AspectRatio>((() => aspectRatio) as any)),
-    license: l.optional(
-      l.string<{
+    alt: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string({ maxLength: 1000 })),
+    aspectRatio: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.ref<AspectRatio>((() => aspectRatio) as any),
+    ),
+    license: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string<{
         knownValues: [
           'CC0-1.0',
           'CC-BY-4.0',
@@ -65,18 +69,23 @@ const main = l.record<'tid', Main>(
 
 export { main }
 
-export const $isTypeOf = /*#__PURE__*/ main.isTypeOf.bind(main),
-  $build = /*#__PURE__*/ main.build.bind(main),
-  $type = /*#__PURE__*/ main.$type
-export const $assert = /*#__PURE__*/ main.assert.bind(main),
-  $check = /*#__PURE__*/ main.check.bind(main),
-  $cast = /*#__PURE__*/ main.cast.bind(main),
-  $ifMatches = /*#__PURE__*/ main.ifMatches.bind(main),
-  $matches = /*#__PURE__*/ main.matches.bind(main),
-  $parse = /*#__PURE__*/ main.parse.bind(main),
-  $safeParse = /*#__PURE__*/ main.safeParse.bind(main),
-  $validate = /*#__PURE__*/ main.validate.bind(main),
-  $safeValidate = /*#__PURE__*/ main.safeValidate.bind(main)
+const $type = $nsid
+
+type $type = typeof $type
+
+export { $type }
+
+export const $isTypeOf = /*#__PURE__*/ main.isTypeOf.bind(main)
+export const $build = /*#__PURE__*/ main.build.bind(main)
+export const $assert = /*#__PURE__*/ main.assert.bind(main)
+export const $check = /*#__PURE__*/ main.check.bind(main)
+export const $cast = /*#__PURE__*/ main.cast.bind(main)
+export const $ifMatches = /*#__PURE__*/ main.ifMatches.bind(main)
+export const $matches = /*#__PURE__*/ main.matches.bind(main)
+export const $parse = /*#__PURE__*/ main.parse.bind(main)
+export const $safeParse = /*#__PURE__*/ main.safeParse.bind(main)
+export const $validate = /*#__PURE__*/ main.validate.bind(main)
+export const $safeValidate = /*#__PURE__*/ main.safeValidate.bind(main)
 
 /** Width and height of an image, used for proper display before loading. */
 type AspectRatio = {
@@ -88,12 +97,12 @@ type AspectRatio = {
 export type { AspectRatio }
 
 /** Width and height of an image, used for proper display before loading. */
-const aspectRatio = l.typedObject<AspectRatio>(
+const aspectRatio = /*#__PURE__*/ l.typedObject<AspectRatio>(
   $nsid,
   'aspectRatio',
-  l.object({
-    width: l.integer({ minimum: 1 }),
-    height: l.integer({ minimum: 1 }),
+  /*#__PURE__*/ l.object({
+    width: /*#__PURE__*/ l.integer({ minimum: 1 }),
+    height: /*#__PURE__*/ l.integer({ minimum: 1 }),
   }),
 )
 

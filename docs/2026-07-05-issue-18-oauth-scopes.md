@@ -111,6 +111,32 @@ grants none of the new `repo:` tokens). That's the intended behavior — it's
 what gets everyone onto the narrower grant — but is worth knowing about
 before deploying.
 
+## Update (2026-08-27): granted scope is not a literal echo of the request
+
+Live behavior, confirmed against real `oauth_sessions` rows:
+
+- **Bare `repo:<nsid>` grants create+update+delete** (open question 1 above),
+  per the spec: "If not defined, all operations are allowed."
+- **The authorization server rewrites the scope it grants.** It resolves
+  `include:bio.cuanto.authFull` and returns the expansion as the compact
+  `repo?collection=a&collection=b&…` form; it never echoes the `include:`
+  token itself. So a granted scope and the requested `SCOPE` legitimately
+  differ token-for-token while representing the same permissions.
+
+`isScopeSufficient()` originally did a literal `granted.has(token)` check for
+every requested token, so once `SCOPE` switched to `include:bio.cuanto.authFull`
+(commit `5f13578`) it returned `false` for **every** session — new ones
+included — and every PDS write threw `PdsScopeInsufficientError`, surfacing as
+a "Session expired" loop that re-authenticating could not clear.
+
+It now normalizes both sides before comparing: `include:<set>` is expanded via
+`PERMISSION_SETS`, the compact `repo?collection=` form is expanded per
+collection, bare `repo:<nsid>` is treated as all three actions, `repo:*` and
+`blob` globs are honored. `PERMISSION_SETS` is built from the generated
+permission-set lexicon (`$lib/lexicons/bio/cuanto/authFull`), so it tracks the
+consent-screen definition automatically — run `pnpm lex:gen` after editing
+`lexicons/bio/cuanto/authFull.json`.
+
 ## Manual verification checklist
 
 1. Local dev (loopback client): `pnpm dev`, sign in with a test account, confirm

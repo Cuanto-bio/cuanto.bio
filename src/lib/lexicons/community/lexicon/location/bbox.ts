@@ -3,4 +3,4 @@
  */
 
 export * from './bbox.defs.js'
-export * as $defs from './bbox.defs.js'
+export { main as default } from './bbox.defs.js'

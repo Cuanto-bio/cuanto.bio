@@ -3,4 +3,4 @@
  */
 
 export * from './identification.defs.js'
-export * as $defs from './identification.defs.js'
+export { main as default } from './identification.defs.js'

@@ -6,6 +6,8 @@ import { l } from '@atproto/lex'
 
 const $nsid = 'community.lexicon.location.address'
 
+type $nsid = typeof $nsid
+
 export { $nsid }
 
 /** A physical location in the form of a street address. */
@@ -46,30 +48,35 @@ type Main = {
 export type { Main }
 
 /** A physical location in the form of a street address. */
-const main = l.typedObject<Main>(
+const main = /*#__PURE__*/ l.typedObject<Main>(
   $nsid,
   'main',
-  l.object({
-    country: l.string({ minLength: 2, maxLength: 10 }),
-    postalCode: l.optional(l.string()),
-    region: l.optional(l.string()),
-    locality: l.optional(l.string()),
-    street: l.optional(l.string()),
-    name: l.optional(l.string()),
+  /*#__PURE__*/ l.object({
+    country: /*#__PURE__*/ l.string({ minLength: 2, maxLength: 10 }),
+    postalCode: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    region: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    locality: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    street: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    name: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
   }),
 )
 
 export { main }
 
-export const $isTypeOf = /*#__PURE__*/ main.isTypeOf.bind(main),
-  $build = /*#__PURE__*/ main.build.bind(main),
-  $type = /*#__PURE__*/ main.$type
-export const $assert = /*#__PURE__*/ main.assert.bind(main),
-  $check = /*#__PURE__*/ main.check.bind(main),
-  $cast = /*#__PURE__*/ main.cast.bind(main),
-  $ifMatches = /*#__PURE__*/ main.ifMatches.bind(main),
-  $matches = /*#__PURE__*/ main.matches.bind(main),
-  $parse = /*#__PURE__*/ main.parse.bind(main),
-  $safeParse = /*#__PURE__*/ main.safeParse.bind(main),
-  $validate = /*#__PURE__*/ main.validate.bind(main),
-  $safeValidate = /*#__PURE__*/ main.safeValidate.bind(main)
+const $type = $nsid
+
+type $type = typeof $type
+
+export { $type }
+
+export const $isTypeOf = /*#__PURE__*/ main.isTypeOf.bind(main)
+export const $build = /*#__PURE__*/ main.build.bind(main)
+export const $assert = /*#__PURE__*/ main.assert.bind(main)
+export const $check = /*#__PURE__*/ main.check.bind(main)
+export const $cast = /*#__PURE__*/ main.cast.bind(main)
+export const $ifMatches = /*#__PURE__*/ main.ifMatches.bind(main)
+export const $matches = /*#__PURE__*/ main.matches.bind(main)
+export const $parse = /*#__PURE__*/ main.parse.bind(main)
+export const $safeParse = /*#__PURE__*/ main.safeParse.bind(main)
+export const $validate = /*#__PURE__*/ main.validate.bind(main)
+export const $safeValidate = /*#__PURE__*/ main.safeValidate.bind(main)

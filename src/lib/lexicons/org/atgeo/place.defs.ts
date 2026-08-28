@@ -10,6 +10,8 @@ import * as LocationBbox from '../../community/lexicon/location/bbox.defs.js'
 
 const $nsid = 'org.atgeo.place'
 
+type $nsid = typeof $nsid
+
 export { $nsid }
 
 /** A reference to a related place record. */
@@ -35,13 +37,13 @@ type Relation = {
 export type { Relation }
 
 /** A reference to a related place record. */
-const relation = l.typedObject<Relation>(
+const relation = /*#__PURE__*/ l.typedObject<Relation>(
   $nsid,
   'relation',
-  l.object({
-    rkey: l.string({ format: 'record-key' }),
-    name: l.optional(l.string()),
-    level: l.optional(l.integer()),
+  /*#__PURE__*/ l.object({
+    rkey: /*#__PURE__*/ l.string({ format: 'record-key' }),
+    name: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    level: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.integer()),
   }),
 )
 
@@ -68,13 +70,15 @@ type Variant = {
 
 export type { Variant }
 
-const variant = l.typedObject<Variant>(
+const variant = /*#__PURE__*/ l.typedObject<Variant>(
   $nsid,
   'variant',
-  l.object({
-    name: l.string(),
-    type: l.optional(l.string()),
-    language: l.optional(l.string({ format: 'language' })),
+  /*#__PURE__*/ l.object({
+    name: /*#__PURE__*/ l.string(),
+    type: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    language: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string({ format: 'language' }),
+    ),
   }),
 )
 
@@ -129,48 +133,67 @@ type Main = {
 export type { Main }
 
 /** A geographic place with location, name, and other attributes. */
-const main = l.record<'any', Main>(
+const main = /*#__PURE__*/ l.record<'any', Main>(
   'any',
   $nsid,
-  l.object({
-    rkey: l.optional(l.string({ format: 'record-key' })),
-    locations: l.optional(
-      l.array(
-        l.typedUnion(
+  /*#__PURE__*/ l.object({
+    rkey: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string({ format: 'record-key' }),
+    ),
+    locations: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.array(
+        /*#__PURE__*/ l.typedUnion(
           [
-            l.typedRef<LocationGeo.Main>((() => LocationGeo.main) as any),
-            l.typedRef<LocationHthree.Main>((() => LocationHthree.main) as any),
-            l.typedRef<LocationAddress.Main>(
+            /*#__PURE__*/ l.typedRef<LocationGeo.Main>(
+              (() => LocationGeo.main) as any,
+            ),
+            /*#__PURE__*/ l.typedRef<LocationHthree.Main>(
+              (() => LocationHthree.main) as any,
+            ),
+            /*#__PURE__*/ l.typedRef<LocationAddress.Main>(
               (() => LocationAddress.main) as any,
             ),
-            l.typedRef<LocationBbox.Main>((() => LocationBbox.main) as any),
+            /*#__PURE__*/ l.typedRef<LocationBbox.Main>(
+              (() => LocationBbox.main) as any,
+            ),
           ],
           false,
         ),
       ),
     ),
-    name: l.string(),
-    variants: l.optional(l.array(l.ref<Variant>((() => variant) as any))),
-    attributes: l.optional(l.lexMap()),
-    published_at: l.optional(l.string({ format: 'datetime' })),
-    relations: l.optional(l.lexMap()),
+    name: /*#__PURE__*/ l.string(),
+    variants: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.array(
+        /*#__PURE__*/ l.ref<Variant>((() => variant) as any),
+      ),
+    ),
+    attributes: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.lexMap()),
+    published_at: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string({ format: 'datetime' }),
+    ),
+    relations: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.lexMap()),
   }),
 )
 
 export { main }
 
-export const $isTypeOf = /*#__PURE__*/ main.isTypeOf.bind(main),
-  $build = /*#__PURE__*/ main.build.bind(main),
-  $type = /*#__PURE__*/ main.$type
-export const $assert = /*#__PURE__*/ main.assert.bind(main),
-  $check = /*#__PURE__*/ main.check.bind(main),
-  $cast = /*#__PURE__*/ main.cast.bind(main),
-  $ifMatches = /*#__PURE__*/ main.ifMatches.bind(main),
-  $matches = /*#__PURE__*/ main.matches.bind(main),
-  $parse = /*#__PURE__*/ main.parse.bind(main),
-  $safeParse = /*#__PURE__*/ main.safeParse.bind(main),
-  $validate = /*#__PURE__*/ main.validate.bind(main),
-  $safeValidate = /*#__PURE__*/ main.safeValidate.bind(main)
+const $type = $nsid
+
+type $type = typeof $type
+
+export { $type }
+
+export const $isTypeOf = /*#__PURE__*/ main.isTypeOf.bind(main)
+export const $build = /*#__PURE__*/ main.build.bind(main)
+export const $assert = /*#__PURE__*/ main.assert.bind(main)
+export const $check = /*#__PURE__*/ main.check.bind(main)
+export const $cast = /*#__PURE__*/ main.cast.bind(main)
+export const $ifMatches = /*#__PURE__*/ main.ifMatches.bind(main)
+export const $matches = /*#__PURE__*/ main.matches.bind(main)
+export const $parse = /*#__PURE__*/ main.parse.bind(main)
+export const $safeParse = /*#__PURE__*/ main.safeParse.bind(main)
+export const $validate = /*#__PURE__*/ main.validate.bind(main)
+export const $safeValidate = /*#__PURE__*/ main.safeValidate.bind(main)
 
 /** A reference to a geographic place defined elsewhere. */
 type Ref = {
@@ -216,30 +239,38 @@ type Ref = {
 export type { Ref }
 
 /** A reference to a geographic place defined elsewhere. */
-const ref = l.typedObject<Ref>(
+const ref = /*#__PURE__*/ l.typedObject<Ref>(
   $nsid,
   'ref',
-  l.object({
-    cid: l.optional(l.string({ format: 'cid' })),
-    id: l.string({ format: 'record-key' }),
-    locations: l.optional(
-      l.array(
-        l.typedUnion(
+  /*#__PURE__*/ l.object({
+    cid: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string({ format: 'cid' })),
+    id: /*#__PURE__*/ l.string({ format: 'record-key' }),
+    locations: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.array(
+        /*#__PURE__*/ l.typedUnion(
           [
-            l.typedRef<LocationGeo.Main>((() => LocationGeo.main) as any),
-            l.typedRef<LocationHthree.Main>((() => LocationHthree.main) as any),
-            l.typedRef<LocationAddress.Main>(
+            /*#__PURE__*/ l.typedRef<LocationGeo.Main>(
+              (() => LocationGeo.main) as any,
+            ),
+            /*#__PURE__*/ l.typedRef<LocationHthree.Main>(
+              (() => LocationHthree.main) as any,
+            ),
+            /*#__PURE__*/ l.typedRef<LocationAddress.Main>(
               (() => LocationAddress.main) as any,
             ),
-            l.typedRef<LocationBbox.Main>((() => LocationBbox.main) as any),
+            /*#__PURE__*/ l.typedRef<LocationBbox.Main>(
+              (() => LocationBbox.main) as any,
+            ),
           ],
           false,
         ),
       ),
     ),
-    name: l.optional(l.string()),
-    attributes: l.optional(l.lexMap()),
-    published_at: l.optional(l.string({ format: 'datetime' })),
+    name: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    attributes: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.lexMap()),
+    published_at: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string({ format: 'datetime' }),
+    ),
   }),
 )
 

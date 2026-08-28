@@ -3,4 +3,4 @@
  */
 
 export * from './surveyTarget.defs.js'
-export * as $defs from './surveyTarget.defs.js'
+export { main as default } from './surveyTarget.defs.js'

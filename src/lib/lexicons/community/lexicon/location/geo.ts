@@ -3,4 +3,4 @@
  */
 
 export * from './geo.defs.js'
-export * as $defs from './geo.defs.js'
+export { main as default } from './geo.defs.js'

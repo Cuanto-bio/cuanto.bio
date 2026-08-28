@@ -3,4 +3,4 @@
  */
 
 export * from './protocolTarget.defs.js'
-export * as $defs from './protocolTarget.defs.js'
+export { main as default } from './protocolTarget.defs.js'

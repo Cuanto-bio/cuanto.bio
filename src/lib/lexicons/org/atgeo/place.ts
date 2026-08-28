@@ -3,4 +3,4 @@
  */
 
 export * from './place.defs.js'
-export * as $defs from './place.defs.js'
+export { main as default } from './place.defs.js'

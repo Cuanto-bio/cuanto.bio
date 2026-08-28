@@ -3,4 +3,4 @@
  */
 
 export * from './hthree.defs.js'
-export * as $defs from './hthree.defs.js'
+export { main as default } from './hthree.defs.js'

@@ -6,6 +6,8 @@ import { l } from '@atproto/lex'
 
 const $nsid = 'bio.cuanto.protocolTarget'
 
+type $nsid = typeof $nsid
+
 export { $nsid }
 
 /** Subject for surveys following a Protocol. */
@@ -21,25 +23,23 @@ type Main = {
    * One or more scope criteria defining what this target is.
    */
   scope: (
-    | l.$Typed<TaxonScope>
-    | l.$Typed<VerbatimScope>
-    | l.Unknown$TypedObject
+    l.$Typed<TaxonScope> | l.$Typed<VerbatimScope> | l.Unknown$TypedObject
   )[]
 }
 
 export type { Main }
 
 /** Subject for surveys following a Protocol. */
-const main = l.record<'tid', Main>(
+const main = /*#__PURE__*/ l.record<'tid', Main>(
   'tid',
   $nsid,
-  l.object({
-    protocol: l.string({ format: 'at-uri' }),
-    scope: l.array(
-      l.typedUnion(
+  /*#__PURE__*/ l.object({
+    protocol: /*#__PURE__*/ l.string({ format: 'at-uri' }),
+    scope: /*#__PURE__*/ l.array(
+      /*#__PURE__*/ l.typedUnion(
         [
-          l.typedRef<TaxonScope>((() => taxonScope) as any),
-          l.typedRef<VerbatimScope>((() => verbatimScope) as any),
+          /*#__PURE__*/ l.typedRef<TaxonScope>((() => taxonScope) as any),
+          /*#__PURE__*/ l.typedRef<VerbatimScope>((() => verbatimScope) as any),
         ],
         false,
       ),
@@ -50,18 +50,23 @@ const main = l.record<'tid', Main>(
 
 export { main }
 
-export const $isTypeOf = /*#__PURE__*/ main.isTypeOf.bind(main),
-  $build = /*#__PURE__*/ main.build.bind(main),
-  $type = /*#__PURE__*/ main.$type
-export const $assert = /*#__PURE__*/ main.assert.bind(main),
-  $check = /*#__PURE__*/ main.check.bind(main),
-  $cast = /*#__PURE__*/ main.cast.bind(main),
-  $ifMatches = /*#__PURE__*/ main.ifMatches.bind(main),
-  $matches = /*#__PURE__*/ main.matches.bind(main),
-  $parse = /*#__PURE__*/ main.parse.bind(main),
-  $safeParse = /*#__PURE__*/ main.safeParse.bind(main),
-  $validate = /*#__PURE__*/ main.validate.bind(main),
-  $safeValidate = /*#__PURE__*/ main.safeValidate.bind(main)
+const $type = $nsid
+
+type $type = typeof $type
+
+export { $type }
+
+export const $isTypeOf = /*#__PURE__*/ main.isTypeOf.bind(main)
+export const $build = /*#__PURE__*/ main.build.bind(main)
+export const $assert = /*#__PURE__*/ main.assert.bind(main)
+export const $check = /*#__PURE__*/ main.check.bind(main)
+export const $cast = /*#__PURE__*/ main.cast.bind(main)
+export const $ifMatches = /*#__PURE__*/ main.ifMatches.bind(main)
+export const $matches = /*#__PURE__*/ main.matches.bind(main)
+export const $parse = /*#__PURE__*/ main.parse.bind(main)
+export const $safeParse = /*#__PURE__*/ main.safeParse.bind(main)
+export const $validate = /*#__PURE__*/ main.validate.bind(main)
+export const $safeValidate = /*#__PURE__*/ main.safeValidate.bind(main)
 
 /** A taxonomic criterion for a survey target. */
 type TaxonScope = {
@@ -96,15 +101,17 @@ type TaxonScope = {
 export type { TaxonScope }
 
 /** A taxonomic criterion for a survey target. */
-const taxonScope = l.typedObject<TaxonScope>(
+const taxonScope = /*#__PURE__*/ l.typedObject<TaxonScope>(
   $nsid,
   'taxonScope',
-  l.object({
-    taxonID: l.optional(l.string({ format: 'uri' })),
-    scientificName: l.string(),
-    vernacularName: l.optional(l.string()),
-    taxonRank: l.string(),
-    kingdom: l.optional(l.string()),
+  /*#__PURE__*/ l.object({
+    taxonID: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string({ format: 'uri' }),
+    ),
+    scientificName: /*#__PURE__*/ l.string(),
+    vernacularName: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    taxonRank: /*#__PURE__*/ l.string(),
+    kingdom: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
   }),
 )
 
@@ -123,10 +130,10 @@ type VerbatimScope = {
 export type { VerbatimScope }
 
 /** A free-text criterion for cases not covered by structured types (sensu Humboldt eco:verbatimTargetScope). */
-const verbatimScope = l.typedObject<VerbatimScope>(
+const verbatimScope = /*#__PURE__*/ l.typedObject<VerbatimScope>(
   $nsid,
   'verbatimScope',
-  l.object({ verbatimTargetScope: l.string() }),
+  /*#__PURE__*/ l.object({ verbatimTargetScope: /*#__PURE__*/ l.string() }),
 )
 
 export { verbatimScope }

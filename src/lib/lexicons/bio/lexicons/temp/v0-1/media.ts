@@ -3,4 +3,4 @@
  */
 
 export * from './media.defs.js'
-export * as $defs from './media.defs.js'
+export { main as default } from './media.defs.js'

@@ -304,15 +304,9 @@ async function postSurvey(request: Request, did: string) {
 
   const locationEntries = [
     ...(body.latitude && body.longitude
-      ? [
-          {
-            $type: geo.$type,
-            latitude: body.latitude,
-            longitude: body.longitude,
-          },
-        ]
+      ? [geo.$build({ latitude: body.latitude, longitude: body.longitude })]
       : []),
-    ...(body.gpsBbox ? [{ $type: bbox.$type, ...body.gpsBbox }] : []),
+    ...(body.gpsBbox ? [bbox.$build({ ...body.gpsBbox })] : []),
   ];
   const location: AtgeoPlace = {
     $type: Place.$type,

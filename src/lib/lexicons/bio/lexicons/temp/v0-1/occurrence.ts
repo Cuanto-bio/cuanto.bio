@@ -3,4 +3,4 @@
  */
 
 export * from './occurrence.defs.js'
-export * as $defs from './occurrence.defs.js'
+export { main as default } from './occurrence.defs.js'
