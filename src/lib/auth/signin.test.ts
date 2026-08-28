@@ -11,8 +11,10 @@ vi.mock('$lib/platform', () => ({
 }));
 
 import {
+  isSafeReturnTo,
   isSignInPath,
   NATIVE_SIGNIN_PATH,
+  signInHref,
   signInPath,
   WEB_SIGNIN_PATH,
 } from './signin';
@@ -44,5 +46,50 @@ describe('isSignInPath', () => {
     expect(isSignInPath('/')).toBe(false);
     // A prefix match would wrongly exempt sub-routes from the auth guard.
     expect(isSignInPath('/app/signin/extra')).toBe(false);
+  });
+});
+
+describe('isSafeReturnTo', () => {
+  test('accepts a root-relative path', () => {
+    expect(isSafeReturnTo('/app/surveys')).toBe(true);
+  });
+
+  test('rejects protocol-relative and absolute URLs, and empty input', () => {
+    // A crafted `//evil.example` or `https://…` would bounce the user off-site
+    // through our own sign-in flow.
+    expect(isSafeReturnTo('//evil.example')).toBe(false);
+    expect(isSafeReturnTo('https://evil.example')).toBe(false);
+    expect(isSafeReturnTo(null)).toBe(false);
+    expect(isSafeReturnTo(undefined)).toBe(false);
+    expect(isSafeReturnTo('')).toBe(false);
+  });
+});
+
+describe('signInHref', () => {
+  test('web: appends an encoded returnTo the callback can honour', () => {
+    env.native = false;
+    expect(signInHref('/app/surveys')).toBe(
+      `${WEB_SIGNIN_PATH}?returnTo=%2Fapp%2Fsurveys`,
+    );
+  });
+
+  test('native: points at the in-bundle route with the same returnTo', () => {
+    env.native = true;
+    expect(signInHref('/app/surveys')).toBe(
+      `${NATIVE_SIGNIN_PATH}?returnTo=%2Fapp%2Fsurveys`,
+    );
+  });
+
+  test('omits returnTo when it is missing', () => {
+    env.native = false;
+    expect(signInHref()).toBe(WEB_SIGNIN_PATH);
+    env.native = true;
+    expect(signInHref()).toBe(NATIVE_SIGNIN_PATH);
+  });
+
+  test('drops an off-site returnTo rather than forwarding it', () => {
+    env.native = false;
+    expect(signInHref('//evil.example')).toBe(WEB_SIGNIN_PATH);
+    expect(signInHref('https://evil.example')).toBe(WEB_SIGNIN_PATH);
   });
 });

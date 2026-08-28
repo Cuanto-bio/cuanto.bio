@@ -4,6 +4,7 @@ import Loader2Icon from '@lucide/svelte/icons/loader-2';
 import Trash2Icon from '@lucide/svelte/icons/trash-2';
 import WifiOffIcon from '@lucide/svelte/icons/wifi-off';
 import { onMount } from 'svelte';
+import { signInHref } from '$lib/auth/signin';
 import * as Alert from '$lib/components/alert';
 import SurveyCard from '$lib/components/SurveyCard.svelte';
 import * as AlertDialog from '$lib/components/ui/alert-dialog';
@@ -101,7 +102,7 @@ async function togglePublishField(
       <Alert.Description>
         Your connection to the AT Protocol network has expired. Your surveys are saved —
         sign in again to upload them.
-        <a href="/auth/signin?returnTo=/app/surveys" class="underline font-medium ml-1">
+        <a href={signInHref('/app/surveys')} class="underline font-medium ml-1">
           Sign in
         </a>
       </Alert.Description>

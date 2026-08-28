@@ -3,6 +3,7 @@ import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
 import { onMount, tick } from 'svelte';
 import { toast } from 'svelte-sonner';
 import { beforeNavigate, goto, replaceState } from '$app/navigation';
+import { signInHref } from '$lib/auth/signin';
 import * as Alert from '$lib/components/alert';
 import Button from '$lib/components/Button.svelte';
 import LocationPicker from '$lib/components/LocationPicker.svelte';
@@ -1045,7 +1046,7 @@ function displayCount(qty: undefined | string | number) {
       <Alert.Description>
         Your connection to the AT Protocol network has expired. Your survey is saved.
         Sign in again to upload it.
-        <a href="/auth/signin?returnTo=/app/surveys" class="underline font-medium ml-1">
+        <a href={signInHref('/app/surveys')} class="underline font-medium ml-1">
           Sign in
         </a>
       </Alert.Description>

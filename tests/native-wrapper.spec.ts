@@ -133,4 +133,68 @@ test.describe('native wrapper sign-in flow', () => {
       page.getByRole('heading', { name: /sign in to cuanto/i }),
     ).toHaveCount(0);
   });
+
+  test('returns to the page that sent the user to sign in', async ({
+    page,
+    sql,
+  }) => {
+    await sql`
+      INSERT INTO users (did, handle) VALUES (${DID}, ${HANDLE})
+      ON CONFLICT (did) DO NOTHING
+    `;
+
+    await installNativeBridge(page);
+    // The "Session expired" alert on /app/surveys links here with its own path
+    // as returnTo (via signInHref); the native handoff has no cookie to carry
+    // it, so /app/signin has to hold it across the system-browser round trip.
+    await page.goto('/app/signin?returnTo=%2Fapp%2Fsurveys');
+    await page.getByRole('button', { name: /^sign in$/i }).click();
+
+    await expect.poll(async () => browserOpenUrl(page)).not.toBe('');
+    const challenge = new URL(await browserOpenUrl(page)).searchParams.get(
+      'challenge',
+    );
+    const code = randomBytes(32).toString('base64url');
+    await sql`
+      INSERT INTO app_token_codes (code_hash, did, challenge, expires_at)
+      VALUES (${sha256hex(code)}, ${DID}, ${challenge}, ${new Date(Date.now() + 60_000)})
+    `;
+
+    await fireAppUrlOpen(page, `bio.cuanto.app://auth?code=${code}`);
+
+    await expect(page).toHaveURL(/\/app\/surveys$/, { timeout: 10_000 });
+    await expect(
+      page.getByRole('heading', { name: /your surveys/i }),
+    ).toBeVisible();
+  });
+
+  test('ignores an off-site returnTo and falls back to the app home', async ({
+    page,
+    sql,
+  }) => {
+    await sql`
+      INSERT INTO users (did, handle) VALUES (${DID}, ${HANDLE})
+      ON CONFLICT (did) DO NOTHING
+    `;
+
+    await installNativeBridge(page);
+    await page.goto('/app/signin?returnTo=https%3A%2F%2Fevil.example');
+    await page.getByRole('button', { name: /^sign in$/i }).click();
+
+    await expect.poll(async () => browserOpenUrl(page)).not.toBe('');
+    const challenge = new URL(await browserOpenUrl(page)).searchParams.get(
+      'challenge',
+    );
+    const code = randomBytes(32).toString('base64url');
+    await sql`
+      INSERT INTO app_token_codes (code_hash, did, challenge, expires_at)
+      VALUES (${sha256hex(code)}, ${DID}, ${challenge}, ${new Date(Date.now() + 60_000)})
+    `;
+
+    await fireAppUrlOpen(page, `bio.cuanto.app://auth?code=${code}`);
+
+    await expect(page).toHaveURL(/\/app\/protocols\/following/, {
+      timeout: 10_000,
+    });
+  });
 });

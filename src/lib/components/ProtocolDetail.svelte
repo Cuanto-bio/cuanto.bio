@@ -8,6 +8,7 @@ import MinusIcon from '@lucide/svelte/icons/minus';
 import PencilIcon from '@lucide/svelte/icons/pencil';
 import PlusIcon from '@lucide/svelte/icons/plus';
 import type { Component } from 'svelte';
+import { signInHref } from '$lib/auth/signin';
 import Button from '$lib/components/Button.svelte';
 import Form from '$lib/components/Form.svelte';
 import SparkbarDialog from '$lib/components/SparkbarDialog.svelte';
@@ -419,7 +420,7 @@ const collapsibleActions = $derived.by(() => {
         Cuanto needs an additional permission to follow protocols. Sign in
         again to grant it.
         <a
-          href={`/auth/signin?returnTo=${encodeURIComponent(returnTo)}`}
+          href={signInHref(returnTo)}
           class="underline font-medium ml-1"
         >
           Sign in
@@ -432,7 +433,7 @@ const collapsibleActions = $derived.by(() => {
       <Alert.Description>
         Your session has expired. Sign in again to continue.
         <a
-          href={`/auth/signin?returnTo=${encodeURIComponent(returnTo)}`}
+          href={signInHref(returnTo)}
           class="underline font-medium ml-1"
         >
           Sign in

@@ -1,7 +1,9 @@
 <script lang="ts">
 import { onMount } from 'svelte';
 import { goto } from '$app/navigation';
+import { page } from '$app/state';
 import { initNativeAuth, startNativeSignIn } from '$lib/auth/native';
+import { isSafeReturnTo, signInHref } from '$lib/auth/signin';
 import Button from '$lib/components/Button.svelte';
 import { isNative } from '$lib/platform';
 
@@ -9,6 +11,18 @@ import { isNative } from '$lib/platform';
 // /auth/signin; the native bundle contains only /app/*, so this route exists to
 // give the app somewhere real to land and to start the system-browser handoff.
 let status = $state<'idle' | 'opening' | 'failed'>('idle');
+
+// Where to land once sign-in completes. It rides in on the query string that
+// signInHref() built into the "Sign in" link that sent the user here; the web
+// callback carries its equivalent in a cookie, but the native handoff returns
+// through the app URL scheme with no cookie jar, so the destination has to
+// survive in the page itself. The system-browser round trip reuses the running
+// app rather than relaunching it (Android launchMode=singleTask; iOS keeps the
+// process), so this component is still mounted and the closure below still has
+// the value when appUrlOpen fires. Falls back to the app home for an unsafe or
+// absent value.
+const requestedReturnTo = page.url.searchParams.get('returnTo');
+const returnTo = isSafeReturnTo(requestedReturnTo) ? requestedReturnTo : '/app';
 // Surfaced rather than swallowed: the first real failure here was a native
 // plugin that had not been linked into the build, which no amount of
 // user-facing advice would have fixed and which an opaque message actively hid.
@@ -16,15 +30,16 @@ let errorDetail = $state('');
 
 onMount(() => {
   if (!isNative()) {
-    // Reachable in a browser only by typing the URL. Send them to the real one.
-    goto('/auth/signin', { replaceState: true });
+    // Reachable in a browser only by typing the URL. Send them to the real one,
+    // keeping any post-sign-in destination.
+    goto(signInHref(requestedReturnTo), { replaceState: true });
     return;
   }
   // Registered before any sign-in attempt: on a cold launch iOS can deliver the
   // callback URL as soon as the app starts, and a listener added later misses it.
   initNativeAuth({
     onSignedIn: () => {
-      goto('/app', { replaceState: true });
+      goto(returnTo, { replaceState: true });
     },
     // Reported rather than swallowed. These failures all happen after the user
     // has already signed in successfully in the browser, so the alternative is

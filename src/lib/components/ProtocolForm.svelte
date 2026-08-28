@@ -2,6 +2,7 @@
 import { l } from '@atproto/lex';
 import { onDestroy, tick } from 'svelte';
 import { beforeNavigate, goto } from '$app/navigation';
+import { signInHref } from '$lib/auth/signin';
 import Button from '$lib/components/Button.svelte';
 import Form from '$lib/components/Form.svelte';
 import FormSection from '$lib/components/FormSection.svelte';
@@ -627,7 +628,7 @@ function removeAddress(i: number, j: number) {
             Your connection to the AT Protocol network has expired. Your entries
             below are still here — sign in again to save them.
             <a
-              href={`/auth/signin?returnTo=${encodeURIComponent(returnTo)}`}
+              href={signInHref(returnTo)}
               onclick={signInWithDraft}
               class="underline font-medium ml-1"
             >
