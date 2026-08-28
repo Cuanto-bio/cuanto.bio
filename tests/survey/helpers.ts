@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import type { Sql } from 'postgres';
 import type { GpsTrackPoint } from '../../src/lib/gpx';
 import { CUANTO_IDB_VERSION } from '../../src/lib/offline/constants';
 import type { PendingSurvey } from '../../src/lib/offline/db';
@@ -26,6 +27,37 @@ export async function seedLocalTrack(
     },
     { surveyAtUri, points, version: CUANTO_IDB_VERSION },
   );
+}
+
+// Adds `count` extra verbatim targets to an already-seeded protocol so the
+// target list is long enough to scroll. Must run before the survey page caches
+// the protocol to IndexedDB.
+export async function seedExtraTargets(
+  sql: Sql,
+  did: string,
+  protocolRkey: string,
+  count: number,
+) {
+  const protocolUri = `at://${did}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+  for (let i = 0; i < count; i++) {
+    const rkey = `xtarget${i}-${Date.now()}`;
+    const atUri = `at://${did}/bio.cuanto.protocolTarget/${rkey}`;
+    const record = {
+      $type: 'bio.cuanto.protocolTarget',
+      protocol: protocolUri,
+      scope: [
+        {
+          $type: 'bio.cuanto.protocolTarget#verbatimScope',
+          verbatimTargetScope: `Filler target ${i}`,
+        },
+      ],
+    };
+    await sql`
+      INSERT INTO protocol_targets (at_uri, did, rkey, protocol_uri, record, indexed_at)
+      VALUES (${atUri}, ${did}, ${rkey}, ${protocolUri}, ${sql.json(record)},
+        ${new Date(Date.now() + 10_000 + i * 1_000).toISOString()})
+    `;
+  }
 }
 
 export async function cacheAndOpenNewSurvey(

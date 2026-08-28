@@ -156,6 +156,16 @@
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
+
+  /* Reserves a screenful so a sticky bar above can stay scrolled to the top of
+     .mobile-scroll while filtering shortens the content under it. Lives in this
+     media query because only here is .mobile-scroll a scroll container at all:
+     applied at every width it would add a screen of blank space to a layout
+     that has no scroll to preserve and no keyboard to stay clear of. See
+     SurveyForm's target search. */
+  .mobile-scroll-floor {
+    min-height: 100dvh;
+  }
 }
 
 @layer base {

@@ -1400,7 +1400,20 @@ function displayCount(qty: undefined | string | number) {
     {/if}
   </div>
 
-  <div class="flex-1 mt-6">
+  <!--
+    The floor belongs to the target search above, not to incidentals. That
+    filter bar sticks to the top of the scroll area, and staying there costs
+    scroll height; filtering removes rows, so without a floor somewhere below it
+    the browser clamps scrollTop back to what the shorter content allows and
+    drags the bar down the screen just as the results appear under it. Putting
+    it here rather than on the targets means the slack falls after "Add
+    incidental", so a search that finds nothing still shows the offer to record
+    one instead of burying it a screen below. Conditional so a protocol with
+    only a handful of targets is not padded out for no reason, and
+    .mobile-scroll-floor (layout.css) so it applies only where that scroll area
+    exists to be held in place.
+  -->
+  <div class="flex-1 mt-6 {targetFilter.filterQuery.trim() ? 'mobile-scroll-floor' : ''}">
     <h2 class="mb-2 text-sm font-semibold">Incidentals</h2>
     {#if incidentals.length > 0}
       <ul class="-mx-4 mb-4 divide-y border-y sm:mx-0 sm:rounded-lg sm:border">

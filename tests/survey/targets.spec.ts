@@ -1,5 +1,6 @@
+import { devices } from '@playwright/test';
 import { expect, test } from '../fixtures.js';
-import { cacheAndOpenNewSurvey } from './helpers.js';
+import { cacheAndOpenNewSurvey, seedExtraTargets } from './helpers.js';
 
 // ── Target search filter ──────────────────────────────────────────────────────
 
@@ -274,4 +275,182 @@ test('clearing a search does not flash counted targets', async ({
     el.classList.contains('li-flash'),
   );
   expect(hasFlash).toBe(false);
+});
+
+// ── Search bar pins to the top on focus ───────────────────────────────────────
+
+test.describe('target search focus scroll', () => {
+  const { viewport, hasTouch, isMobile } = devices['iPhone 15'];
+  test.use({ viewport, hasTouch, isMobile });
+
+  // Distance from the filter bar's top edge to the top of the scroll area.
+  const gapToTop = (page: import('@playwright/test').Page) =>
+    page.getByPlaceholder('Search targets…').evaluate((input) => {
+      const bar = input.closest('.sticky');
+      const scroller = input.closest('.mobile-scroll');
+      if (!bar || !scroller) return Number.NaN;
+      return Math.round(
+        bar.getBoundingClientRect().top - scroller.getBoundingClientRect().top,
+      );
+    });
+
+  test('focusing the search input pins the filter bar to the top', async ({
+    page,
+    sql,
+    protocolRkey,
+  }) => {
+    await seedExtraTargets(sql, 'did:test:survey-spec', protocolRkey, 30);
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+
+    // Reset to the top so the bar sits well below the viewport top.
+    await page.locator('.mobile-scroll').evaluate((el) => {
+      el.scrollTop = 0;
+    });
+    expect(await gapToTop(page)).toBeGreaterThan(40);
+
+    await page.getByPlaceholder('Search targets…').focus();
+
+    // The bar pins to the top of the scroll area, and only that box scrolls:
+    // the document must not move (on iOS Safari that would carry the header off
+    // the top of the screen), and the field must stay visible near the top.
+    await expect.poll(() => gapToTop(page)).toBeLessThanOrEqual(2);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    const fieldTop = await page
+      .getByPlaceholder('Search targets…')
+      .evaluate((el) => Math.round(el.getBoundingClientRect().top));
+    expect(fieldTop).toBeGreaterThanOrEqual(0);
+    expect(fieldTop).toBeLessThan(120);
+  });
+
+  test('the pin happens synchronously, within the focus event', async ({
+    page,
+    sql,
+    protocolRkey,
+  }) => {
+    await seedExtraTargets(sql, 'did:test:survey-spec', protocolRkey, 30);
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+
+    // A pin deferred to rAF lands after the browser's own scroll-into-view for
+    // the focused element, so iOS scrolls by the distance it measured before
+    // the pin and the pin then scrolls again, carrying the field off the top.
+    // Focus and measure in one task: only a synchronous pin shows up here.
+    const { gapBefore, scrollTopAfter } = await page.evaluate(() => {
+      const input = document.querySelector<HTMLInputElement>(
+        'input[placeholder="Search targets…"]',
+      );
+      const bar = input?.closest('.sticky');
+      const scroller = input?.closest('.mobile-scroll') as HTMLElement | null;
+      if (!input || !bar || !scroller) {
+        return { gapBefore: Number.NaN, scrollTopAfter: Number.NaN };
+      }
+      scroller.scrollTop = 0;
+      const gapBefore = Math.round(
+        bar.getBoundingClientRect().top - scroller.getBoundingClientRect().top,
+      );
+      input.focus();
+      return { gapBefore, scrollTopAfter: Math.round(scroller.scrollTop) };
+    });
+
+    expect(gapBefore).toBeGreaterThan(40);
+    expect(scrollTopAfter).toBe(gapBefore);
+  });
+
+  test('stays pinned when a search narrows the list to a few rows', async ({
+    page,
+    sql,
+    protocolRkey,
+  }) => {
+    await seedExtraTargets(sql, 'did:test:survey-spec', protocolRkey, 30);
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+
+    const search = page.getByPlaceholder('Search targets…');
+    await search.focus();
+    await expect.poll(() => gapToTop(page)).toBeLessThanOrEqual(2);
+
+    // Filtering shrinks the list, and with it the scrollable height. Without
+    // room to stay scrolled this far the browser clamps scrollTop back, which
+    // drags the bar down the screen just as the results appear under it.
+    await search.fill('agrifolia');
+    await expect(
+      page.getByText('Coast live oak (Quercus agrifolia)'),
+    ).toBeVisible();
+
+    expect(await gapToTop(page)).toBeLessThanOrEqual(2);
+  });
+
+  test('pins the bar when focusing the search clears "Only counted"', async ({
+    page,
+    sql,
+    protocolRkey,
+  }) => {
+    await seedExtraTargets(sql, 'did:test:survey-spec', protocolRkey, 30);
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+
+    // Narrow the list to the one counted target, so the scrollable height is
+    // far shorter than the distance the pin is about to scroll.
+    await page.locator('[aria-label="Increase count"]').nth(0).click();
+    await page.getByRole('button', { name: /Only counted/ }).click();
+    await page.locator('.mobile-scroll').evaluate((el) => {
+      el.scrollTop = 0;
+    });
+
+    // Focus clears "Only counted" as well as pinning. The list it re-expands to
+    // is the height the pin needs, so the two have to happen in that order
+    // rather than both against the short list.
+    await page.getByPlaceholder('Search targets…').focus();
+
+    await expect.poll(() => gapToTop(page)).toBeLessThanOrEqual(2);
+  });
+
+  test('keeps the incidentals prompt in view when a search finds nothing', async ({
+    page,
+    sql,
+    protocolRkey,
+  }) => {
+    await seedExtraTargets(sql, 'did:test:survey-spec', protocolRkey, 30);
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+
+    const search = page.getByPlaceholder('Search targets…');
+    await search.focus();
+    await search.fill('zzznomatch');
+    await expect(page.getByText(/No targets match/)).toBeVisible();
+
+    // Searching for a target that is not in the protocol is exactly when
+    // someone needs to be told they can record it as an incidental, so the
+    // padding that holds the filter bar up must not push that offer offscreen.
+    await expect(
+      page.getByRole('button', { name: 'Add incidental' }),
+    ).toBeInViewport();
+    expect(await gapToTop(page)).toBeLessThanOrEqual(2);
+  });
+});
+
+test.describe('target search focus scroll (desktop)', () => {
+  // On desktop there is no on-screen keyboard, so focusing the field must not
+  // make the page jump to pin the filter bar.
+  test('focusing the search input does not scroll the page', async ({
+    page,
+    sql,
+    protocolRkey,
+  }) => {
+    await seedExtraTargets(sql, 'did:test:survey-spec', protocolRkey, 30);
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+
+    const search = page.getByPlaceholder('Search targets…');
+    await search.scrollIntoViewIfNeeded();
+    // Nudge so the field sits well below the top of the viewport.
+    await page.evaluate(() => window.scrollBy(0, -100));
+    const topBefore = await search.evaluate((el) =>
+      Math.round(el.getBoundingClientRect().top),
+    );
+    expect(topBefore).toBeGreaterThan(40);
+
+    await search.focus();
+    await page.waitForTimeout(200);
+
+    const topAfter = await search.evaluate((el) =>
+      Math.round(el.getBoundingClientRect().top),
+    );
+    expect(Math.abs(topAfter - topBefore)).toBeLessThan(20);
+  });
 });
