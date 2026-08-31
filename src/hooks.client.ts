@@ -8,11 +8,23 @@ import { isNative } from '$lib/platform';
  * no URL rewriting, no CORS. But App-Bound Domains blocks the in-webview OAuth
  * redirect, so sign-in happens in the system browser and the webview never
  * receives the `did` cookie. It authenticates with the bearer token instead,
- * attached here to our own `/api` requests.
+ * attached here to our own same-origin requests.
  *
- * Restricted to same-origin `/api` deliberately: attaching the token to a
- * cross-origin request (iNaturalist, GBIF, tiles) would disclose the
- * credential to a third party. Web build: no-op.
+ * Same-origin is the whole boundary: attaching the token to a cross-origin
+ * request (iNaturalist, GBIF, tiles) would disclose the credential to a third
+ * party, and nothing else about the destination matters. It was once narrowed
+ * further, to `/api`, from back when the app was a static bundle whose only
+ * traffic to us was the API. The wrapper now loads the entire site, so the
+ * server-rendered routes are reachable too — SvelteKit fetches their `load`
+ * data from `<path>/__data.json` and posts their forms to `<path>?/action`,
+ * neither of which is under /api. Restricting the token to /api left every one
+ * of those pages (the protocol editor, "New protocol") bouncing a signed-in
+ * native user to sign in again.
+ *
+ * A full page navigation still carries no header — there is no fetch to hook —
+ * but SvelteKit's router turns in-app link clicks into the fetches above.
+ *
+ * Web build: no-op.
  */
 export const init: ClientInit = () => {
   if (!isNative()) return;
@@ -33,18 +45,14 @@ export const init: ClientInit = () => {
           ? input.href
           : input.url;
 
-    let sameOriginApi = false;
+    let sameOrigin = false;
     try {
       const u = new URL(raw, location.href);
-      sameOriginApi =
-        u.protocol === location.protocol &&
-        u.host === location.host &&
-        // Exactly the /api collection, not sibling paths like /apiary.
-        (u.pathname === '/api' || u.pathname.startsWith('/api/'));
+      sameOrigin = u.protocol === location.protocol && u.host === location.host;
     } catch {
-      sameOriginApi = false;
+      sameOrigin = false;
     }
-    if (!sameOriginApi) return originalFetch(input, init);
+    if (!sameOrigin) return originalFetch(input, init);
 
     // Start from any headers on a Request input, then let init's headers win
     // (that's fetch(request, init) semantics), so we neither drop the Request's

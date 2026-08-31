@@ -17,6 +17,7 @@ import {
   signInHref,
   signInPath,
   WEB_SIGNIN_PATH,
+  webSignInHref,
 } from './signin';
 
 beforeEach(() => {
@@ -91,5 +92,22 @@ describe('signInHref', () => {
     env.native = false;
     expect(signInHref('//evil.example')).toBe(WEB_SIGNIN_PATH);
     expect(signInHref('https://evil.example')).toBe(WEB_SIGNIN_PATH);
+  });
+});
+
+describe('webSignInHref', () => {
+  test('stays on the web route even when the caller is native', () => {
+    // Server-side redirects use this: isNative() is false during SSR whatever
+    // the visitor is on, so guessing would send every web visitor to the
+    // native route. /auth/signin's own load forwards native visitors instead.
+    env.native = true;
+    expect(webSignInHref('/protocols/dana/abc/edit')).toBe(
+      `${WEB_SIGNIN_PATH}?returnTo=%2Fprotocols%2Fdana%2Fabc%2Fedit`,
+    );
+  });
+
+  test('omits returnTo when it is missing or off-site', () => {
+    expect(webSignInHref()).toBe(WEB_SIGNIN_PATH);
+    expect(webSignInHref('//evil.example')).toBe(WEB_SIGNIN_PATH);
   });
 });

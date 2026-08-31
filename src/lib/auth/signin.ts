@@ -50,7 +50,23 @@ export function isSafeReturnTo(
  * still works, just with no redirect target.
  */
 export function signInHref(returnTo?: string | null): string {
-  const base = signInPath();
+  return withReturnTo(signInPath(), returnTo);
+}
+
+/**
+ * The same link, pinned to the web route, for redirects issued on the server.
+ *
+ * Server code cannot call signInHref(): isNative() reads the Capacitor bridge,
+ * which only exists in the app's webview, so during SSR it is false even for a
+ * native visitor. Rather than guess, server-rendered routes send everyone to
+ * /auth/signin and let that route's own universal load (which does run in the
+ * webview) forward a native visitor to /app/signin.
+ */
+export function webSignInHref(returnTo?: string | null): string {
+  return withReturnTo(WEB_SIGNIN_PATH, returnTo);
+}
+
+function withReturnTo(base: string, returnTo?: string | null): string {
   if (!isSafeReturnTo(returnTo)) return base;
   return `${base}?returnTo=${encodeURIComponent(returnTo)}`;
 }

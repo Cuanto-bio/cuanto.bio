@@ -1,5 +1,6 @@
 import type { l } from '@atproto/lex';
 import { fail, redirect } from '@sveltejs/kit';
+import { webSignInHref } from '$lib/auth/signin';
 import * as ProtocolTarget from '$lib/lexicons/bio/cuanto/protocolTarget';
 import type { Main as ProtocolTargetMain } from '$lib/lexicons/bio/cuanto/protocolTarget.defs';
 import * as SurveyProtocol from '$lib/lexicons/bio/cuanto/surveyProtocol';
@@ -12,14 +13,18 @@ import { parseLocationOptions } from '$lib/server/locationOptions';
 import { createRecord, PdsSessionExpiredError } from '$lib/server/pds';
 import type { Actions, PageServerLoad } from './$types';
 
+// returnTo so signing in lands back on this form rather than dumping the
+// visitor on the home page having lost what they came here to do.
+const SIGN_IN_HREF = webSignInHref('/protocols/new');
+
 export const load: PageServerLoad = async ({ locals }) => {
-  if (!locals.did) redirect(302, '/auth/signin');
+  if (!locals.did) redirect(302, SIGN_IN_HREF);
   return {};
 };
 
 export const actions: Actions = {
   default: async ({ request, locals }) => {
-    if (!locals.did) redirect(302, '/auth/signin');
+    if (!locals.did) redirect(302, SIGN_IN_HREF);
     const { did } = locals;
 
     const formData = await request.formData();

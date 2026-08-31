@@ -1,5 +1,6 @@
 import type { l } from '@atproto/lex';
 import { error, fail, redirect } from '@sveltejs/kit';
+import { webSignInHref } from '$lib/auth/signin';
 import * as ProtocolTarget from '$lib/lexicons/bio/cuanto/protocolTarget';
 import type { Main as ProtocolTargetMain } from '$lib/lexicons/bio/cuanto/protocolTarget.defs';
 import * as SurveyProtocol from '$lib/lexicons/bio/cuanto/surveyProtocol';
@@ -22,8 +23,15 @@ import type { Actions, PageServerLoad } from './$types';
 
 const log = logger.child({ component: 'edit-protocol' });
 
+/** This page's own path, used as the post-sign-in destination. */
+function editPath({ handle, rkey }: { handle: string; rkey: string }): string {
+  return `/protocols/${handle}/${rkey}/edit`;
+}
+
 export const load: PageServerLoad = async ({ locals, params }) => {
-  if (!locals.did) redirect(302, '/auth/signin');
+  // returnTo so signing in lands back on the edit the visitor came here for,
+  // rather than dumping them on the home page having lost their place.
+  if (!locals.did) redirect(302, webSignInHref(editPath(params)));
 
   const protocol = await getProtocolDetailByHandleAndRkey(
     params.handle,
@@ -41,7 +49,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
 export const actions: Actions = {
   default: async ({ request, locals, params }) => {
-    if (!locals.did) redirect(302, '/auth/signin');
+    if (!locals.did) redirect(302, webSignInHref(editPath(params)));
     const { did } = locals;
     const { handle, rkey } = params;
 

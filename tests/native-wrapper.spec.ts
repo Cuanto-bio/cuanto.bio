@@ -1,5 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { expect, test } from './fixtures.js';
+import {
+  expect,
+  seedNativeToken,
+  seedProtocol,
+  teardownDid,
+  test,
+} from './fixtures.js';
 import {
   fireAppUrlOpen,
   installNativeBridge,
@@ -196,5 +202,65 @@ test.describe('native wrapper sign-in flow', () => {
     await expect(page).toHaveURL(/\/app\/protocols\/following/, {
       timeout: 10_000,
     });
+  });
+});
+
+test.describe('native wrapper on server-rendered routes', () => {
+  const OWNER_DID = 'did:test:native-editor';
+  const OWNER_HANDLE = 'user-native-editor';
+
+  test.afterEach(async ({ sql }) => {
+    await sql`DELETE FROM app_tokens WHERE did = ${OWNER_DID}`;
+    await teardownDid(sql, OWNER_DID);
+  });
+
+  test('a signed-in owner reaches the protocol editor instead of sign-in', async ({
+    page,
+    sql,
+  }) => {
+    // The editor is server-rendered, so it authenticates from the request
+    // rather than from /api/me. The wrapper has no `did` cookie, and its
+    // bearer token used to be attached only to /api — leaving a signed-in
+    // native owner bounced to sign in on a protocol they own.
+    const { protocolRkey } = await seedProtocol(sql, OWNER_DID);
+    const token = await seedNativeToken(sql, OWNER_DID, 'native-editor-spec');
+    await installNativeBridge(page);
+    await page.addInitScript(
+      ([key, value]) => localStorage.setItem(key, value),
+      ['cuanto:native-token', token],
+    );
+
+    await page.goto(`/app/protocols/${OWNER_HANDLE}/${protocolRkey}`);
+    // Clicked, not page.goto: the app navigates client-side, which is what
+    // gives hooks.client.ts a fetch to attach the token to. A cold load of the
+    // same URL is a plain browser navigation and carries no credential.
+    await page.getByRole('link', { name: 'Edit', exact: true }).click();
+
+    await expect(page).toHaveURL(
+      `/protocols/${OWNER_HANDLE}/${protocolRkey}/edit`,
+    );
+    await expect(page.locator('[name="title"]')).toHaveValue('Test Protocol');
+    await expect(
+      page.getByRole('heading', { name: /sign in to cuanto/i }),
+    ).toHaveCount(0);
+  });
+
+  test('a signed-out native visitor sent to the web form lands on the native one', async ({
+    page,
+  }) => {
+    // Server-rendered routes can only redirect to /auth/signin — isNative() is
+    // a webview check, so SSR cannot tell the platforms apart. The web form is
+    // a dead end in the app: its PDS redirect escapes to the system browser
+    // and the user finishes signed in on the website, app still signed out.
+    await installNativeBridge(page);
+    await page.goto('/auth/signin?returnTo=%2Fprotocols%2Fnew');
+
+    await expect(page).toHaveURL('/app/signin?returnTo=%2Fprotocols%2Fnew');
+    await expect(
+      page.getByRole('heading', { name: /sign in to cuanto/i }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /^sign in$/i }),
+    ).toBeVisible();
   });
 });

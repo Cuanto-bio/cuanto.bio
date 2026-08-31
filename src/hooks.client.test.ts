@@ -40,8 +40,8 @@ afterEach(() => {
 
 function initFromLastCall(): Headers {
   expect(fetchMock).toHaveBeenCalledTimes(1);
-  // init is undefined on the pass-through path (non-/api or no token), where
-  // the wrapper forwards the original arguments untouched.
+  // init is undefined on the pass-through path (non-same-origin or no
+  // token), where the wrapper forwards the original arguments untouched.
   const passedInit = fetchMock.mock.calls[0][1] as RequestInit | undefined;
   return new Headers(passedInit?.headers);
 }
@@ -76,9 +76,31 @@ describe('native bearer fetch wrapper', () => {
     expect(headers.get('x-custom')).toBe('v');
   });
 
-  test('does not attach the token to a sibling path like /apiary', async () => {
-    await globalThis.fetch(`${ORIGIN}/apiary/foo`);
+  test('does not attach the token to a cross-origin request', async () => {
+    // Same-origin is the boundary that matters: sending the credential to
+    // iNaturalist, GBIF or a tile host would disclose it to a third party.
+    await globalThis.fetch('https://api.inaturalist.org/v2/taxa');
     expect(initFromLastCall().has('authorization')).toBe(false);
+  });
+
+  test('attaches the token to a server-rendered page data request', async () => {
+    // The wrapper loads the whole site, not just /app, so server-rendered
+    // routes like the protocol editor authenticate through this wrapper too.
+    // SvelteKit fetches their `load` data from `<path>/__data.json`, which is
+    // nowhere near /api — restricting the token to /api left every such page
+    // looking signed out to a signed-in native user.
+    await globalThis.fetch(`${ORIGIN}/protocols/dana/abc/edit/__data.json`);
+    expect(initFromLastCall().get('authorization')).toBe('Bearer stored-token');
+  });
+
+  test('attaches the token to a form action POST', async () => {
+    // Enhanced forms submit to the page URL with a `?/action` query, so
+    // saving an edit needs the token on the same paths as the load above.
+    await globalThis.fetch(`${ORIGIN}/protocols/dana/abc/edit?/default`, {
+      method: 'POST',
+      body: new FormData(),
+    });
+    expect(initFromLastCall().get('authorization')).toBe('Bearer stored-token');
   });
 
   test('attaches the token to /api/ paths', async () => {

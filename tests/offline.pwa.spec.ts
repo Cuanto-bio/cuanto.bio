@@ -1,7 +1,6 @@
-import { createHash, randomBytes } from 'node:crypto';
 import { test as base, devices, expect } from '@playwright/test';
 import postgres, { type Sql } from 'postgres';
-import { seedProtocol, teardownDid } from './fixtures.js';
+import { seedNativeToken, seedProtocol, teardownDid } from './fixtures.js';
 import { installNativeBridge } from './nativeBridge.js';
 
 const TEST_DB_URL = 'postgresql://cuanto:cuanto@localhost:5432/cuanto_test';
@@ -100,17 +99,6 @@ const { viewport, hasTouch, isMobile } = devices['iPhone 15'];
 
 const NATIVE_DID = 'did:test:offline-pwa-native';
 
-/** Mints a live bearer token the way /api/auth/token does, without the flow. */
-async function seedToken(sql: Sql, did: string): Promise<string> {
-  const token = randomBytes(32).toString('base64url');
-  const hash = createHash('sha256').update(token).digest('hex');
-  await sql`
-    INSERT INTO app_tokens (token_hash, did, label, expires_at)
-    VALUES (${hash}, ${did}, 'offline-pwa-spec', ${new Date(Date.now() + 3600_000)})
-  `;
-  return token;
-}
-
 test.describe('offline navigation to a route the service worker does not cache', () => {
   test.use({ viewport, hasTouch, isMobile });
 
@@ -121,7 +109,7 @@ test.describe('offline navigation to a route the service worker does not cache',
     sql,
   }) => {
     await seedProtocol(sql, NATIVE_DID);
-    const token = await seedToken(sql, NATIVE_DID);
+    const token = await seedNativeToken(sql, NATIVE_DID, 'offline-pwa-spec');
     await installNativeBridge(page);
     await page.addInitScript(
       ([key, value]) => localStorage.setItem(key, value),

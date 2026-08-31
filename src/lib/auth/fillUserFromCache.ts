@@ -15,10 +15,13 @@ export type LayoutUser = {
  *
  * On the web the cookie is visible to that server load, so `data` already
  * carries the user and this returns it untouched — SSR paints the signed-in
- * state with no flash. The native wrapper has no cookie (it authenticates with a
- * bearer token the server never sees on a document or __data.json load), so
- * `data` arrives signed-out; on the native client we fill it in from the user
- * that /app cached to IndexedDB on sign-in.
+ * state with no flash. The native wrapper has no cookie; it authenticates with
+ * a bearer token instead, which hooks.client.ts attaches to same-origin
+ * fetches, including a client-side navigation's __data.json load. But a *cold*
+ * document load (first launch, hard reload) is a plain browser navigation with
+ * no fetch to hook, so the server sees no credential and `data` arrives
+ * signed-out there; on the native client we fill it in from the user that
+ * /app cached to IndexedDB on sign-in.
  *
  * The other case is being offline, on any platform. Cookie-authoritative only
  * means anything while there is a server to answer: offline the server load

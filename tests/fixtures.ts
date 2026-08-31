@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto';
 import { test as base } from '@playwright/test';
 import postgres, { type Sql } from 'postgres';
 
@@ -368,6 +369,28 @@ export async function seedIncidentalOccurrence(
   `;
 
   return { occUri };
+}
+
+/**
+ * Mints a live bearer token the way /api/auth/token does, without the flow.
+ *
+ * Stash the returned value in localStorage under `cuanto:native-token` (with
+ * page.addInitScript, before the first navigation) and the app authenticates
+ * exactly as the wrapper does: no `did` cookie, just the token that
+ * src/hooks.client.ts attaches to same-origin requests.
+ */
+export async function seedNativeToken(
+  sql: Sql,
+  did: string,
+  label: string,
+): Promise<string> {
+  const token = randomBytes(32).toString('base64url');
+  const hash = createHash('sha256').update(token).digest('hex');
+  await sql`
+    INSERT INTO app_tokens (token_hash, did, label, expires_at)
+    VALUES (${hash}, ${did}, ${label}, ${new Date(Date.now() + 3600_000)})
+  `;
+  return token;
 }
 
 export async function teardownDid(sql: Sql, did: string): Promise<void> {

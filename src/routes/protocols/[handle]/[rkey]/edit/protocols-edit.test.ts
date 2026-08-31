@@ -33,7 +33,7 @@ import {
   PdsSessionExpiredError,
   putRecord,
 } from '$lib/server/pds';
-import { actions } from './+page.server';
+import { actions, load } from './+page.server';
 
 const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
 const DID = 'did:test:protocols-edit-spec';
@@ -401,5 +401,33 @@ describe('POST /protocols/[handle]/[rkey]/edit — target management', () => {
       }),
     );
     expect(deleteRecord).not.toHaveBeenCalledWith(TARGET_A.atUri);
+  });
+});
+
+describe('GET /protocols/[handle]/[rkey]/edit — signed out', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test('redirects to sign-in carrying this page as returnTo', async () => {
+    // Without returnTo the visitor signs in and lands somewhere else, having
+    // lost the edit they set out to make. The native shell needs it most: its
+    // sign-in is a system-browser round trip, so the destination has to
+    // survive the trip in the URL rather than in component state.
+    let thrown: unknown;
+    try {
+      await load({
+        locals: {},
+        params: { handle: HANDLE, rkey: RKEY },
+      } as unknown as Parameters<typeof load>[0]);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toMatchObject({
+      status: 302,
+      location: `/auth/signin?returnTo=${encodeURIComponent(
+        `/protocols/${HANDLE}/${RKEY}/edit`,
+      )}`,
+    });
   });
 });
