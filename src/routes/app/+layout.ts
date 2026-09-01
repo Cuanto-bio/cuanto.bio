@@ -3,6 +3,7 @@ export const ssr = false;
 import { redirect } from '@sveltejs/kit';
 import { isSignInPath, signInPath } from '$lib/auth/signin';
 import { clearIdbUser, getIdbUser, saveIdbUser } from '$lib/offline/db';
+import { withIdbDeadline } from '$lib/offline/idbDeadline';
 import { syncOfflineData } from '$lib/offline/sync';
 import type { LayoutLoad } from './$types';
 
@@ -89,17 +90,23 @@ export const load: LayoutLoad = async ({ fetch, url }) => {
         needsLexiconMigration?: boolean;
       };
       // Don't persist the migration flag to IDB; it's a live server signal.
-      await saveIdbUser({
-        did: user.did,
-        handle: user.handle,
-        avatarUrl: user.avatarUrl,
-      });
+      await withIdbDeadline(
+        saveIdbUser({
+          did: user.did,
+          handle: user.handle,
+          avatarUrl: user.avatarUrl,
+        }),
+        'saveIdbUser',
+      );
       syncOfflineData(fetch); // intentionally not awaited
       return user;
     }
     if (res.status === 401) {
-      // Server does *not* think we're signed in, clear local auth data
-      await clearIdbUser();
+      // Server does *not* think we're signed in, clear local auth data.
+      // Same deadline as the other IDB awaits here: clearIdbUser is a
+      // readwrite delete and can hang the same way, and this guard runs on
+      // every /app navigation.
+      await withIdbDeadline(clearIdbUser(), 'clearIdbUser');
       if (isPublic)
         return { did: undefined, handle: null as unknown as string };
       redirect(302, signInRedirectTarget);
@@ -108,7 +115,7 @@ export const load: LayoutLoad = async ({ fetch, url }) => {
     // offline — fall through to IDB
   }
   // Probably offline, check local auth data
-  const user = await getIdbUser();
+  const user = await withIdbDeadline(getIdbUser(), 'getIdbUser');
   if (!user) {
     if (isPublic) return { did: undefined, handle: null as unknown as string };
     redirect(302, signInRedirectTarget);

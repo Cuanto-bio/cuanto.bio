@@ -3,10 +3,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 const getIdbUser = vi.fn();
 const saveIdbUser = vi.fn();
 const clearIdbUser = vi.fn();
+const resetIdbConnection = vi.fn();
 vi.mock('$lib/offline/db', () => ({
   getIdbUser: () => getIdbUser(),
   saveIdbUser: (...args: unknown[]) => saveIdbUser(...args),
   clearIdbUser: () => clearIdbUser(),
+  resetIdbConnection: () => resetIdbConnection(),
 }));
 
 const syncOfflineData = vi.fn();
@@ -21,6 +23,7 @@ vi.mock('$lib/platform', () => ({
   isNative: () => false,
 }));
 
+import { IDB_TIMEOUT_MS } from '$lib/offline/idbDeadline';
 import { load } from './+layout';
 
 const USER = { did: 'did:plc:dana', handle: 'dana', avatarUrl: 'd.png' };
@@ -67,6 +70,7 @@ beforeEach(() => {
   saveIdbUser.mockReset().mockResolvedValue(undefined);
   clearIdbUser.mockReset().mockResolvedValue(undefined);
   syncOfflineData.mockReset().mockResolvedValue(undefined);
+  resetIdbConnection.mockReset();
 });
 
 afterEach(() => {
@@ -94,6 +98,46 @@ describe('/app layout auth guard', () => {
     await expect(promise).resolves.toEqual(USER);
   });
 
+  // https://tangled.org/cuanto.bio/cuanto.bio/issues/68
+  test('returns the user when an IDB write never settles', async () => {
+    // Backstop for a write whenVisible did not catch. A hung IDB promise
+    // looks exactly like a slow one, and this guard runs on every /app
+    // navigation, so without a deadline one wedged write strands the app on
+    // whatever page it was on -- /api/me having already answered 200.
+    saveIdbUser.mockReturnValue(new Promise(() => {}));
+    vi.useFakeTimers();
+    const fetchFn = vi.fn().mockResolvedValue(meResponse(USER));
+
+    const promise = load({
+      fetch: fetchFn,
+      url: URL_APP_ACCOUNT,
+    } as unknown as Parameters<typeof load>[0]);
+
+    await vi.advanceTimersByTimeAsync(IDB_TIMEOUT_MS);
+
+    await expect(promise).resolves.toEqual(USER);
+    expect(resetIdbConnection).toHaveBeenCalled();
+  });
+
+  test('still decides when the IDB read never settles', async () => {
+    getIdbUser.mockReturnValue(new Promise(() => {}));
+    vi.useFakeTimers();
+    const fetchFn = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+
+    const promise = load({
+      fetch: fetchFn,
+      url: URL_APP_ACCOUNT,
+    } as unknown as Parameters<typeof load>[0]);
+    // Attached before the timers advance so the redirect is never briefly an
+    // unhandled rejection.
+    const rejects = expect(promise).rejects.toMatchObject({ status: 302 });
+
+    await vi.advanceTimersByTimeAsync(IDB_TIMEOUT_MS);
+
+    await rejects;
+    expect(resetIdbConnection).toHaveBeenCalled();
+  });
+
   test('still redirects to sign-in on a genuine network failure with nothing cached', async () => {
     getIdbUser.mockResolvedValue(undefined);
     const fetchFn = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
@@ -118,6 +162,32 @@ describe('/app layout auth guard', () => {
       } as unknown as Parameters<typeof load>[0]),
     ).rejects.toMatchObject({ status: 302, location: '/auth/signin' });
     expect(clearIdbUser).toHaveBeenCalled();
+  });
+
+  // https://tangled.org/cuanto.bio/cuanto.bio/issues/68
+  test('still decides on a 401 when clearing local auth never settles', async () => {
+    // clearIdbUser is a readwrite delete, so it can hang exactly as a write
+    // does. This guard runs on every /app navigation, so without the same
+    // deadline the other IDB awaits get, one wedged delete strands the app.
+    clearIdbUser.mockReturnValue(new Promise(() => {}));
+    vi.useFakeTimers();
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 401 }));
+
+    const promise = load({
+      fetch: fetchFn,
+      url: URL_APP_ACCOUNT,
+    } as unknown as Parameters<typeof load>[0]);
+    const rejects = expect(promise).rejects.toMatchObject({
+      status: 302,
+      location: '/auth/signin',
+    });
+
+    await vi.advanceTimersByTimeAsync(IDB_TIMEOUT_MS);
+
+    await rejects;
+    expect(resetIdbConnection).toHaveBeenCalled();
   });
 
   // https://tangled.org/cuanto.bio/cuanto.bio/issues/61

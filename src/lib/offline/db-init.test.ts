@@ -44,6 +44,37 @@ describe('getDB() concurrent first-callers', () => {
   });
 });
 
+describe('resetIdbConnection()', () => {
+  // https://tangled.org/cuanto.bio/cuanto.bio/issues/68
+  test('drops the memoized connection so the next call opens a fresh one', async () => {
+    let openCalls = 0;
+    vi.doMock('idb', async () => {
+      const actual = await vi.importActual<typeof import('idb')>('idb');
+      return {
+        ...actual,
+        openDB: (...args: Parameters<typeof actual.openDB>) => {
+          openCalls++;
+          return actual.openDB(...args);
+        },
+      };
+    });
+
+    const { getIdbUser, resetIdbConnection } = await import('./db');
+
+    await getIdbUser();
+    expect(openCalls).toBe(1);
+
+    // A WKWebView resuming from the system browser can leave a transaction
+    // that never settles, which poisons the connection for every later read
+    // and write -- not just the one that hung. Reopening is what lets sync,
+    // pending surveys and diagnostics work again without a force-quit.
+    resetIdbConnection();
+    await getIdbUser();
+
+    expect(openCalls).toBe(2);
+  });
+});
+
 describe('getDB() version upgrades across tabs', () => {
   test('a stale connection is closed so a newer tab is not blocked forever', async () => {
     const tabA = await import('./db');

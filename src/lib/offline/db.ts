@@ -247,9 +247,113 @@ function getDB(): Promise<IDBPDatabase<CuantoDB>> {
   return _dbPromise;
 }
 
-export async function cacheProtocol(protocol: Protocol): Promise<void> {
+/**
+ * Whether the page is currently hidden, which on iOS means the WKWebView may
+ * be suspended at any moment.
+ *
+ * Guarded for SSR and for the node test environment, neither of which has a
+ * document; both are treated as visible, since neither can be suspended.
+ */
+function isHidden(): boolean {
+  return (
+    typeof document !== 'undefined' && document.visibilityState === 'hidden'
+  );
+}
+
+// Best-effort cache writes held back while the page is hidden, replayed when
+// it comes back. See whenVisible. Each receives the database handle when it
+// runs, not when it was queued -- see flushDeferredWrites.
+type DeferredWrite = (db: IDBPDatabase<CuantoDB>) => Promise<unknown>;
+let deferredWrites: DeferredWrite[] = [];
+// Diagnostic entries recorded while hidden. Buffered as *entries* rather than
+// as deferred writes so each keeps the timestamp of the moment it described.
+let bufferedDiagnostics: DiagnosticEntry[] = [];
+
+/**
+ * Runs a best-effort cache write, holding it until the page is visible.
+ *
+ * A readwrite transaction opened while the page is hidden can hang forever in
+ * an iOS WKWebView: no result, no error, no events. WebKit serializes write
+ * transactions per database, so that single zombie blocks every later write
+ * until the app is force-quit, while reads carry on working — which is what
+ * made it look like a frozen UI rather than a storage problem.
+ * https://tangled.org/cuanto.bio/cuanto.bio/issues/68
+ *
+ * Resolves immediately when it defers, rather than when the write eventually
+ * lands. Deferring the promise instead would just relocate the hang: a route
+ * load awaiting a cache write would block exactly as it did before. Callers
+ * get fire-and-forget semantics, which is what a cache refresh wants anyway —
+ * every store guarded this way is re-fetchable from the server.
+ *
+ * Deliberately NOT used for pending surveys or GPS tracks. Those exist to
+ * survive the app being killed, so dropping a write on the floor until an
+ * uncertain future is worse than risking a hung transaction.
+ *
+ * The write is handed the database when it runs rather than closing over one:
+ * a write queued now may not flush until after resetIdbConnection() has torn
+ * the current connection down.
+ */
+async function whenVisible(
+  run: (db: IDBPDatabase<CuantoDB>) => Promise<unknown>,
+): Promise<void> {
+  if (isHidden()) {
+    deferredWrites.push(run);
+    return;
+  }
+  await run(await getDB());
+}
+
+/** Replays everything held back while hidden. Failures are not retried. */
+async function flushDeferredWrites(): Promise<void> {
+  // Breadcrumbs first: a visibilitychange listener elsewhere records its own
+  // `visible` entry the moment we come back, and the ring-buffer trim deletes
+  // in key order assuming that matches time order. The buffered entries are
+  // older, so they have to land first.
+  const entries = bufferedDiagnostics;
+  bufferedDiagnostics = [];
+  if (entries.length > 0) await writeDiagnostics(entries);
+
+  const writes = deferredWrites;
+  deferredWrites = [];
+  if (writes.length === 0) return;
+  // One fresh handle for the batch, resolved now -- not whatever each write
+  // saw when it was queued, which resetIdbConnection() may since have closed.
   const db = await getDB();
-  await db.put('cached-protocols', { ...protocol, cachedAt: Date.now() });
+  for (const run of writes) {
+    try {
+      await run(db);
+    } catch {
+      // A dropped cache write costs a re-fetch, nothing more.
+    }
+  }
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void flushDeferredWrites();
+  });
+}
+
+/**
+ * Drops the memoized connection so the next getDB() opens a fresh one.
+ *
+ * Paired with the deadline in /app/+layout.ts: if a write ever does hang
+ * despite whenVisible, the wedged connection is at least not reused. Measured
+ * on-device this did NOT by itself unwedge writes (WebKit serializes them per
+ * *database*, so a new connection queues behind the same zombie), so this is
+ * hygiene rather than recovery -- whenVisible is what actually prevents the
+ * zombie. https://tangled.org/cuanto.bio/cuanto.bio/issues/68
+ */
+export function resetIdbConnection(): void {
+  const pending = _dbPromise;
+  _dbPromise = null;
+  pending?.then((db) => db.close()).catch(() => {});
+}
+
+export async function cacheProtocol(protocol: Protocol): Promise<void> {
+  await whenVisible((db) =>
+    db.put('cached-protocols', { ...protocol, cachedAt: Date.now() }),
+  );
 }
 
 export async function getCachedProtocolByRkey(
@@ -403,14 +507,18 @@ export async function setCachedFollowedProtocols(
   if (fetchStartedAt !== undefined && lastFollowMutationAt >= fetchStartedAt) {
     return;
   }
-  const db = await getDB();
-  const tx = db.transaction('followed-protocols', 'readwrite');
-  await tx.store.clear();
-  const now = Date.now();
-  await Promise.all(
-    protocols.map((p) => tx.store.put({ ...p, cachedAt: now })),
-  );
-  await tx.done;
+  // syncOfflineData fires this un-awaited straight after `await fetch('/api/sync')`,
+  // so the app can background between the fetch resolving and this running --
+  // the clear()+put() transaction has to be held until visible like the rest.
+  await whenVisible(async (db) => {
+    const tx = db.transaction('followed-protocols', 'readwrite');
+    await tx.store.clear();
+    const now = Date.now();
+    await Promise.all(
+      protocols.map((p) => tx.store.put({ ...p, cachedAt: now })),
+    );
+    await tx.done;
+  });
 }
 
 // Writes a single protocol into the followed-protocols cache without waiting
@@ -421,27 +529,27 @@ export async function setCachedFollowedProtocols(
 export async function addCachedFollowedProtocol(
   protocol: Protocol,
 ): Promise<void> {
-  const db = await getDB();
-  await db.put('followed-protocols', { ...protocol, cachedAt: Date.now() });
+  await whenVisible((db) =>
+    db.put('followed-protocols', { ...protocol, cachedAt: Date.now() }),
+  );
   lastFollowMutationAt = Date.now();
 }
 
 export async function removeCachedFollowedProtocol(
   atUri: string,
 ): Promise<void> {
-  const db = await getDB();
-  await db.delete('followed-protocols', atUri);
+  await whenVisible((db) => db.delete('followed-protocols', atUri));
   lastFollowMutationAt = Date.now();
 }
 
 export async function cacheSurvey(survey: Survey): Promise<void> {
-  const db = await getDB();
-  await db.put('cached-surveys', { ...survey, cachedAt: Date.now() });
+  await whenVisible((db) =>
+    db.put('cached-surveys', { ...survey, cachedAt: Date.now() }),
+  );
 }
 
 export async function deleteCachedSurvey(atUri: string): Promise<void> {
-  const db = await getDB();
-  await db.delete('cached-surveys', atUri);
+  await whenVisible((db) => db.delete('cached-surveys', atUri));
 }
 
 export async function getCachedSurvey(
@@ -472,8 +580,7 @@ export async function getCachedSurveys(): Promise<CachedSurvey[]> {
 }
 
 export async function saveIdbUser(user: IdbUser): Promise<void> {
-  const db = await getDB();
-  await db.put('user', user, 'current');
+  await whenVisible((db) => db.put('user', user, 'current'));
 }
 
 export async function getIdbUser(): Promise<IdbUser | undefined> {
@@ -500,9 +607,29 @@ export async function recordDiagnostic(
   kind: DiagnosticKind,
   message: string,
 ): Promise<void> {
+  const entry: DiagnosticEntry = { at: Date.now(), kind, message };
+  // The visibility breadcrumb is written from the `visibilitychange` handler,
+  // so on iOS it opens a transaction at the precise instant the webview
+  // suspends -- measured on-device as the thing that wedged every subsequent
+  // write. Buffer the entry (keeping its own timestamp, which is the whole
+  // point of the breadcrumb) and let the flush on `visible` persist it.
+  if (isHidden()) {
+    bufferedDiagnostics.push(entry);
+    // A long stint in the background with errors or rejections firing must
+    // not grow this without bound; hold the same number the persisted ring
+    // buffer does, dropping the oldest first as it does.
+    if (bufferedDiagnostics.length > MAX_DIAGNOSTICS)
+      bufferedDiagnostics.shift();
+    return;
+  }
+  await writeDiagnostics([entry]);
+}
+
+/** Appends entries and trims the ring buffer back to MAX_DIAGNOSTICS. */
+async function writeDiagnostics(entries: DiagnosticEntry[]): Promise<void> {
   const db = await getDB();
   const tx = db.transaction('diagnostics', 'readwrite');
-  await tx.store.add({ at: Date.now(), kind, message });
+  for (const entry of entries) await tx.store.add(entry);
   // Ring buffer: keys ascend with insertion, so the cursor reaches the oldest
   // rows first and dropping the overflow from the front keeps the newest.
   let excess = (await tx.store.count()) - MAX_DIAGNOSTICS;
