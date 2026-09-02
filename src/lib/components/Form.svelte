@@ -7,6 +7,7 @@ import { setContext } from 'svelte';
 import type { HTMLFormAttributes } from 'svelte/elements';
 import { enhance } from '$app/forms';
 import type { SubmitFunction } from '@sveltejs/kit';
+import { clearDeadCredentialForActionResult } from '$lib/auth/clearDeadCredential';
 
 let { children, onEnhance, ...rest }: HTMLFormAttributes & { onEnhance?: SubmitFunction } =
   $props();
@@ -42,6 +43,10 @@ setContext(SUBMITTING_CTX, {
       } else {
         await opts.update();
       }
+      // A form action reports a dead PDS session as fail(401, { sessionExpired
+      // }); opts.update() renders the alert from `form`, but the stale
+      // credential also has to go or the app keeps looking signed in (issue #65).
+      clearDeadCredentialForActionResult(opts.result);
       submitting = false;
     };
   }}
