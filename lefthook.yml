@@ -8,3 +8,8 @@ pre-commit:
         pnpm format {staged_files} \
           && pnpm check:biome {staged_files} \
           && pnpm check:svelte
+    # When a lexicon JSON is staged, fail if src/lib/lexicons would change once
+    # regenerated, so a lexicon edit can't land without its generated TS.
+    lexicons:
+      glob: "lexicons/**/*.json"
+      run: pnpm lex:check
