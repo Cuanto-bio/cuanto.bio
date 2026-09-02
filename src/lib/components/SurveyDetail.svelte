@@ -216,7 +216,12 @@ const externalLinkProps =
   <div class="mb-4 flex items-center justify-between text-xs">
     <span class="text-muted-foreground">SURVEY</span>
     <div class="flex items-center gap-2">
-      {#if editable && displayTrack}
+      <!--
+        No auth gate: a survey's GPS track is public data, and Export GPX just
+        re-serializes the track already loaded for the map. Shown to anyone,
+        signed in or not (issue #71).
+      -->
+      {#if displayTrack}
         <Button type="button" variant="outline" onclick={downloadGpx}>
           Export GPX
         </Button>

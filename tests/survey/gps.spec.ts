@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import type { Sql } from 'postgres';
 import { CUANTO_IDB_VERSION } from '../../src/lib/offline/constants';
 import {
   expect,
@@ -617,5 +618,90 @@ test('pending surveys list shows publish point/bbox/track checkboxes and togglin
     expect(stored?.publishTrack).toBe(false);
   } finally {
     await teardownDid(sql, TRACK_DID);
+  }
+});
+
+// ── Public survey detail: Export GPX is available to anyone (issue #71) ────────
+
+const PUB_OWNER_DID = 'did:test:survey-gpx-pub-owner';
+const PUB_OWNER_HANDLE = 'user-survey-gpx-pub-owner';
+
+const PUBLISHED_GPX = [
+  '<?xml version="1.0" encoding="UTF-8"?>',
+  '<gpx version="1.1" creator="cuanto.bio">',
+  '<trk><trkseg>',
+  '<trkpt lat="37.77" lon="-122.41"><time>2026-05-01T10:00:00.000Z</time></trkpt>',
+  '<trkpt lat="37.78" lon="-122.42"><time>2026-05-01T10:00:10.000Z</time></trkpt>',
+  '</trkseg></trk>',
+  '</gpx>',
+].join('\n');
+
+// Seeds a survey by PUB_OWNER_DID carrying a published GPX track blob, reachable
+// on the public /surveys/:handle/:rkey route (i.e. by non-owners).
+async function seedSurveyWithPublishedTrack(
+  sql: Sql,
+): Promise<{ surveyRkey: string }> {
+  const { protocolRkey } = await seedProtocol(sql, PUB_OWNER_DID);
+  const protocolUri = `at://${PUB_OWNER_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+  const rkey = `pubtrack${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  const atUri = `at://${PUB_OWNER_DID}/bio.cuanto.survey/${rkey}`;
+  const record = {
+    $type: 'bio.cuanto.survey',
+    protocol: {
+      uri: protocolUri,
+      cid: 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34',
+    },
+    createdAt: new Date().toISOString(),
+    eventDate: '2026-05-01T10:00:00.000Z',
+    location: {
+      $type: 'org.atgeo.place',
+      name: 'Published Track Park',
+      locations: [],
+    },
+    track: {
+      gpx: {
+        $type: 'blob',
+        ref: { $link: 'bafkreigpxpublishedtrackcidforissue71xxxxxxxxxxx' },
+        mimeType: 'application/gpx+xml',
+        size: 128,
+      },
+      source: 'device',
+    },
+  };
+  await sql`
+    INSERT INTO surveys (at_uri, did, rkey, protocol_uri, created_at, record, indexed_at)
+    VALUES (${atUri}, ${PUB_OWNER_DID}, ${rkey}, ${protocolUri}, now(), ${sql.json(record)}, now())
+  `;
+  return { surveyRkey: rkey };
+}
+
+test('a signed-out visitor can export GPX from a public survey with a published track', async ({
+  page,
+  sql,
+}) => {
+  await page.route('**/api/blobs/gpx*', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/gpx+xml',
+      body: PUBLISHED_GPX,
+    }),
+  );
+
+  const { surveyRkey } = await seedSurveyWithPublishedTrack(sql);
+
+  try {
+    // No auth cookie: the survey's GPS track is public data.
+    await page.goto(`/surveys/${PUB_OWNER_HANDLE}/${surveyRkey}`);
+    await page.waitForLoadState('networkidle');
+
+    const exportButton = page.getByRole('button', { name: /export gpx/i });
+    await expect(exportButton).toBeVisible();
+
+    const downloadPromise = page.waitForEvent('download');
+    await exportButton.click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe(`survey-${surveyRkey}.gpx`);
+  } finally {
+    await teardownDid(sql, PUB_OWNER_DID);
   }
 });
