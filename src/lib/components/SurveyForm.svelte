@@ -38,6 +38,7 @@ import type { Main as AtgeoPlaceMain } from '$lib/lexicons/org/atgeo/place.defs'
 import {
   type CachedProtocol,
   deletePendingSurvey,
+  flushDraftWal,
   type PendingSurvey,
   type Survey,
   saveGpsTrack,
@@ -47,6 +48,7 @@ import {
   updatePendingSurvey,
   type VerbatimScope,
 } from '$lib/offline/db';
+import { clearDraftWal, writeDraftWal } from '$lib/offline/draftWal';
 import { loadSurveyTrack } from '$lib/offline/track';
 import {
   authIssueFromError,
@@ -468,23 +470,37 @@ onMount(() => {
   };
   const id = setInterval(tick, 1000);
 
-  const onVisible = () => {
-    if (document.visibilityState === 'visible') tick();
+  const onVisibilityChange = () => {
+    if (isPageHidden()) {
+      // Backgrounded: persist synchronously to localStorage before the webview
+      // can suspend. An IndexedDB write opened now can hang forever on iOS and
+      // wedge every later write (#68, #69).
+      stashDraftToWal();
+      return;
+    }
+    tick();
+    void foldStashedDraft();
   };
-  document.addEventListener('visibilitychange', onVisible);
+  document.addEventListener('visibilitychange', onVisibilityChange);
 
   const saveInterval = setInterval(() => autoSave(), 10_000);
 
   const onUnload = () => {
-    autoSave();
+    // A full document unload (tab close, reload, iOS backgrounding): stash
+    // synchronously. An IndexedDB write here may not finish before the page is
+    // gone, and on iOS can hang (#69); flushDraftWal folds the WAL back in on
+    // the next launch.
+    stashDraftToWal();
   };
   window.addEventListener('beforeunload', onUnload);
+  window.addEventListener('pagehide', onUnload);
 
   return () => {
     clearInterval(id);
     clearInterval(saveInterval);
-    document.removeEventListener('visibilitychange', onVisible);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
     window.removeEventListener('beforeunload', onUnload);
+    window.removeEventListener('pagehide', onUnload);
     mq.removeEventListener('change', onMqChange);
     track?.stop();
   };
@@ -582,6 +598,54 @@ function buildNewSurveyPayload(complete: boolean): PendingSurvey {
   };
 }
 
+// True when the page is backgrounded. On iOS a readwrite IndexedDB transaction
+// opened while hidden can hang forever and wedge every later write (#68), so
+// autosave diverts to a synchronous localStorage write-ahead log instead (#69).
+const isPageHidden = () =>
+  typeof document !== 'undefined' && document.visibilityState === 'hidden';
+
+// Serializes a draft payload into the write-ahead log. Shared by the
+// visibilitychange/pagehide handlers and autoSave's hidden branch so the entry
+// shape (id coalescing, payload builder) stays in one place.
+function stashPayloadToWal(payload: PendingSurvey) {
+  writeDraftWal({ id: pendingSurveyId ?? undefined, payload });
+}
+
+// Stashes the current draft to the localStorage write-ahead log. Unconditional
+// (no `saving` guard): the point is to capture state the instant the page goes
+// away, even if an IndexedDB autosave is mid-flight. flushDraftWal() in
+// $lib/offline/db folds it back into pending-surveys on the next read.
+function stashDraftToWal() {
+  if (submitting || navigatingAway) return;
+  stashPayloadToWal(buildNewSurveyPayload(resumingComplete));
+}
+
+// On returning to the foreground: writes are safe again, so fold any draft
+// stashed while hidden into IndexedDB. Adopt the row id it landed in so the
+// next autosave updates that row rather than creating a second one.
+async function foldStashedDraft() {
+  if (submitting || navigatingAway) return;
+  let foldedId: number | undefined;
+  try {
+    foldedId = await flushDraftWal();
+  } catch {
+    // flushDraftWal logs its own failures and leaves the WAL for the next
+    // attempt; fall through so a still-unsaved draft still gets an autosave.
+  }
+  // finish() or confirmCancel() may have started while we awaited the flush;
+  // don't adopt an id or kick another write once the survey is being finalised.
+  if (submitting || navigatingAway) return;
+  if (pendingSurveyId == null && foldedId != null) {
+    pendingSurveyId = foldedId;
+    replaceState(`?resumeId=${pendingSurveyId}`, {});
+  }
+  // A successful fold already wrote the current state to IndexedDB, and the 10s
+  // interval covers anything since. Only autosave here when the flush persisted
+  // nothing (no entry, or the stash hit a full localStorage), so a foreground
+  // is not a full-payload write every time.
+  if (foldedId == null) void autoSave();
+}
+
 async function autoSave() {
   // `submitting` matters as much as `navigatingAway`: finish() writes
   // complete: true and then awaits checkConnectivity(), which offline runs to
@@ -595,6 +659,13 @@ async function autoSave() {
   saving = true;
   try {
     const payload = buildNewSurveyPayload(resumingComplete);
+    if (isPageHidden()) {
+      // Backgrounded: stash to localStorage rather than open an IndexedDB
+      // write that can hang. flushDraftWal() folds it back in on the next
+      // foreground or read of the pending list.
+      stashPayloadToWal(payload);
+      return;
+    }
     if (pendingSurveyId != null) {
       await updatePendingSurvey({ ...payload, id: pendingSurveyId });
     } else {
@@ -717,6 +788,9 @@ async function finish() {
   pastDateError = null;
   pastDurationError = null;
   surveyorCountError = null;
+  // Past validation: this survey is being finished, so any backgrounded draft
+  // in the write-ahead log is stale. `submitting` now also blocks a fresh one.
+  if (!isEdit) clearDraftWal();
 
   if (isEdit) {
     try {
@@ -796,6 +870,7 @@ async function confirmCancel() {
     await goto(`/app/surveys/${sv.handle}/${sv.rkey}`);
     return;
   }
+  clearDraftWal();
   if (pendingSurveyId != null) await deletePendingSurvey(pendingSurveyId);
   navigatingAway = true;
   await goto(`/app/protocols/${protocol.handle}/${protocol.rkey}`);

@@ -10,6 +10,7 @@ import type { IncidentalOccurrence } from '$lib/surveys';
 import type { TargetFilterState } from '$lib/targets.svelte';
 import { generateTid } from '$lib/tid';
 import { CUANTO_IDB_VERSION } from './constants';
+import { clearDraftWal, readDraftWal } from './draftWal';
 
 export type {
   TaxonScope,
@@ -386,9 +387,95 @@ export async function updatePendingSurvey(
   await db.put('pending-surveys', survey);
 }
 
+let draftWalFlush: Promise<number | undefined> | null = null;
+
+/**
+ * Folds a survey draft stashed in the localStorage write-ahead log into
+ * `pending-surveys`.
+ *
+ * SurveyForm's autosave writes to the WAL instead of IndexedDB while the page
+ * is hidden, because a readwrite transaction opened in a hidden iOS WKWebView
+ * can hang forever and wedge every later write (#68, #69). Replaying it here on
+ * the next read of the pending list — or on the next foreground, from the form —
+ * lands the draft in IndexedDB so it shows up as in-progress and can be resumed,
+ * even after a background kill.
+ *
+ * Returns the pending-surveys id the draft was folded into, so a still-mounted
+ * SurveyForm can adopt it and keep autosaving in place rather than creating a
+ * second row.
+ *
+ * Idempotent: a WAL entry with no id is matched to any existing row by
+ * surveyRkey, so a crash between the write here and clearing the WAL cannot
+ * create a duplicate. Concurrent callers share one in-flight flush. A WAL entry
+ * naming a row that no longer exists is dropped rather than resurrected — that
+ * row was deleted deliberately (finished, cancelled, or removed from the list).
+ * The WAL is only cleared, and only written back, if it still holds the same
+ * entry: a fresh stash landing mid-flush (the app backgrounded again) is not
+ * lost, and an entry that finish()/confirmCancel() cleared while the flush was
+ * parked on `await getDB()` is not written back over the finalised row.
+ *
+ * Inert while the page is hidden: this is called on every navigation (via
+ * getPendingSurveys in /app/+layout.svelte), and opening the readwrite
+ * transaction in a hidden iOS WKWebView is the exact hang #68/#69 avoid. The
+ * entry is left for the next flush once the page is visible again.
+ * https://tangled.org/cuanto.bio/cuanto.bio/issues/69
+ */
+export async function flushDraftWal(): Promise<number | undefined> {
+  if (draftWalFlush) return draftWalFlush;
+  if (isHidden()) return undefined;
+  const entry = readDraftWal();
+  if (!entry) return undefined;
+  const entrySnapshot = JSON.stringify(entry);
+  const stillOurs = () => JSON.stringify(readDraftWal()) === entrySnapshot;
+  const clearIfUnchanged = () => {
+    if (stillOurs()) clearDraftWal();
+  };
+  draftWalFlush = (async () => {
+    try {
+      const db = await getDB();
+      const { payload } = entry;
+      if (entry.id != null) {
+        const existing = await db.get('pending-surveys', entry.id);
+        if (!existing) {
+          // Deleted deliberately while the WAL entry sat unflushed; drop it.
+          clearIfUnchanged();
+          return undefined;
+        }
+        // Cleared or overwritten while we awaited the connection: stale now.
+        if (!stillOurs()) return undefined;
+        await db.put('pending-surveys', { ...payload, id: entry.id });
+        clearIfUnchanged();
+        return entry.id;
+      }
+      const match = (await db.getAll('pending-surveys')).find(
+        (s) => s.surveyRkey === payload.surveyRkey,
+      );
+      if (!stillOurs()) return undefined;
+      let id: number;
+      if (match?.id != null) {
+        id = match.id;
+        await db.put('pending-surveys', { ...payload, id });
+      } else {
+        id = await db.add('pending-surveys', payload);
+      }
+      clearIfUnchanged();
+      return id;
+    } catch (err) {
+      // Leave the WAL in place so the next flush retries; a transient failure
+      // (or a dev-tools pause) must not drop field data.
+      logger.warn({ err }, 'Failed to flush the survey draft write-ahead log');
+      return undefined;
+    } finally {
+      draftWalFlush = null;
+    }
+  })();
+  return draftWalFlush;
+}
+
 export async function getPendingSurveyById(
   id: number,
 ): Promise<PendingSurvey | undefined> {
+  await flushDraftWal();
   const db = await getDB();
   return db.get('pending-surveys', id);
 }
@@ -460,6 +547,7 @@ function migratePendingSurvey(survey: PendingSurvey): PendingSurvey {
 }
 
 export async function getPendingSurveys(): Promise<PendingSurvey[]> {
+  await flushDraftWal();
   const db = await getDB();
   const raw = await db.getAll('pending-surveys');
   const surveys = raw.map(migratePendingSurvey);

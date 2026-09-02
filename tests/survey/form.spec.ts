@@ -2,7 +2,9 @@ import { expect, seedProtocol, teardownDid, test } from '../fixtures.js';
 import {
   cacheAndOpenNewSurvey,
   confirmFinishSurvey,
+  readDraftWalEntry,
   readPendingSurveys,
+  setPageHidden,
 } from './helpers.js';
 
 test('can create a survey and see it in the surveys list', async ({
@@ -635,6 +637,96 @@ test('retrying an upload after a lost response does not duplicate the survey', a
       AND s.record->'location'->>'name' = 'Lost Response Park'
   `;
   expect(occCount).toBe(1);
+});
+
+// ── Backgrounded autosave: localStorage write-ahead log (#69) ────────────────
+
+test.describe('backgrounded autosave', () => {
+  test('backgrounding stashes the draft in localStorage without touching IndexedDB', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await page.clock.install({ time: Date.now() });
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.fill(
+      '[placeholder="e.g. Mission Dolores Park"]',
+      'Backgrounded Meadow',
+    );
+    await page.locator('[aria-label="Increase count"]').first().click();
+
+    await setPageHidden(page, true);
+
+    // The draft lands in the write-ahead log immediately on visibilitychange.
+    await expect
+      .poll(() => readDraftWalEntry(page).then((e) => e?.payload?.locationName))
+      .toBe('Backgrounded Meadow');
+
+    // Firing the 10s autosave interval while hidden must NOT open an IndexedDB
+    // write — that is the transaction that can hang and wedge the app on iOS.
+    await page.clock.runFor(11_000);
+    await expect
+      .poll(async () => (await readPendingSurveys(page)).length)
+      .toBe(0);
+  });
+
+  test('a draft stashed while backgrounded lands in IndexedDB and is resumable after a restart', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.fill(
+      '[placeholder="e.g. Mission Dolores Park"]',
+      'Killed App Ridge',
+    );
+    await page.locator('[aria-label="Increase count"]').first().click();
+
+    await setPageHidden(page, true);
+    await expect
+      .poll(() => readDraftWalEntry(page).then((e) => e?.payload?.locationName))
+      .toBe('Killed App Ridge');
+
+    // A fresh document load (as after a background kill) drops the form's
+    // in-memory state and the IndexedDB connection; localStorage survives.
+    await page.goto('/app/surveys');
+
+    await expect(page.getByText('In progress')).toBeVisible();
+    await expect(page.getByText('Killed App Ridge')).toBeVisible();
+
+    await page.getByRole('link', { name: 'Resume', exact: true }).click();
+    await page.waitForSelector('text=Finish Survey', { state: 'visible' });
+    await expect(
+      page.locator('[placeholder="e.g. Mission Dolores Park"]'),
+    ).toHaveValue('Killed App Ridge');
+    await expect(
+      page.locator('[aria-label="Increase count"]').first(),
+    ).toContainText('1');
+  });
+
+  test('returning to the foreground folds the stashed draft into IndexedDB', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.fill(
+      '[placeholder="e.g. Mission Dolores Park"]',
+      'Foreground Fold Field',
+    );
+
+    await setPageHidden(page, true);
+    await expect
+      .poll(() => readDraftWalEntry(page).then((e) => e?.payload?.locationName))
+      .toBe('Foreground Fold Field');
+    expect(await readPendingSurveys(page)).toHaveLength(0);
+
+    await setPageHidden(page, false);
+
+    await expect
+      .poll(async () =>
+        (await readPendingSurveys(page)).map((s) => s.locationName),
+      )
+      .toContain('Foreground Fold Field');
+    await expect.poll(() => readDraftWalEntry(page)).toBeNull();
+  });
 });
 
 // ── Counted targets indicator ─────────────────────────────────────────────────

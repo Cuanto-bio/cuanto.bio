@@ -126,6 +126,37 @@ export async function pushTrackFixes(page: Page) {
   });
 }
 
+// Fakes a page visibility transition: overrides document.visibilityState /
+// document.hidden and fires the event the app listens for. This is how
+// backgrounding an iOS WKWebView looks to page JS, minus the actual suspend.
+export async function setPageHidden(page: Page, hidden: boolean) {
+  await page.evaluate((h) => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => (h ? 'hidden' : 'visible'),
+    });
+    Object.defineProperty(document, 'hidden', {
+      configurable: true,
+      get: () => h,
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, hidden);
+}
+
+// Reads the survey draft write-ahead log entry straight out of localStorage.
+export async function readDraftWalEntry(
+  page: Page,
+): Promise<{ id?: number; payload: PendingSurvey } | null> {
+  return page.evaluate(() => {
+    try {
+      const raw = localStorage.getItem('cuanto:survey-draft-wal');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+}
+
 // Waits until the live recorder has committed at least one point.
 export async function waitForRecordedPoint(page: Page) {
   await expect

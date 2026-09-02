@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   addCachedFollowedProtocol,
   cacheProtocol,
@@ -8,6 +8,7 @@ import {
   clearIdb,
   clearIdbUser,
   deletePendingSurvey,
+  flushDraftWal,
   getCachedFollowedProtocolByRkey,
   getCachedFollowedProtocols,
   getCachedProtocolByRkey,
@@ -27,6 +28,8 @@ import {
   setCachedFollowedProtocols,
   updatePendingSurvey,
 } from './db';
+import { clearDraftWal, readDraftWal, writeDraftWal } from './draftWal';
+import { fakeLocalStorage } from './fakeLocalStorage';
 
 // All tests in this file share one in-memory IDB (singleton _db). Each test
 // explicitly sets up and tears down its own data rather than relying on
@@ -392,6 +395,238 @@ describe('pending-surveys store', () => {
     expect(migrated?.publishTrack).toBe(false);
     expect((migrated as { publishGeo?: boolean }).publishGeo).toBeUndefined();
     await deletePendingSurvey(id);
+  });
+});
+
+// ── draft write-ahead log flush ───────────────────────────────────────────────
+
+describe('flushDraftWal', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', fakeLocalStorage());
+  });
+
+  afterEach(async () => {
+    clearDraftWal();
+    vi.unstubAllGlobals();
+    for (const s of await getPendingSurveys()) {
+      if (s.id != null) await deletePendingSurvey(s.id);
+    }
+  });
+
+  test('folds a WAL entry with no id into a new pending-surveys row', async () => {
+    writeDraftWal({
+      payload: {
+        ...pendingSurvey1,
+        surveyRkey: 'walnew000001',
+        locationName: 'Backgrounded Field',
+        complete: false,
+      },
+    });
+
+    const foldedId = await flushDraftWal();
+
+    const row = (await getPendingSurveys()).find(
+      (s) => s.surveyRkey === 'walnew000001',
+    );
+    expect(row).toBeDefined();
+    expect(row?.id).toBe(foldedId);
+    expect(row?.locationName).toBe('Backgrounded Field');
+    expect(row?.complete).toBe(false);
+    expect(readDraftWal()).toBeNull();
+  });
+
+  test('folds a WAL entry with an id into the existing row in place', async () => {
+    const id = await savePendingSurvey({
+      ...pendingSurvey1,
+      surveyRkey: 'walupd000001',
+      locationName: 'Old Name',
+      complete: false,
+    });
+    writeDraftWal({
+      id,
+      payload: {
+        ...pendingSurvey1,
+        surveyRkey: 'walupd000001',
+        locationName: 'New Name',
+        complete: false,
+      },
+    });
+
+    const foldedId = await flushDraftWal();
+
+    expect(foldedId).toBe(id);
+    const matching = (await getPendingSurveys()).filter(
+      (s) => s.surveyRkey === 'walupd000001',
+    );
+    expect(matching).toHaveLength(1);
+    expect(matching[0].id).toBe(id);
+    expect(matching[0].locationName).toBe('New Name');
+    expect(readDraftWal()).toBeNull();
+  });
+
+  test('matches an existing row by surveyRkey when the WAL entry has no id', async () => {
+    await savePendingSurvey({
+      ...pendingSurvey1,
+      surveyRkey: 'walrkey00001',
+      locationName: 'Old Name',
+      complete: false,
+    });
+    writeDraftWal({
+      payload: {
+        ...pendingSurvey1,
+        surveyRkey: 'walrkey00001',
+        locationName: 'New Name',
+        complete: false,
+      },
+    });
+
+    await flushDraftWal();
+
+    const matching = (await getPendingSurveys()).filter(
+      (s) => s.surveyRkey === 'walrkey00001',
+    );
+    expect(matching).toHaveLength(1);
+    expect(matching[0].locationName).toBe('New Name');
+  });
+
+  test('does not resurrect a row deleted after the WAL entry was written', async () => {
+    const id = await savePendingSurvey({
+      ...pendingSurvey1,
+      surveyRkey: 'walgone00001',
+      complete: false,
+    });
+    await deletePendingSurvey(id);
+    writeDraftWal({
+      id,
+      payload: {
+        ...pendingSurvey1,
+        surveyRkey: 'walgone00001',
+        complete: false,
+      },
+    });
+
+    const foldedId = await flushDraftWal();
+
+    expect(foldedId).toBeUndefined();
+    expect(
+      (await getPendingSurveys()).some((s) => s.surveyRkey === 'walgone00001'),
+    ).toBe(false);
+    expect(readDraftWal()).toBeNull();
+  });
+
+  test('is a no-op when there is no WAL entry', async () => {
+    await expect(flushDraftWal()).resolves.toBeUndefined();
+  });
+
+  test('concurrent flushes fold the draft into a single row', async () => {
+    writeDraftWal({
+      payload: {
+        ...pendingSurvey1,
+        surveyRkey: 'walrace00001',
+        complete: false,
+      },
+    });
+
+    const [a, b] = await Promise.all([flushDraftWal(), flushDraftWal()]);
+
+    expect(a).toBe(b);
+    expect(a).toBeTypeOf('number');
+    const matching = (await getPendingSurveys()).filter(
+      (s) => s.surveyRkey === 'walrace00001',
+    );
+    expect(matching).toHaveLength(1);
+  });
+
+  test('getPendingSurveys folds in a stashed draft', async () => {
+    writeDraftWal({
+      payload: {
+        ...pendingSurvey1,
+        surveyRkey: 'wallist00001',
+        complete: false,
+      },
+    });
+
+    const all = await getPendingSurveys();
+
+    expect(all.some((s) => s.surveyRkey === 'wallist00001')).toBe(true);
+    expect(readDraftWal()).toBeNull();
+  });
+
+  test('getPendingSurveyById folds in a stashed draft before returning it', async () => {
+    const id = await savePendingSurvey({
+      ...pendingSurvey1,
+      surveyRkey: 'walbyid00001',
+      locationName: 'Old Name',
+      complete: false,
+    });
+    writeDraftWal({
+      id,
+      payload: {
+        ...pendingSurvey1,
+        surveyRkey: 'walbyid00001',
+        locationName: 'New Name',
+        complete: false,
+      },
+    });
+
+    const row = await getPendingSurveyById(id);
+
+    expect(row?.locationName).toBe('New Name');
+    expect(readDraftWal()).toBeNull();
+  });
+
+  test('does not open an IndexedDB write while the page is hidden', async () => {
+    // On iOS a readwrite transaction opened while the WKWebView is hidden can
+    // hang forever and wedge every later write (#68). getPendingSurveys is
+    // called on every navigation, so the flush must be inert while hidden and
+    // leave the entry for a later, visible flush (#69).
+    vi.stubGlobal('document', { visibilityState: 'hidden' });
+
+    writeDraftWal({
+      payload: {
+        ...pendingSurvey1,
+        surveyRkey: 'walhidden001',
+        locationName: 'Hidden Field',
+        complete: false,
+      },
+    });
+
+    const foldedId = await flushDraftWal();
+
+    expect(foldedId).toBeUndefined();
+    expect(readDraftWal()?.payload.surveyRkey).toBe('walhidden001');
+    // Still hidden: getPendingSurveys must not have folded anything in either.
+    expect(await getPendingSurveys()).toHaveLength(0);
+  });
+
+  test('aborts without writing when the WAL is cleared mid-flush', async () => {
+    // finish() and confirmCancel() clear the WAL synchronously; if that lands
+    // while a flush is parked on `await getDB()`, the entry in hand is stale and
+    // must not be written back over the row those handlers just finalised.
+    const id = await savePendingSurvey({
+      ...pendingSurvey1,
+      surveyRkey: 'walcleared01',
+      locationName: 'Finalised',
+      complete: true,
+    });
+    writeDraftWal({
+      id,
+      payload: {
+        ...pendingSurvey1,
+        surveyRkey: 'walcleared01',
+        locationName: 'Stale Draft',
+        complete: false,
+      },
+    });
+
+    const flushing = flushDraftWal();
+    clearDraftWal();
+    const foldedId = await flushing;
+
+    expect(foldedId).toBeUndefined();
+    const row = await getPendingSurveyById(id);
+    expect(row?.locationName).toBe('Finalised');
+    expect(row?.complete).toBe(true);
   });
 });
 
