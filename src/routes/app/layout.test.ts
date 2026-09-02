@@ -98,6 +98,87 @@ describe('/app layout auth guard', () => {
     await expect(promise).resolves.toEqual(USER);
   });
 
+  // https://tangled.org/cuanto.bio/cuanto.bio/issues/70
+  test('does not rewrite the cached user when /api/me still matches it', async () => {
+    // The guard re-runs on every /app navigation; rewriting a byte-identical
+    // record each time is the exposure this trims. A live-only server signal
+    // like needsLexiconMigration must not count as a difference.
+    getIdbUser.mockResolvedValue({ ...USER });
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ...USER, needsLexiconMigration: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await expect(
+      load({
+        fetch: fetchFn,
+        url: URL_APP_ACCOUNT,
+      } as unknown as Parameters<typeof load>[0]),
+    ).resolves.toEqual({ ...USER, needsLexiconMigration: true });
+    expect(saveIdbUser).not.toHaveBeenCalled();
+  });
+
+  // https://tangled.org/cuanto.bio/cuanto.bio/issues/70
+  test('rewrites the cached user when the avatar changed but the did did not', async () => {
+    // Comparing only `did` would pin a stale avatar forever.
+    getIdbUser.mockResolvedValue({ ...USER, avatarUrl: 'stale.png' });
+    const fetchFn = vi.fn().mockResolvedValue(meResponse(USER));
+
+    await expect(
+      load({
+        fetch: fetchFn,
+        url: URL_APP_ACCOUNT,
+      } as unknown as Parameters<typeof load>[0]),
+    ).resolves.toEqual(USER);
+    expect(saveIdbUser).toHaveBeenCalledWith({
+      did: USER.did,
+      handle: USER.handle,
+      avatarUrl: USER.avatarUrl,
+    });
+  });
+
+  // https://tangled.org/cuanto.bio/cuanto.bio/issues/70
+  test('keeps a confirmed 200 authoritative when the cached-user read fails', async () => {
+    // withIdbDeadline rethrows a non-timeout rejection; without a guard it
+    // would fall into the outer "offline" catch and bounce a signed-in user
+    // to sign-in.
+    getIdbUser.mockRejectedValue(
+      new DOMException('connection closing', 'InvalidStateError'),
+    );
+    const fetchFn = vi.fn().mockResolvedValue(meResponse(USER));
+
+    await expect(
+      load({
+        fetch: fetchFn,
+        url: URL_APP_ACCOUNT,
+      } as unknown as Parameters<typeof load>[0]),
+    ).resolves.toEqual(USER);
+    expect(saveIdbUser).not.toHaveBeenCalled();
+  });
+
+  // https://tangled.org/cuanto.bio/cuanto.bio/issues/70
+  test('does not pile a write on an unresponsive IDB when the cached-user read times out', async () => {
+    // A wedged read is not "nothing cached": treating it that way would fire
+    // a redundant write on every navigation while IDB is down, doubling how
+    // long the guard blocks.
+    getIdbUser.mockReturnValue(new Promise(() => {}));
+    vi.useFakeTimers();
+    const fetchFn = vi.fn().mockResolvedValue(meResponse(USER));
+
+    const promise = load({
+      fetch: fetchFn,
+      url: URL_APP_ACCOUNT,
+    } as unknown as Parameters<typeof load>[0]);
+
+    await vi.advanceTimersByTimeAsync(IDB_TIMEOUT_MS);
+
+    await expect(promise).resolves.toEqual(USER);
+    expect(saveIdbUser).not.toHaveBeenCalled();
+    expect(resetIdbConnection).toHaveBeenCalled();
+  });
+
   // https://tangled.org/cuanto.bio/cuanto.bio/issues/68
   test('returns the user when an IDB write never settles', async () => {
     // Backstop for a write whenVisible did not catch. A hung IDB promise

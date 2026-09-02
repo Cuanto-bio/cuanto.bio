@@ -20,17 +20,30 @@ const log = logger.child({ component: 'idb-deadline' });
  */
 export const IDB_TIMEOUT_MS = 3000;
 
+/** Rejection from withIdbDeadline(op, label, { throwOnTimeout: true }). */
+export class IdbTimeoutError extends Error {
+  constructor(label: string) {
+    super(`IndexedDB operation timed out: ${label}`);
+    this.name = 'IdbTimeoutError';
+  }
+}
+
 /**
  * Awaits an IndexedDB operation, resolving `undefined` if it does not settle
  * within IDB_TIMEOUT_MS and dropping the connection so later calls do not
  * reuse it. `label` names the operation in the timeout log.
+ *
+ * Pass `{ throwOnTimeout: true }` when the caller has to tell a timeout apart
+ * from a genuine `undefined` result (e.g. "nothing is cached"): it then
+ * rejects with an IdbTimeoutError instead of resolving `undefined`.
  */
 export async function withIdbDeadline<T>(
   op: Promise<T>,
   label: string,
+  options?: { throwOnTimeout?: boolean },
 ): Promise<T | undefined> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<undefined>((resolve) => {
+  const deadline = new Promise<undefined>((resolve, reject) => {
     timer = setTimeout(() => {
       // The plain logger, not logDiagnostic: that persists to the very
       // database we have just concluded is not answering.
@@ -39,7 +52,8 @@ export async function withIdbDeadline<T>(
         'IndexedDB operation timed out; resetting connection',
       );
       resetIdbConnection();
-      resolve(undefined);
+      if (options?.throwOnTimeout) reject(new IdbTimeoutError(label));
+      else resolve(undefined);
     }, IDB_TIMEOUT_MS);
   });
   try {

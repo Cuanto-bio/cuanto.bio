@@ -2,7 +2,12 @@ export const ssr = false;
 
 import { redirect } from '@sveltejs/kit';
 import { isSignInPath, signInPath } from '$lib/auth/signin';
-import { clearIdbUser, getIdbUser, saveIdbUser } from '$lib/offline/db';
+import {
+  clearIdbUser,
+  getIdbUser,
+  type IdbUser,
+  saveIdbUser,
+} from '$lib/offline/db';
 import { withIdbDeadline } from '$lib/offline/idbDeadline';
 import { syncOfflineData } from '$lib/offline/sync';
 import type { LayoutLoad } from './$types';
@@ -89,15 +94,43 @@ export const load: LayoutLoad = async ({ fetch, url }) => {
         avatarUrl?: string;
         needsLexiconMigration?: boolean;
       };
-      // Don't persist the migration flag to IDB; it's a live server signal.
-      await withIdbDeadline(
-        saveIdbUser({
-          did: user.did,
-          handle: user.handle,
-          avatarUrl: user.avatarUrl,
-        }),
-        'saveIdbUser',
-      );
+      // This guard re-runs on every /app navigation, so an unconditional write
+      // here is one IndexedDB write per navigation, almost always rewriting a
+      // byte-identical record. Read the cached user first and write only on a
+      // real change: per #68 a readonly transaction keeps working even when
+      // writes are wedged, so trading the write for a read shrinks the surface.
+      // https://tangled.org/cuanto.bio/cuanto.bio/issues/70
+      const next: IdbUser = {
+        did: user.did,
+        handle: user.handle,
+        avatarUrl: user.avatarUrl,
+      };
+      try {
+        // throwOnTimeout: a wedged read means IDB is not answering at all, so
+        // treat that like any other read failure below rather than as
+        // "nothing cached" -- the latter would fire a redundant write on
+        // every navigation while IDB is down, doubling how long the guard
+        // blocks.
+        const cached = await withIdbDeadline(getIdbUser(), 'getIdbUser', {
+          throwOnTimeout: true,
+        });
+        // Compare did, handle *and* avatarUrl: the avatar can change
+        // server-side, and comparing only did would pin a stale one forever.
+        // needsLexiconMigration stays out of it (and out of the write) as a
+        // live server signal.
+        if (
+          !cached ||
+          cached.did !== next.did ||
+          cached.handle !== next.handle ||
+          cached.avatarUrl !== next.avatarUrl
+        ) {
+          await withIdbDeadline(saveIdbUser(next), 'saveIdbUser');
+        }
+      } catch {
+        // Refreshing the local cache is best-effort. The server's 200 already
+        // proves we're signed in, so a read/write hiccup here must not fall
+        // through to the offline branch below and bounce us to sign-in.
+      }
       syncOfflineData(fetch); // intentionally not awaited
       return user;
     }
