@@ -34,7 +34,11 @@ import { partitionNewTaxa, targetTaxonID } from '$lib/targets.svelte';
 
 interface Props {
   protocol?: Protocol;
-  form?: { error?: string; sessionExpired?: boolean } | null;
+  form?: {
+    error?: string;
+    sessionExpired?: boolean;
+    permissionRequired?: boolean;
+  } | null;
 }
 
 let { protocol, form }: Props = $props();
@@ -621,12 +625,27 @@ function removeAddress(i: number, j: number) {
       </p>
     {:else}
     <Form method="POST" class="flex flex-col gap-6" onEnhance={handleEnhance}>
-      {#if form?.sessionExpired}
+      {#if form?.permissionRequired}
+        <Alert.Root class="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
+          <Alert.Title>Additional permission needed</Alert.Title>
+          <Alert.Description>
+            Cuanto needs an additional permission to save protocols. Your entries
+            below are still here. Sign in again to grant it.
+            <a
+              href={signInHref(returnTo)}
+              onclick={signInWithDraft}
+              class="underline font-medium ml-1"
+            >
+              Sign in
+            </a>
+          </Alert.Description>
+        </Alert.Root>
+      {:else if form?.sessionExpired}
         <Alert.Root class="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
           <Alert.Title>Session expired</Alert.Title>
           <Alert.Description>
-            Your connection to the AT Protocol network has expired. Your entries
-            below are still here — sign in again to save them.
+            Your session has expired. Your entries below are still here. Sign in
+            again to save them.
             <a
               href={signInHref(returnTo)}
               onclick={signInWithDraft}

@@ -9,12 +9,8 @@ import {
   gcSurveyTargetsIfUnused,
   materializeSurveyTargets,
 } from '$lib/server/materialize-targets';
-import {
-  createRecord,
-  deleteRecord,
-  PdsScopeInsufficientError,
-  PdsSessionExpiredError,
-} from '$lib/server/pds';
+import { createRecord, deleteRecord } from '$lib/server/pds';
+import { pdsAuthErrorResponse } from '$lib/server/pds-error-response';
 import type { RequestHandler } from './$types';
 
 // Moved here from the `follow`/`unfollow` form actions on
@@ -40,17 +36,13 @@ async function resolveProtocolUri(
   return protocol?.at_uri ?? null;
 }
 
-// PDS writes fail in ways the UI needs to tell apart: an expired session means
-// "sign in again", while insufficient scope means "re-authorize" — different
-// explanations, so they keep distinct flags rather than collapsing into 502.
+// An expired session and insufficient scope come back as distinct flags (see
+// pdsAuthErrorResponse); anything else is a 502.
 function pdsErrorResponse(err: unknown): Response {
-  if (err instanceof PdsScopeInsufficientError) {
-    return json({ permissionRequired: true }, { status: 403 });
-  }
-  if (err instanceof PdsSessionExpiredError) {
-    return json({ sessionExpired: true }, { status: 401 });
-  }
-  return json({ error: `PDS error: ${String(err)}` }, { status: 502 });
+  return (
+    pdsAuthErrorResponse(err) ??
+    json({ error: `PDS error: ${String(err)}` }, { status: 502 })
+  );
 }
 
 export const POST: RequestHandler = async ({ params, locals }) => {

@@ -1,10 +1,6 @@
 import { error, json } from '@sveltejs/kit';
-import {
-  type BlobRefResponse,
-  fetchBlob,
-  PdsSessionExpiredError,
-  uploadBlob,
-} from '$lib/server/pds';
+import { type BlobRefResponse, fetchBlob, uploadBlob } from '$lib/server/pds';
+import { pdsAuthErrorResponse } from '$lib/server/pds-error-response';
 import type { RequestHandler } from './$types';
 
 const GPX_CONTENT_TYPE = 'application/gpx+xml';
@@ -53,12 +49,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     );
     return json({ blob });
   } catch (err) {
-    if (err instanceof PdsSessionExpiredError) {
-      return json(
-        { error: 'pds_session_expired', message: err.message },
-        { status: 401 },
-      );
-    }
+    // A dead session and a live-but-under-scoped one need different UI copy.
+    const authResp = pdsAuthErrorResponse(err);
+    if (authResp) return authResp;
     throw err;
   }
 };

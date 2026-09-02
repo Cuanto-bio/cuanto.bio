@@ -49,7 +49,7 @@ import {
 } from '$lib/offline/db';
 import { loadSurveyTrack } from '$lib/offline/track';
 import {
-  PdsSessionExpiredError,
+  authIssueFromError,
   uploadGpxBlob,
   uploadPendingSurvey,
 } from '$lib/offline/upload';
@@ -292,7 +292,9 @@ let pendingSurveyId = $state<number | null>(initialPendingSurveyId ?? null);
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
 const surveyRkey = initialResumeState?.surveyRkey ?? generateTid();
 let navigatingAway = $state(false);
-let sessionExpired = $state(false);
+// null until a PDS write fails on auth: 'expired' means the session is dead,
+// 'permission' means it is live but missing a scope this write needs.
+let authIssue = $state<'expired' | 'permission' | null>(null);
 let saving = false;
 let submitting = $state(false);
 
@@ -731,8 +733,9 @@ async function finish() {
       navigatingAway = true;
       await goto(`/app/surveys/${sv.handle}/${sv.rkey}?updated=1`);
     } catch (err) {
-      if (err instanceof PdsSessionExpiredError) {
-        sessionExpired = true;
+      const issue = authIssueFromError(err);
+      if (issue) {
+        authIssue = issue;
         submitting = false;
         return;
       }
@@ -767,8 +770,9 @@ async function finish() {
       await goto(`/app/surveys/${handle}/${rkey}`);
       return;
     } catch (err) {
-      if (err instanceof PdsSessionExpiredError) {
-        sessionExpired = true;
+      const issue = authIssueFromError(err);
+      if (issue) {
+        authIssue = issue;
         return;
       }
       // Upload failed — recheck connectivity so UI reflects offline state quickly.
@@ -1040,12 +1044,21 @@ function displayCount(qty: undefined | string | number) {
 <main>
   <div class="flex min-h-dvh flex-col pt-8">
 
-  {#if sessionExpired}
+  {#if authIssue}
     <Alert.Root class="mb-6 border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
-      <Alert.Title>Session expired</Alert.Title>
+      <Alert.Title>
+        {authIssue === 'permission'
+          ? 'Additional permission needed'
+          : 'Session expired'}
+      </Alert.Title>
       <Alert.Description>
-        Your connection to the AT Protocol network has expired. Your survey is saved.
-        Sign in again to upload it.
+        {#if authIssue === 'permission'}
+          Cuanto needs an additional permission to save surveys. Your survey is
+          saved here. Sign in again to grant it.
+        {:else}
+          Your session has expired. Your survey is saved here. Sign in again to
+          upload it.
+        {/if}
         <a href={signInHref('/app/surveys')} class="underline font-medium ml-1">
           Sign in
         </a>

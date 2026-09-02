@@ -66,6 +66,12 @@ async function migrateRecords() {
     const res = await fetch('/api/migrate-lexicons', { method: 'POST' });
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (res.status === 403 && body.error === 'pds_permission_required') {
+        toast.error(
+          'Cuanto needs an additional permission. Please sign in again to update.',
+        );
+        return;
+      }
       if (res.status === 401 && body.error === 'pds_session_expired') {
         toast.error('Your session expired. Please sign in again to update.');
         return;

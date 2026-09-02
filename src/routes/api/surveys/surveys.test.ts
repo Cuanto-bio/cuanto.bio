@@ -1,14 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-vi.mock('$lib/server/pds', () => ({
-  createRecord: vi.fn(),
-  putRecord: vi.fn(),
-  PdsSessionExpiredError: class PdsSessionExpiredError extends Error {
+vi.mock('$lib/server/pds', () => {
+  class PdsSessionExpiredError extends Error {
     constructor() {
       super('PDS session expired');
     }
-  },
-}));
+  }
+  class PdsScopeInsufficientError extends PdsSessionExpiredError {}
+  return {
+    createRecord: vi.fn(),
+    putRecord: vi.fn(),
+    PdsSessionExpiredError,
+    PdsScopeInsufficientError,
+  };
+});
 
 vi.mock('$lib/server/db/surveys', () => ({
   insertSurvey: vi.fn(),
@@ -61,6 +66,7 @@ import {
 } from '$lib/server/db/surveys';
 import {
   createRecord,
+  PdsScopeInsufficientError,
   PdsSessionExpiredError,
   putRecord,
 } from '$lib/server/pds';
@@ -142,6 +148,19 @@ describe('POST /api/surveys — PDS session expiry', () => {
     expect(resp.status).toBe(401);
     const body = (await resp.json()) as { error: string };
     expect(body.error).toBe('pds_session_expired');
+  });
+
+  test('returns 403 with permissionRequired when the survey write throws PdsScopeInsufficientError', async () => {
+    vi.mocked(putRecord).mockRejectedValueOnce(new PdsScopeInsufficientError());
+    const resp = await callPost({
+      request: makeRequest(baseSurveyBody),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(403);
+    expect(await resp.json()).toMatchObject({
+      error: 'pds_permission_required',
+      permissionRequired: true,
+    });
   });
 });
 

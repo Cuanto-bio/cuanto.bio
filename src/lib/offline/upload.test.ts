@@ -6,6 +6,7 @@ import {
   savePendingSurvey,
 } from './db';
 import {
+  PdsScopeInsufficientError,
   PdsSessionExpiredError,
   uploadAllPending,
   uploadPendingSurvey,
@@ -231,6 +232,30 @@ describe('uploadPendingSurvey — PdsSessionExpiredError', () => {
       json: () => Promise.resolve({ error: 'Unauthorized' }),
     });
     await expect(uploadPendingSurvey(baseSurveyRaw)).rejects.not.toBeInstanceOf(
+      PdsSessionExpiredError,
+    );
+  });
+
+  test('throws PdsScopeInsufficientError on 403 pds_permission_required', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: () => Promise.resolve({ error: 'pds_permission_required' }),
+    });
+    await expect(uploadPendingSurvey(baseSurveyRaw)).rejects.toBeInstanceOf(
+      PdsScopeInsufficientError,
+    );
+  });
+
+  test('PdsScopeInsufficientError still satisfies instanceof PdsSessionExpiredError', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: () => Promise.resolve({ error: 'pds_permission_required' }),
+    });
+    // uploadAllPending and the survey list page catch the parent class; the
+    // subclass must keep flowing through those catches.
+    await expect(uploadPendingSurvey(baseSurveyRaw)).rejects.toBeInstanceOf(
       PdsSessionExpiredError,
     );
   });

@@ -6,12 +6,22 @@ vi.mock('$lib/server/db/occurrences', () => ({
   deleteOccurrenceByUri: vi.fn(),
 }));
 
-vi.mock('$lib/server/pds', () => ({
-  fetchAtRecord: vi.fn(),
-  putRecord: vi.fn(),
-  createRecord: vi.fn(),
-  deleteRecord: vi.fn(),
-}));
+vi.mock('$lib/server/pds', () => {
+  class PdsSessionExpiredError extends Error {
+    constructor() {
+      super('PDS session expired');
+    }
+  }
+  class PdsScopeInsufficientError extends PdsSessionExpiredError {}
+  return {
+    fetchAtRecord: vi.fn(),
+    putRecord: vi.fn(),
+    createRecord: vi.fn(),
+    deleteRecord: vi.fn(),
+    PdsSessionExpiredError,
+    PdsScopeInsufficientError,
+  };
+});
 
 vi.mock('$lib/server/db/identifications', () => ({
   insertIdentification: vi.fn(),
@@ -31,6 +41,8 @@ import {
   createRecord,
   deleteRecord,
   fetchAtRecord,
+  PdsScopeInsufficientError,
+  PdsSessionExpiredError,
   putRecord,
 } from '$lib/server/pds';
 import { DELETE, PATCH } from './+server';
@@ -159,6 +171,31 @@ describe('PATCH /api/occurrences/[rkey]', () => {
     test('returns 422 when surveyTargetID is missing', async () => {
       const res = await callPatch({ action: 'relink' });
       expect(res.status).toBe(422);
+    });
+
+    test('returns 401 pds_session_expired when putRecord throws PdsSessionExpiredError', async () => {
+      vi.mocked(putRecord).mockRejectedValueOnce(new PdsSessionExpiredError());
+      const res = await callPatch({
+        action: 'relink',
+        surveyTargetID: TARGET_URI,
+      });
+      expect(res.status).toBe(401);
+      expect(await res.json()).toMatchObject({ error: 'pds_session_expired' });
+    });
+
+    test('returns 403 permissionRequired when putRecord throws PdsScopeInsufficientError', async () => {
+      vi.mocked(putRecord).mockRejectedValueOnce(
+        new PdsScopeInsufficientError(),
+      );
+      const res = await callPatch({
+        action: 'relink',
+        surveyTargetID: TARGET_URI,
+      });
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({
+        error: 'pds_permission_required',
+        permissionRequired: true,
+      });
     });
   });
 
@@ -327,5 +364,17 @@ describe('DELETE /api/occurrences/[rkey]', () => {
   test('returns 200 on success', async () => {
     const res = await callDelete();
     expect(res.status).toBe(200);
+  });
+
+  test('returns 403 permissionRequired when deleteRecord throws PdsScopeInsufficientError', async () => {
+    vi.mocked(deleteRecord).mockRejectedValueOnce(
+      new PdsScopeInsufficientError(),
+    );
+    const res = await callDelete();
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({
+      error: 'pds_permission_required',
+      permissionRequired: true,
+    });
   });
 });

@@ -12,9 +12,9 @@ import {
   createRecord,
   deleteRecord,
   fetchAtRecord,
-  PdsSessionExpiredError,
   putRecord,
 } from '$lib/server/pds';
+import { pdsAuthErrorResponse } from '$lib/server/pds-error-response';
 import { surveyTargetUriFor } from '$lib/surveyTargets';
 import type { RequestHandler } from './$types';
 
@@ -79,12 +79,8 @@ export const PATCH: RequestHandler = async ({ request, locals, params }) => {
       );
       await updateOccurrenceRecord(occurrence.at_uri, updated);
     } catch (err) {
-      if (err instanceof PdsSessionExpiredError) {
-        return json(
-          { error: 'pds_session_expired', message: err.message },
-          { status: 401 },
-        );
-      }
+      const authResp = pdsAuthErrorResponse(err);
+      if (authResp) return authResp;
       log.error({ err }, 'Failed to relink occurrence');
       return json({ error: 'Failed to update occurrence' }, { status: 502 });
     }
@@ -151,12 +147,8 @@ export const PATCH: RequestHandler = async ({ request, locals, params }) => {
       );
       await updateOccurrenceRecord(occurrence.at_uri, updated);
     } catch (err) {
-      if (err instanceof PdsSessionExpiredError) {
-        return json(
-          { error: 'pds_session_expired', message: err.message },
-          { status: 401 },
-        );
-      }
+      const authResp = pdsAuthErrorResponse(err);
+      if (authResp) return authResp;
       log.error(
         { err },
         'Failed to update occurrence during convert-to-incidental',
@@ -180,12 +172,8 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
     await deleteRecord(occurrence.at_uri);
     await deleteOccurrenceByUri(occurrence.at_uri);
   } catch (err) {
-    if (err instanceof PdsSessionExpiredError) {
-      return json(
-        { error: 'pds_session_expired', message: err.message },
-        { status: 401 },
-      );
-    }
+    const authResp = pdsAuthErrorResponse(err);
+    if (authResp) return authResp;
     log.error({ err }, 'Failed to delete occurrence');
     return json({ error: 'Failed to delete occurrence' }, { status: 502 });
   }

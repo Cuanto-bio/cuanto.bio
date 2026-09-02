@@ -1,17 +1,27 @@
 import { isHttpError } from '@sveltejs/kit';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-vi.mock('$lib/server/pds', () => ({
-  uploadBlob: vi.fn(),
-  fetchBlob: vi.fn(),
-  PdsSessionExpiredError: class PdsSessionExpiredError extends Error {
+vi.mock('$lib/server/pds', () => {
+  class PdsSessionExpiredError extends Error {
     constructor() {
       super('PDS session expired');
     }
-  },
-}));
+  }
+  class PdsScopeInsufficientError extends PdsSessionExpiredError {}
+  return {
+    uploadBlob: vi.fn(),
+    fetchBlob: vi.fn(),
+    PdsSessionExpiredError,
+    PdsScopeInsufficientError,
+  };
+});
 
-import { fetchBlob, PdsSessionExpiredError, uploadBlob } from '$lib/server/pds';
+import {
+  fetchBlob,
+  PdsScopeInsufficientError,
+  PdsSessionExpiredError,
+  uploadBlob,
+} from '$lib/server/pds';
 import { GET, POST } from './+server';
 
 const DID = 'did:test:blobs-gpx';
@@ -131,6 +141,21 @@ describe('POST /api/blobs/gpx', () => {
     expect(resp.status).toBe(401);
     const body = (await resp.json()) as { error: string };
     expect(body.error).toBe('pds_session_expired');
+  });
+
+  test('returns 403 permissionRequired when uploadBlob throws PdsScopeInsufficientError', async () => {
+    vi.mocked(uploadBlob).mockRejectedValueOnce(
+      new PdsScopeInsufficientError(),
+    );
+    const resp = await callPost({
+      request: makeRequest(validGpx, 'application/gpx+xml'),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(403);
+    expect(await resp.json()).toMatchObject({
+      error: 'pds_permission_required',
+      permissionRequired: true,
+    });
   });
 });
 

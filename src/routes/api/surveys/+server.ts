@@ -30,6 +30,7 @@ import {
 import logger from '$lib/server/logger';
 import { materializeSurveyTargets } from '$lib/server/materialize-targets';
 import { PdsSessionExpiredError, putRecord } from '$lib/server/pds';
+import { pdsAuthErrorResponse } from '$lib/server/pds-error-response';
 import { attachIdentificationToOccurrence } from '$lib/server/survey-records';
 import { eventDateIsInFuture } from '$lib/server/survey-validation';
 import type { IncidentalInput } from '$lib/surveys';
@@ -236,12 +237,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   try {
     return await postSurvey(request, did);
   } catch (err) {
-    if (err instanceof PdsSessionExpiredError) {
-      return json(
-        { error: 'pds_session_expired', message: err.message },
-        { status: 401 },
-      );
-    }
+    // A dead session and a live-but-under-scoped one need different UI copy.
+    const authResp = pdsAuthErrorResponse(err);
+    if (authResp) return authResp;
     throw err;
   }
 };

@@ -1,13 +1,18 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-vi.mock('$lib/server/pds', () => ({
-  createRecord: vi.fn(),
-  PdsSessionExpiredError: class PdsSessionExpiredError extends Error {
+vi.mock('$lib/server/pds', () => {
+  class PdsSessionExpiredError extends Error {
     constructor() {
       super('AT Protocol session expired. Please sign in again.');
     }
-  },
-}));
+  }
+  class PdsScopeInsufficientError extends PdsSessionExpiredError {}
+  return {
+    createRecord: vi.fn(),
+    PdsSessionExpiredError,
+    PdsScopeInsufficientError,
+  };
+});
 
 vi.mock('$lib/server/db/survey-protocols', () => ({
   insertProtocol: vi.fn(),
@@ -18,7 +23,11 @@ vi.mock('$lib/server/db', () => ({
   default: vi.fn().mockResolvedValue([{ handle: 'user-test' }]),
 }));
 
-import { createRecord, PdsSessionExpiredError } from '$lib/server/pds';
+import {
+  createRecord,
+  PdsScopeInsufficientError,
+  PdsSessionExpiredError,
+} from '$lib/server/pds';
 import { actions } from './+page.server';
 
 const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
@@ -279,5 +288,23 @@ describe('POST /protocols/new — PDS session expiry', () => {
     expect((result?.data as { sessionExpired?: boolean }).sessionExpired).toBe(
       true,
     );
+  });
+
+  test('returns fail(403) with permissionRequired when createRecord throws PdsScopeInsufficientError', async () => {
+    vi.mocked(createRecord).mockRejectedValueOnce(
+      new PdsScopeInsufficientError(),
+    );
+
+    const result = await submitProtocol({
+      title: 'Test Protocol',
+      description: 'A test',
+      targets: '[]',
+      locationOptions: '[]',
+    });
+
+    expect(result?.status).toBe(403);
+    expect(
+      (result?.data as { permissionRequired?: boolean }).permissionRequired,
+    ).toBe(true);
   });
 });

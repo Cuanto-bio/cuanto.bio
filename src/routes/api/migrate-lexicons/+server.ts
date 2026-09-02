@@ -1,7 +1,8 @@
 import { json } from '@sveltejs/kit';
 import logger from '$lib/server/logger';
 import { migrateUser } from '$lib/server/migrate-lexicons';
-import { assertActiveSession, PdsSessionExpiredError } from '$lib/server/pds';
+import { assertActiveSession } from '$lib/server/pds';
+import { pdsAuthErrorResponse } from '$lib/server/pds-error-response';
 import type { RequestHandler } from './$types';
 
 const log = logger.child({ component: 'api-migrate-lexicons' });
@@ -21,12 +22,8 @@ export const POST: RequestHandler = async ({ locals }) => {
   try {
     await assertActiveSession(did);
   } catch (err) {
-    if (err instanceof PdsSessionExpiredError) {
-      return json(
-        { error: 'pds_session_expired', message: err.message },
-        { status: 401 },
-      );
-    }
+    const authResp = pdsAuthErrorResponse(err);
+    if (authResp) return authResp;
     throw err;
   }
 

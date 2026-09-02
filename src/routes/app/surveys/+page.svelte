@@ -18,7 +18,7 @@ import {
   getPendingSurveys,
   updatePendingSurvey,
 } from '$lib/offline/db';
-import { PdsSessionExpiredError, uploadAllPending } from '$lib/offline/upload';
+import { authIssueFromError, uploadAllPending } from '$lib/offline/upload';
 import { hasUnresolvedIncidentals } from '$lib/surveys';
 
 let { data } = $props();
@@ -26,7 +26,9 @@ let { data } = $props();
 let allPendingSurveys = $state<PendingSurvey[]>([]);
 let uploading = $state(false);
 let deleteTargetId = $state<number | null>(null);
-let sessionExpired = $state(false);
+// null until an upload fails on auth: 'expired' = dead session, 'permission' =
+// live session missing a scope the upload needs.
+let authIssue = $state<'expired' | 'permission' | null>(null);
 const online = useOnline();
 
 const inProgressSurveys = $derived(
@@ -58,8 +60,9 @@ async function tryUpload() {
     await uploadAllPending();
     allPendingSurveys = await getPendingSurveys();
   } catch (err) {
-    if (err instanceof PdsSessionExpiredError) {
-      sessionExpired = true;
+    const issue = authIssueFromError(err);
+    if (issue) {
+      authIssue = issue;
       allPendingSurveys = await getPendingSurveys();
     }
   } finally {
@@ -96,12 +99,21 @@ async function togglePublishField(
 <main>
   <h1 class="mb-6 text-2xl font-semibold">Your Surveys</h1>
 
-  {#if sessionExpired}
+  {#if authIssue}
     <Alert.Root class="mb-6 border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
-      <Alert.Title>Session expired</Alert.Title>
+      <Alert.Title>
+        {authIssue === 'permission'
+          ? 'Additional permission needed'
+          : 'Session expired'}
+      </Alert.Title>
       <Alert.Description>
-        Your connection to the AT Protocol network has expired. Your surveys are saved —
-        sign in again to upload them.
+        {#if authIssue === 'permission'}
+          Cuanto needs an additional permission to upload your surveys. They are
+          saved here. Sign in again to grant it.
+        {:else}
+          Your session has expired. Your surveys are saved here. Sign in again to
+          upload them.
+        {/if}
         <a href={signInHref('/app/surveys')} class="underline font-medium ml-1">
           Sign in
         </a>

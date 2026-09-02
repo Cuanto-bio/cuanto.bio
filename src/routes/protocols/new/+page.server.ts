@@ -10,7 +10,8 @@ import {
   insertProtocolTarget,
 } from '$lib/server/db/survey-protocols';
 import { parseLocationOptions } from '$lib/server/locationOptions';
-import { createRecord, PdsSessionExpiredError } from '$lib/server/pds';
+import { createRecord } from '$lib/server/pds';
+import { pdsAuthErrorFail } from '$lib/server/pds-error-response';
 import type { Actions, PageServerLoad } from './$types';
 
 // returnTo so signing in lands back on this form rather than dumping the
@@ -70,10 +71,10 @@ export const actions: Actions = {
         protocolRecord,
       ));
     } catch (err) {
-      if (err instanceof PdsSessionExpiredError) {
-        return fail(401, { sessionExpired: true });
-      }
-      return fail(502, { error: `PDS error: ${String(err)}` });
+      return (
+        pdsAuthErrorFail(err) ??
+        fail(502, { error: `PDS error: ${String(err)}` })
+      );
     }
     const protocolRkey = protocolUri.split('/').at(-1) ?? '';
 
