@@ -93,4 +93,41 @@ test.describe('protocol form error display', () => {
       page.getByRole('alert').filter({ hasText: 'Title is required' }),
     ).toBeVisible();
   });
+
+  // Regression for issue #72: a failed save reported the error, but a long
+  // protocol's submit button can be far below the fold, so the alert itself
+  // could go unnoticed off-screen.
+  test('scrolls the error alert into view on a failed save', async ({
+    page,
+    sql,
+    context,
+  }) => {
+    await context.addCookies([authCookie(FORM_ERR_DID)]);
+    const { protocolRkey } = await seedProtocol(sql, FORM_ERR_DID);
+    await page.addInitScript(() => {
+      (window as unknown as { __scrolled: Element[] }).__scrolled = [];
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = function (...args) {
+        (window as unknown as { __scrolled: Element[] }).__scrolled.push(this);
+        return original.apply(this, args);
+      };
+    });
+    await page.goto(`/protocols/${FORM_ERR_HANDLE}/${protocolRkey}/edit`);
+
+    await submitWithoutClientValidation(page, { clearTitle: true });
+
+    const alert = page
+      .getByRole('alert')
+      .filter({ hasText: 'Title is required' });
+    await expect(alert).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => window.__scrolled.length))
+      .toBeGreaterThan(0);
+  });
 });
+
+declare global {
+  interface Window {
+    __scrolled: Element[];
+  }
+}

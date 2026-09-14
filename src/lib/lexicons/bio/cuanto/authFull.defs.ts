@@ -19,6 +19,7 @@ const main = /*#__PURE__*/ l.permissionSet(
         'bio.cuanto.surveyProtocol',
         'bio.cuanto.surveyProtocol.follow',
         'bio.cuanto.surveyTarget',
+        'bio.cuanto.protocolTarget',
       ],
     }),
   ],

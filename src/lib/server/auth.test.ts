@@ -46,6 +46,10 @@ describe('isScopeSufficient with include: permission sets', () => {
   // sign-in against the current SCOPE: the authorization server resolves
   // `include:bio.cuanto.authFull` and returns its expansion as the compact
   // `repo?collection=…` form, and never echoes the `include:` token itself.
+  //
+  // This predates issue #72 (bio.cuanto.protocolTarget added to authFull), so
+  // it's now missing one of the required collections -- exactly the stale
+  // grant a session that signed in before that fix is stuck with.
   const REAL_GRANTED_SCOPE =
     'repo?collection=bio.cuanto.survey&collection=bio.cuanto.surveyProtocol' +
     '&collection=bio.cuanto.surveyProtocol.follow&collection=bio.cuanto.surveyTarget' +
@@ -58,17 +62,25 @@ describe('isScopeSufficient with include: permission sets', () => {
     ' repo:bio.lexicons.temp.v0-1.survey?action=delete' +
     ' repo:bio.lexicons.temp.survey?action=delete blob:*/*';
 
-  test('accepts the real granted scope for a session that consented in full', () => {
-    // Regression: the literal token check required `include:bio.cuanto.authFull`
-    // to appear verbatim in the grant, which it never does, so every session
-    // was judged insufficient and every PDS write threw PdsScopeInsufficientError.
-    expect(isScopeSufficient(REAL_GRANTED_SCOPE)).toBe(true);
+  test('rejects a pre-#72 granted scope missing bio.cuanto.protocolTarget', () => {
+    // Regression for issue #72: authFull's permission set omitted
+    // bio.cuanto.protocolTarget, so the OAuth client never requested write
+    // access to it and every ProtocolTarget create/update/delete failed with
+    // a PDS ScopeMissingError -- even right after signing in, since the scope
+    // requested was wrong, not stale.
+    expect(isScopeSufficient(REAL_GRANTED_SCOPE)).toBe(false);
+  });
+
+  test('accepts the real granted scope for a session that consented in full post-#72', () => {
+    const granted = `${REAL_GRANTED_SCOPE} repo:bio.cuanto.protocolTarget`;
+    expect(isScopeSufficient(granted)).toBe(true);
   });
 
   test('a required include: set is satisfied by the compact repo?collection= grant', () => {
     const granted =
       'atproto repo?collection=bio.cuanto.survey&collection=bio.cuanto.surveyProtocol' +
-      '&collection=bio.cuanto.surveyProtocol.follow&collection=bio.cuanto.surveyTarget';
+      '&collection=bio.cuanto.surveyProtocol.follow&collection=bio.cuanto.surveyTarget' +
+      '&collection=bio.cuanto.protocolTarget';
     expect(
       isScopeSufficient(granted, 'atproto include:bio.cuanto.authFull'),
     ).toBe(true);
@@ -79,7 +91,8 @@ describe('isScopeSufficient with include: permission sets', () => {
     // tokens rather than the compact form.
     const granted =
       'atproto repo:bio.cuanto.survey repo:bio.cuanto.surveyProtocol' +
-      ' repo:bio.cuanto.surveyProtocol.follow repo:bio.cuanto.surveyTarget';
+      ' repo:bio.cuanto.surveyProtocol.follow repo:bio.cuanto.surveyTarget' +
+      ' repo:bio.cuanto.protocolTarget';
     expect(
       isScopeSufficient(granted, 'atproto include:bio.cuanto.authFull'),
     ).toBe(true);
@@ -88,7 +101,7 @@ describe('isScopeSufficient with include: permission sets', () => {
   test('a required include: set fails when the grant is missing one of its collections', () => {
     const granted =
       'atproto repo?collection=bio.cuanto.survey&collection=bio.cuanto.surveyProtocol' +
-      '&collection=bio.cuanto.surveyProtocol.follow';
+      '&collection=bio.cuanto.surveyProtocol.follow&collection=bio.cuanto.surveyTarget';
     expect(
       isScopeSufficient(granted, 'atproto include:bio.cuanto.authFull'),
     ).toBe(false);

@@ -294,6 +294,18 @@ function handleEnhance() {
   };
 }
 
+// The alert reporting a failed save (permission needed, session expired, or
+// any other error) renders above the form fields, so on a long protocol it can
+// land off-screen after the submit scrolled the button into view. Scroll it
+// into view whenever the action returns one of these, so the surveyor
+// actually sees why nothing was saved.
+let alertRef = $state<HTMLElement | null>(null);
+$effect(() => {
+  if (form?.permissionRequired || form?.sessionExpired || form?.error) {
+    alertRef?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+});
+
 let placeQuery = $state('');
 let placeResults = $state<PlaceResult[]>([]);
 let searchingPlaces = $state(false);
@@ -626,7 +638,10 @@ function removeAddress(i: number, j: number) {
     {:else}
     <Form method="POST" class="flex flex-col gap-6" onEnhance={handleEnhance}>
       {#if form?.permissionRequired}
-        <Alert.Root class="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
+        <Alert.Root
+          bind:ref={alertRef}
+          class="border-yellow-500 bg-yellow-50 dark:bg-yellow-950"
+        >
           <Alert.Title>Additional permission needed</Alert.Title>
           <Alert.Description>
             Cuanto needs an additional permission to save protocols. Your entries
@@ -641,7 +656,10 @@ function removeAddress(i: number, j: number) {
           </Alert.Description>
         </Alert.Root>
       {:else if form?.sessionExpired}
-        <Alert.Root class="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
+        <Alert.Root
+          bind:ref={alertRef}
+          class="border-yellow-500 bg-yellow-50 dark:bg-yellow-950"
+        >
           <Alert.Title>Session expired</Alert.Title>
           <Alert.Description>
             Your session has expired. Your entries below are still here. Sign in
@@ -656,7 +674,7 @@ function removeAddress(i: number, j: number) {
           </Alert.Description>
         </Alert.Root>
       {:else if form?.error}
-        <Alert.Root variant="destructive">
+        <Alert.Root bind:ref={alertRef} variant="destructive">
           <Alert.Description>{form.error}</Alert.Description>
         </Alert.Root>
       {/if}

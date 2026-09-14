@@ -36,6 +36,19 @@
 4. NEVER make the test pass by altering the test
 5. Run full test suite to ensure no regressions
 
+# Lexicons
+- after editing any file under `lexicons/`, run `pnpm lex:gen` to regenerate
+  `src/lib/lexicons/`
+- permission-set lexicons (e.g. `bio.cuanto.authFull`) additionally need
+  `goat lex publish --update lexicons/<path>.json` run against the live
+  network (authenticated as the account that owns the NSID authority) —
+  the OAuth consent screen and scope resolution read the *published*
+  `com.atproto.lexicon.schema` record, not the local JSON or generated TS.
+  `pnpm lex:gen` alone silently has no effect on live OAuth behavior. See
+  docs/2026-07-05-issue-18-oauth-scopes.md for what happens when this step
+  is skipped (issue #72). Use `goat lex status` / `goat lex diff` to check
+  what's live vs. local without publishing anything.
+
 # Frontend
 * ALWAYS look for an appropriate shadcn component, even if not installed
 * ALWAYS try to use appropriate theme colors in layout.css; if tempted to add custom colors, ask the user

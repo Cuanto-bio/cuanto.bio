@@ -143,6 +143,10 @@ export const actions: Actions = {
           { err, atUri: target.atUri },
           'Failed to delete protocol target from PDS',
         );
+        return (
+          pdsAuthErrorFail(err) ??
+          fail(502, { error: `Failed to delete a target: ${String(err)}` })
+        );
       }
     }
 
@@ -170,6 +174,10 @@ export const actions: Actions = {
         );
       } catch (err) {
         log.error({ err }, 'Failed to update survey target');
+        return (
+          pdsAuthErrorFail(err) ??
+          fail(502, { error: `Failed to update a target: ${String(err)}` })
+        );
       }
     }
 
@@ -189,6 +197,10 @@ export const actions: Actions = {
         await insertProtocolTarget(did, targetRkey, targetRecord, targetUri);
       } catch (err) {
         log.error({ err }, 'Failed to create survey target');
+        return (
+          pdsAuthErrorFail(err) ??
+          fail(502, { error: `Failed to create a target: ${String(err)}` })
+        );
       }
     }
 

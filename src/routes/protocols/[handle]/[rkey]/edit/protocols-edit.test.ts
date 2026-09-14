@@ -28,7 +28,9 @@ vi.mock('$lib/server/db', () => ({
 }));
 
 vi.mock('$lib/logger', () => ({
-  default: { child: vi.fn().mockReturnValue({ error: vi.fn() }) },
+  default: {
+    child: vi.fn().mockReturnValue({ error: vi.fn(), info: vi.fn() }),
+  },
 }));
 
 import { getProtocolDetailByHandleAndRkey } from '$lib/server/db/survey-protocols';
@@ -423,6 +425,121 @@ describe('POST /protocols/[handle]/[rkey]/edit — target management', () => {
       }),
     );
     expect(deleteRecord).not.toHaveBeenCalledWith(TARGET_A.atUri);
+  });
+});
+
+// Regression for issue #72: a target write failure was caught, logged, and
+// then ignored — the action still redirected as if the whole edit succeeded,
+// so a surveyor who lost a target (e.g. to a PDS scope error) was never told.
+describe('POST /protocols/[handle]/[rkey]/edit — target write failures', () => {
+  const PROTOCOL_URI = `at://${DID}/bio.cuanto.surveyProtocol/${RKEY}`;
+  const NEW_TARGET_SCOPE = [
+    {
+      $type: 'bio.cuanto.protocolTarget#verbatimScope',
+      verbatimTargetScope: 'New target',
+    },
+  ];
+  const TARGET_A = {
+    atUri: `at://${DID}/bio.cuanto.protocolTarget/targetA`,
+    record: {
+      $type: 'bio.cuanto.protocolTarget',
+      protocol: PROTOCOL_URI,
+      scope: [
+        {
+          $type: 'bio.cuanto.protocolTarget#verbatimScope',
+          verbatimTargetScope: 'Existing target',
+        },
+      ],
+    },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getProtocolDetailByHandleAndRkey).mockResolvedValue({
+      ...FAKE_PROTOCOL,
+      targets: [TARGET_A],
+    } as never);
+  });
+
+  test('does not redirect (report success) when creating a target fails', async () => {
+    vi.mocked(putRecord).mockResolvedValue({
+      uri: FAKE_PROTOCOL.atUri,
+      cid: FAKE_CID,
+    });
+    vi.mocked(createRecord).mockRejectedValueOnce(new Error('boom'));
+
+    const result = await submitEdit({
+      title: 'Title',
+      description: 'Description',
+      targets: JSON.stringify([
+        { scope: TARGET_A.record.scope, atUri: TARGET_A.atUri },
+        { scope: NEW_TARGET_SCOPE },
+      ]),
+      locationOptions: '[]',
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.status).toBe(502);
+  });
+
+  test('returns fail(403) with permissionRequired when creating a target throws PdsScopeInsufficientError', async () => {
+    vi.mocked(putRecord).mockResolvedValue({
+      uri: FAKE_PROTOCOL.atUri,
+      cid: FAKE_CID,
+    });
+    vi.mocked(createRecord).mockRejectedValueOnce(
+      new PdsScopeInsufficientError(),
+    );
+
+    const result = await submitEdit({
+      title: 'Title',
+      description: 'Description',
+      targets: JSON.stringify([{ scope: NEW_TARGET_SCOPE }]),
+      locationOptions: '[]',
+    });
+
+    expect(result?.status).toBe(403);
+    expect(
+      (result?.data as { permissionRequired?: boolean }).permissionRequired,
+    ).toBe(true);
+  });
+
+  test('does not redirect (report success) when updating a target fails', async () => {
+    vi.mocked(putRecord)
+      .mockResolvedValueOnce({ uri: FAKE_PROTOCOL.atUri, cid: FAKE_CID }) // protocol write
+      .mockRejectedValueOnce(new Error('boom')); // target update write
+
+    const updatedScope = [
+      { ...TARGET_A.record.scope[0], verbatimTargetScope: 'Changed' },
+    ];
+    const result = await submitEdit({
+      title: 'Title',
+      description: 'Description',
+      targets: JSON.stringify([{ scope: updatedScope, atUri: TARGET_A.atUri }]),
+      locationOptions: '[]',
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.status).toBe(502);
+  });
+
+  test('does not redirect (report success) when deleting a target fails', async () => {
+    vi.mocked(putRecord).mockResolvedValue({
+      uri: FAKE_PROTOCOL.atUri,
+      cid: FAKE_CID,
+    });
+    vi.mocked(deleteRecord).mockRejectedValueOnce(new Error('boom'));
+
+    // Submitting with no targets means TARGET_A gets deleted.
+    const result = await submitEdit({
+      title: 'Title',
+      description: 'Description',
+      targets: '[]',
+      locationOptions: '[]',
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.status).toBe(502);
   });
 });
 

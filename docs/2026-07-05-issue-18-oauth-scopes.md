@@ -137,6 +137,39 @@ permission-set lexicon (`$lib/lexicons/bio/cuanto/authFull`), so it tracks the
 consent-screen definition automatically — run `pnpm lex:gen` after editing
 `lexicons/bio/cuanto/authFull.json`.
 
+## Update (2026-09-14): editing a permission-set lexicon requires a live publish
+
+Issue #72: `bio.cuanto.protocolTarget` was added to `bio.cuanto.authFull` and
+`pnpm lex:gen` was run, but ProtocolTarget creates still failed with a PDS
+`ScopeMissingError`, and re-authenticating didn't help.
+
+The authorization server does not read `lexicons/bio/cuanto/authFull.json` or
+the generated `src/lib/lexicons/bio/cuanto/authFull.defs.ts` at all. When a
+client requests `include:bio.cuanto.authFull`, the AS resolves the NSID via
+DNS (`_lexicon.cuanto.bio` TXT record → a DID) and fetches the **published**
+`com.atproto.lexicon.schema` record from that DID's own repo. `pnpm lex:gen`
+only regenerates our local TypeScript, which is what `isScopeSufficient()`
+checks against — it has no effect on what the live consent screen offers or
+what the AS considers part of the set.
+
+So editing a permission-set lexicon (`authFull.json`) needs a second step,
+against the live network, before it takes effect:
+
+```
+goat lex publish --update lexicons/bio/cuanto/authFull.json
+```
+
+This requires authentication as the `cuanto.bio` account that owns the
+NSID authority (a `goat account login` session; see `goat lex status` /
+`goat lex diff` to check what's live vs. local without publishing anything).
+Confirmed via `goat lex diff` before and after: the live record was missing
+`bio.cuanto.protocolTarget` until this ran, matching exactly what users saw.
+
+This only applies to permission-set lexicons referenced via `include:` in
+`SCOPE` — a plain record lexicon (e.g. `bio.cuanto.protocolTarget` itself)
+only needs `pnpm lex:gen`, since nothing resolves it over the network at
+OAuth time.
+
 ## Manual verification checklist
 
 1. Local dev (loopback client): `pnpm dev`, sign in with a test account, confirm

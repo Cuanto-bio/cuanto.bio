@@ -22,7 +22,8 @@
             "bio.cuanto.survey",
             "bio.cuanto.surveyProtocol",
             "bio.cuanto.surveyProtocol.follow",
-            "bio.cuanto.surveyTarget"
+            "bio.cuanto.surveyTarget",
+            "bio.cuanto.protocolTarget"
           ]
         }
       ]
