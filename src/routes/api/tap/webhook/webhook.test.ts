@@ -983,6 +983,55 @@ describe('POST /api/tap/webhook', () => {
     );
   });
 
+  // Regression: a survey create event whose insertSurvey fails its FK and
+  // whose protocol backfill is refused (unexpected $type, per #22) must not
+  // fall through to ingestOccurrencesForSurvey -- the survey row was never
+  // inserted, so any matching occurrence insert would itself violate
+  // fk_occurrence_survey and 500 instead of returning 200.
+  test('does not ingest occurrences for a survey create event when protocol backfill is refused', async () => {
+    vi.mocked(insertSurvey).mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord).mockResolvedValueOnce({
+      uri: 'at://did:plc:abc123/bio.cuanto.surveyProtocol/3abc',
+      cid: TEST_CID,
+      value: {
+        // Wrong $type for a protocol URI (legacy/migrated collection).
+        $type: 'bio.lexicons.temp.surveyProtocol',
+        title: 'Old format protocol',
+      },
+    });
+    const resp = await POST({
+      request: makeRequest(surveyEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertProtocol).not.toHaveBeenCalled();
+    expect(insertSurvey).toHaveBeenCalledTimes(1);
+    expect(listAtRecords).not.toHaveBeenCalled();
+    expect(insertOccurrence).not.toHaveBeenCalled();
+  });
+
+  // Regression, same class as #43: the insertSurvey retry after a successful
+  // protocol backfill can itself fail (still-unsatisfied FK, transient DB
+  // error). That must not be allowed to 500 either.
+  test('returns 200 and skips ingestion when the insertSurvey retry still fails after a successful protocol backfill', async () => {
+    vi.mocked(insertSurvey)
+      .mockRejectedValueOnce(fkError)
+      .mockRejectedValueOnce(fkError);
+    vi.mocked(fetchAtRecord).mockResolvedValueOnce(fetchedProtocolRecord);
+    const resp = await POST({
+      request: makeRequest(surveyEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(insertProtocol).toHaveBeenCalledOnce();
+    expect(insertSurvey).toHaveBeenCalledTimes(2);
+    expect(insertOccurrence).not.toHaveBeenCalled();
+    expect(logMock.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        atUri: 'at://did:plc:abc123/bio.cuanto.survey/3svy',
+      }),
+      expect.stringContaining('skipping ingestion'),
+    );
+  });
+
   test('calls insertIdentification for an identification create event', async () => {
     const resp = await POST({
       request: makeRequest(identificationEvent, VALID_AUTH),

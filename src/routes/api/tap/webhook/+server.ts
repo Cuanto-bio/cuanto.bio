@@ -334,16 +334,44 @@ export const POST: RequestHandler = async ({ request }) => {
   } else if (evt.collection === SURVEY_NSID) {
     await ensureUser(evt.did);
     const survey = evt.record as unknown as Survey;
+    let inserted = false;
     try {
       await insertSurvey(evt.did, evt.rkey, survey, atUri);
+      inserted = true;
     } catch (e) {
       if (isFkViolation(e)) {
         const backfilled = await backfillProtocol(survey.protocol.uri);
-        if (backfilled) await insertSurvey(evt.did, evt.rkey, survey, atUri);
+        if (backfilled) {
+          // The retry can itself fail (an FK that's still unsatisfiable for
+          // reasons the retry can't fix, a transient DB error): that means
+          // the survey could not be ingested, not a 500 (#43).
+          try {
+            await insertSurvey(evt.did, evt.rkey, survey, atUri);
+            inserted = true;
+          } catch (retryErr) {
+            log.warn(
+              { atUri, err: retryErr },
+              'survey insert retry failed after protocol backfill; skipping ingestion',
+            );
+          }
+        }
       } else throw e;
     }
-    await ingestOccurrencesForSurvey(evt.did, atUri);
-    log.info({ atUri }, 'ingested survey');
+    if (inserted) {
+      // Only ingest matching occurrences once the survey row itself exists,
+      // or their inserts would violate fk_occurrence_survey against a survey
+      // that was never written.
+      await ingestOccurrencesForSurvey(evt.did, atUri);
+      log.info({ atUri }, 'ingested survey');
+    } else {
+      // The protocol backfill was refused (unexpected $type, per #22) or the
+      // protocol was genuinely missing: the survey could not be ingested, not
+      // a 500.
+      log.warn(
+        { atUri },
+        'survey references unknown protocol; skipping ingestion',
+      );
+    }
   } else if (evt.collection === OCCURRENCE_NSID) {
     const occurrence = evt.record as unknown as Occurrence;
     const surveyUri = occurrence.eventID;
