@@ -9,10 +9,14 @@ import {
   insertProtocol,
   insertProtocolTarget,
 } from '$lib/server/db/survey-protocols';
+import { followProtocol } from '$lib/server/follow-protocol';
 import { parseLocationOptions } from '$lib/server/locationOptions';
+import logger from '$lib/server/logger';
 import { createRecord } from '$lib/server/pds';
 import { pdsAuthErrorFail } from '$lib/server/pds-error-response';
 import type { Actions, PageServerLoad } from './$types';
+
+const log = logger.child({ component: 'protocols/new' });
 
 // returnTo so signing in lands back on this form rather than dumping the
 // visitor on the home page having lost what they came here to do.
@@ -103,6 +107,20 @@ export const actions: Actions = {
       } catch (err) {
         console.error('Failed to create survey target:', err);
       }
+    }
+
+    // The author automatically follows their own protocol; a PDS hiccup here
+    // must not fail the creation the author is waiting on, since it's already
+    // written. materializeSurveyTargets (inside followProtocol) also runs
+    // again on the author's first survey, so a missed follow just means a
+    // manual follow click later.
+    try {
+      await followProtocol(did, protocolUri);
+    } catch (err) {
+      log.error(
+        { err, did, protocolUri },
+        'failed to auto-follow newly created protocol',
+      );
     }
 
     const [user] = await sql<{ handle: string }[]>`

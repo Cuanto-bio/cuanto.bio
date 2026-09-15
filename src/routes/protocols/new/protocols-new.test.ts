@@ -23,6 +23,11 @@ vi.mock('$lib/server/db', () => ({
   default: vi.fn().mockResolvedValue([{ handle: 'user-test' }]),
 }));
 
+vi.mock('$lib/server/follow-protocol', () => ({
+  followProtocol: vi.fn(),
+}));
+
+import { followProtocol } from '$lib/server/follow-protocol';
 import {
   createRecord,
   PdsScopeInsufficientError,
@@ -265,6 +270,45 @@ describe('POST /protocols/new — locationOptions validation failures', () => {
     expect((result?.data as { error: string }).error).toContain(
       'Invalid location options',
     );
+  });
+});
+
+describe('POST /protocols/new — auto-follow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(createRecord).mockResolvedValue({
+      uri: `at://${DID}/bio.cuanto.surveyProtocol/test1`,
+      cid: FAKE_CID,
+    });
+  });
+
+  test('automatically follows the protocol it just created', async () => {
+    await submitProtocol({
+      title: 'Test Protocol',
+      description: 'A test',
+      targets: '[]',
+      locationOptions: '[]',
+    });
+
+    expect(followProtocol).toHaveBeenCalledWith(
+      DID,
+      `at://${DID}/bio.cuanto.surveyProtocol/test1`,
+    );
+  });
+
+  test('still redirects when auto-follow fails', async () => {
+    vi.mocked(followProtocol).mockRejectedValueOnce(new Error('PDS down'));
+
+    const result = await submitProtocol({
+      title: 'Test Protocol',
+      description: 'A test',
+      targets: '[]',
+      locationOptions: '[]',
+    });
+
+    // submitProtocol swallows the redirect() throw and returns null; a
+    // non-null result here would mean creation failed instead of redirecting.
+    expect(result).toBeNull();
   });
 });
 

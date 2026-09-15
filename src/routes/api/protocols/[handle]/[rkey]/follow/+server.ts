@@ -1,15 +1,12 @@
 import { json } from '@sveltejs/kit';
 import sql from '$lib/server/db';
 import {
-  createFollow,
   deleteFollow,
   getFollowByDidAndProtocol,
 } from '$lib/server/db/protocol-follows';
-import {
-  gcSurveyTargetsIfUnused,
-  materializeSurveyTargets,
-} from '$lib/server/materialize-targets';
-import { createRecord, deleteRecord } from '$lib/server/pds';
+import { followProtocol } from '$lib/server/follow-protocol';
+import { gcSurveyTargetsIfUnused } from '$lib/server/materialize-targets';
+import { deleteRecord } from '$lib/server/pds';
 import { pdsAuthErrorResponse } from '$lib/server/pds-error-response';
 import type { RequestHandler } from './$types';
 
@@ -54,33 +51,11 @@ export const POST: RequestHandler = async ({ params, locals }) => {
   const existing = await getFollowByDidAndProtocol(locals.did, protocolUri);
   if (existing) return json({ isFollowing: true });
 
-  const createdAt = new Date().toISOString();
-  let uri: string;
   try {
-    ({ uri } = await createRecord(
-      locals.did,
-      'bio.cuanto.surveyProtocol.follow',
-      {
-        $type: 'bio.cuanto.surveyProtocol.follow',
-        subject: protocolUri,
-        createdAt,
-      },
-    ));
+    await followProtocol(locals.did, protocolUri);
   } catch (err) {
     return pdsErrorResponse(err);
   }
-
-  await createFollow({
-    atUri: uri,
-    did: locals.did,
-    rkey: uri.split('/').at(-1) ?? '',
-    protocolUri,
-    createdAt,
-  });
-
-  // Adopting a protocol materializes the surveyor's own copies of its targets.
-  // Non-fatal: the survey-creation path re-ensures materialization.
-  await materializeSurveyTargets(locals.did, protocolUri);
 
   return json({ isFollowing: true });
 };
