@@ -33,7 +33,19 @@ export async function insertProtocol(
     )
     ON CONFLICT (at_uri) DO UPDATE SET
       cid = EXCLUDED.cid,
-      record = EXCLUDED.record
+      record = EXCLUDED.record,
+      deleted_at = NULL
+  `;
+}
+
+// Tombstones rather than hard-deletes: surveys.protocol_uri and occurrences
+// (via surveys) both reach this row through ON DELETE CASCADE foreign keys, so
+// a hard delete would silently wipe every survey and occurrence ever recorded
+// under the protocol (issue #25). NULL means "not deleted".
+export async function tombstoneProtocolByUri(atUri: string): Promise<void> {
+  await sql`
+    UPDATE survey_protocols SET deleted_at = now()
+    WHERE at_uri = ${atUri} AND deleted_at IS NULL
   `;
 }
 
@@ -87,6 +99,7 @@ export interface ProtocolRow {
   record: AtSurveyProtocol;
   followed_at?: string;
   last_survey_at?: string;
+  deleted_at?: string | null;
 }
 
 interface ProtocolTargetRow {
@@ -145,7 +158,7 @@ export async function getProtocolByUri(
   uri: string,
 ): Promise<ProtocolRow | null> {
   const [row] = await sql<ProtocolRow[]>`
-    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle, u.avatar_url
+    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, sp.deleted_at, u.handle, u.avatar_url
     FROM survey_protocols sp
     JOIN users u ON u.did = sp.did
     WHERE sp.at_uri = ${uri}
@@ -159,7 +172,7 @@ async function getProtocolByDidAndRkey(
   rkey: string,
 ): Promise<ProtocolRow | null> {
   const [row] = await sql<ProtocolRow[]>`
-    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle, u.avatar_url
+    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, sp.deleted_at, u.handle, u.avatar_url
     FROM survey_protocols sp
     JOIN users u ON u.did = sp.did
     WHERE sp.did = ${did} AND sp.rkey = ${rkey}
@@ -178,6 +191,7 @@ function toProtocol(row: ProtocolRow, targets: ProtocolTargetRow[]): Protocol {
     targets: targets.map(toProtocolTarget),
     ...(row.followed_at ? { followedAt: row.followed_at } : {}),
     ...(row.last_survey_at ? { lastSurveyAt: row.last_survey_at } : {}),
+    ...(row.deleted_at ? { deletedAt: row.deleted_at } : {}),
   };
 }
 
@@ -214,7 +228,7 @@ export async function getFollowedProtocolsByDid(
   // protocol's targets — same "last survey" concept shown per-target on the
   // protocol detail page, aggregated to protocol level for sorting here.
   const rows = await sql<ProtocolRow[]>`
-    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle, u.avatar_url,
+    SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, sp.deleted_at, u.handle, u.avatar_url,
            pf.created_at AS followed_at,
            ls.last_survey_at
     FROM protocol_follows pf
@@ -248,6 +262,7 @@ export async function getProtocolsPage(
     SELECT sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle, u.avatar_url
     FROM survey_protocols sp
     JOIN users u ON u.did = sp.did
+    WHERE sp.deleted_at IS NULL
     ORDER BY sp.indexed_at DESC
     LIMIT ${limit}
     OFFSET ${offset}
@@ -265,7 +280,7 @@ export async function getProtocolsPageByDid(
 ) {
   const rows = await sql<ProtocolRow[]>`
     SELECT
-      sp.at_uri, sp.rkey, sp.cid, sp.record, u.handle, u.avatar_url
+      sp.at_uri, sp.rkey, sp.cid, sp.record, sp.deleted_at, u.handle, u.avatar_url
     FROM survey_protocols sp
     JOIN users u ON u.did = sp.did
     WHERE sp.did = ${did}
@@ -319,7 +334,7 @@ export async function searchProtocols(
     SELECT sp.at_uri, u.handle, sp.record->>'title' AS title
     FROM survey_protocols sp
     JOIN users u ON u.did = sp.did
-    WHERE sp.record->>'title' ILIKE ${`%${query}%`}
+    WHERE sp.deleted_at IS NULL AND sp.record->>'title' ILIKE ${`%${query}%`}
     ORDER BY sp.indexed_at DESC
     LIMIT ${limit}
   `;

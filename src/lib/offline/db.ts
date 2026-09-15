@@ -32,6 +32,11 @@ export interface Protocol {
   targets: Target[];
   followedAt?: string;
   lastSurveyAt?: string;
+  // Set when the author has deleted this protocol (issue #25). The row (and
+  // its title/description) survives deletion so surveys and follows that
+  // reference it keep working; this is the signal to show a "deleted"
+  // notice instead of treating it as live.
+  deletedAt?: string;
 }
 
 export interface CachedProtocol extends Protocol {

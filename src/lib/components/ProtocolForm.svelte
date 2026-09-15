@@ -636,7 +636,12 @@ function removeAddress(i: number, j: number) {
         Editing a protocol requires an internet connection. Please reconnect and try again.
       </p>
     {:else}
-    <Form method="POST" class="flex flex-col gap-6" onEnhance={handleEnhance}>
+    <Form
+      method="POST"
+      action={protocol ? '?/save' : undefined}
+      class="flex flex-col gap-6"
+      onEnhance={handleEnhance}
+    >
       {#if form?.permissionRequired}
         <Alert.Root
           bind:ref={alertRef}

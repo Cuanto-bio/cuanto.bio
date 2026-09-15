@@ -26,6 +26,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
     handle: protocolRow.handle,
     record: protocolRow.record,
     targets: targetRows.map((r) => ({ atUri: r.at_uri, record: r.record })),
+    ...(protocolRow.deleted_at ? { deletedAt: protocolRow.deleted_at } : {}),
   };
 
   return { survey, protocol };

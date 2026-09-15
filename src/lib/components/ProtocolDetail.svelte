@@ -4,13 +4,13 @@ import ClipboardClockIcon from '@lucide/svelte/icons/clipboard-clock';
 import ClipboardPlusIcon from '@lucide/svelte/icons/clipboard-plus';
 import DownloadIcon from '@lucide/svelte/icons/download';
 import EllipsisVerticalIcon from '@lucide/svelte/icons/ellipsis-vertical';
+import GhostIcon from '@lucide/svelte/icons/ghost';
 import MinusIcon from '@lucide/svelte/icons/minus';
 import PencilIcon from '@lucide/svelte/icons/pencil';
 import PlusIcon from '@lucide/svelte/icons/plus';
 import type { Component } from 'svelte';
 import { signInHref } from '$lib/auth/signin';
 import Button from '$lib/components/Button.svelte';
-import Form from '$lib/components/Form.svelte';
 import SparkbarDialog from '$lib/components/SparkbarDialog.svelte';
 import SparkbarInfo from '$lib/components/SparkbarInfo.svelte';
 import SurveyCard from '$lib/components/SurveyCard.svelte';
@@ -253,7 +253,7 @@ function withLastSurveyAt(
 // on the public (SSR, no-JS-friendly) protocol page.
 const collapsibleActions = $derived.by(() => {
   const actions: (ActionItem | null)[] = [
-    isSignedIn && isOwner
+    isSignedIn && isOwner && !protocol.deletedAt
       ? {
           href: `/protocols/${protocol.handle}/${protocol.rkey}/edit`,
           label: 'Edit',
@@ -276,7 +276,7 @@ const collapsibleActions = $derived.by(() => {
 
 <main>
   <div class="mb-6 flex items-center justify-between gap-2">
-    {#if isSignedIn}
+    {#if isSignedIn && !protocol.deletedAt}
       <ButtonGroup>
         <Button
           href="/app/surveys/new/{protocol.rkey}?past=1"
@@ -349,69 +349,84 @@ const collapsibleActions = $derived.by(() => {
     </div>
   </div>
 
-  <div class="text-muted-foreground text-xs mb-1">PROTOCOL</div>
-  <h1>{protocol.record.title}</h1>
-  <Handle handle={protocol.handle} avatarUrl={protocol.avatarUrl} link />
-  {@html sanitizeHtml(protocol.record.description ?? '')}
+  {#if protocol.deletedAt}
+    <Alert.Root variant="gone" class="my-2 mb-6">
+      <GhostIcon />
+      <Alert.Title>Protocol deleted by its author</Alert.Title>
+      <Alert.Description>
+        Existing surveys and occurrences that reference it are unaffected.
+      </Alert.Description>
+    </Alert.Root>
+  {/if}
 
-  <div class="mt-2 flex flex-col items-start gap-3">
-    {#if isOffline}
-      <span class="text-muted-foreground text-xs">(follow requires connection)</span>
-    {:else if isSignedIn}
-      {#if isFollowing}
-        <Button
-          variant="outline"
-          disabled={followPending}
-          onclick={() => setFollowing(false)}
-        >
-          <MinusIcon />
-          Unfollow
-        </Button>
-      {:else}
-        <Button disabled={followPending} onclick={() => setFollowing(true)}>
-          <PlusIcon />
-          Follow this protocol
-        </Button>
+  {#if !protocol.deletedAt}
+    <div class="text-muted-foreground text-xs mb-1">PROTOCOL</div>
+    <h1>{protocol.record.title}</h1>
+    <Handle handle={protocol.handle} avatarUrl={protocol.avatarUrl} link />
+    {@html sanitizeHtml(protocol.record.description ?? '')}
+  {/if}
+
+  {#if !protocol.deletedAt}
+    <div class="mt-2 flex flex-col items-start gap-3">
+      {#if isOffline}
+        <span class="text-muted-foreground text-xs">(follow requires connection)</span>
+      {:else if isSignedIn}
+        {#if isFollowing}
+          <Button
+            variant="outline"
+            disabled={followPending}
+            onclick={() => setFollowing(false)}
+          >
+            <MinusIcon />
+            Unfollow
+          </Button>
+        {:else}
+          <Button disabled={followPending} onclick={() => setFollowing(true)}>
+            <PlusIcon />
+            Follow this protocol
+          </Button>
+        {/if}
       {/if}
-    {/if}
-    {#if followedBy}
-      <div class="flex items-center gap-2">
-        <div class="flex -space-x-2">
-          {#each followedBy.avatars as follower (follower.handle)}
-            {#if follower.avatarUrl}
-              <img
-                src={follower.avatarUrl}
-                alt=""
-                class="ring-background size-8 rounded-full object-cover ring-2"
-                aria-hidden="true"
-              />
-            {:else}
-              <div
-                class="ring-background bg-muted text-muted-foreground flex size-8 items-center justify-center rounded-full text-xs font-medium uppercase ring-2"
-                aria-hidden="true"
-              >
-                {follower.handle.slice(0, 1)}
-              </div>
-            {/if}
-          {/each}
+      {#if followedBy}
+        <div class="flex items-center gap-2">
+          <div class="flex -space-x-2">
+            {#each followedBy.avatars as follower (follower.handle)}
+              {#if follower.avatarUrl}
+                <img
+                  src={follower.avatarUrl}
+                  alt=""
+                  class="ring-background size-8 rounded-full object-cover ring-2"
+                  aria-hidden="true"
+                />
+              {:else}
+                <div
+                  class="ring-background bg-muted text-muted-foreground flex size-8 items-center justify-center rounded-full text-xs font-medium uppercase ring-2"
+                  aria-hidden="true"
+                >
+                  {follower.handle.slice(0, 1)}
+                </div>
+              {/if}
+            {/each}
+          </div>
+          <span class="text-muted-foreground text-sm"
+            >{#each followedBy.parts as part}{#if part.bold}<span
+                  class="text-foreground font-medium">{part.text}</span
+                >{:else}{part.text}{/if}{/each}</span
+          >
         </div>
-        <span class="text-muted-foreground text-sm"
-          >{#each followedBy.parts as part}{#if part.bold}<span
-                class="text-foreground font-medium">{part.text}</span
-              >{:else}{part.text}{/if}{/each}</span
-        >
-      </div>
-    {:else if followerCount !== undefined && !isFollowing}
-      <!-- No one else to name (the preview excludes the viewer). Skip the plain
-           count when the viewer is following, since here that means they are the
-           lone follower and "1 follower" pointing at themselves reads as dead
-           space; a genuine "0 followers" (not following) still shows. -->
-      <span class="text-muted-foreground text-sm">
-        {followerCount}
-        {followerCount === 1 ? 'follower' : 'followers'}
-      </span>
-    {/if}
-  </div>
+      {:else if followerCount !== undefined && !isFollowing}
+        <!-- No one else to name (the preview excludes the viewer). Skip the
+             plain count when the viewer is following, since here that means
+             they are the lone follower and "1 follower" pointing at
+             themselves reads as dead space; a genuine "0 followers" (not
+             following) still shows. -->
+        <span class="text-muted-foreground text-sm">
+          {followerCount}
+          {followerCount === 1 ? 'follower' : 'followers'}
+        </span>
+      {/if}
+    </div>
+  {/if}
 
   {#if authIssue === 'permission'}
     <Alert.Root class="border-yellow-500 bg-yellow-50 dark:bg-yellow-950 my-2">
@@ -445,8 +460,10 @@ const collapsibleActions = $derived.by(() => {
   <Tabs.Root value="surveys" class="mt-6">
     <Tabs.List variant="line">
       <Tabs.Trigger value="surveys">{surveysLabel}</Tabs.Trigger>
-      <Tabs.Trigger value="targets">Targets ({protocol.targets.length})</Tabs.Trigger>
-      <Tabs.Trigger value="details">Details</Tabs.Trigger>
+      {#if !protocol.deletedAt}
+        <Tabs.Trigger value="targets">Targets ({protocol.targets.length})</Tabs.Trigger>
+        <Tabs.Trigger value="details">Details</Tabs.Trigger>
+      {/if}
     </Tabs.List>
 
     <Tabs.Content value="surveys" class="mt-4">
@@ -459,7 +476,7 @@ const collapsibleActions = $derived.by(() => {
             : 'Surveys could not be loaded.'}
         </p>
       {:else if activity.recentSurveys.length === 0}
-        <p class="text-muted-foreground text-sm">No surveys yet.</p>
+        <p class="text-muted-foreground text-sm">No surveys conducted.</p>
       {:else}
         <div class="flex flex-col gap-5">
           <ul class="flex flex-col gap-3">
@@ -484,6 +501,7 @@ const collapsibleActions = $derived.by(() => {
       {/if}
     </Tabs.Content>
 
+    {#if !protocol.deletedAt}
     <Tabs.Content value="targets" class="mt-4">
       {#if protocol.targets.length === 0}
         <p class="text-muted-foreground">No targets.</p>
@@ -655,5 +673,6 @@ const collapsibleActions = $derived.by(() => {
         {/if}
       {/if}
     </Tabs.Content>
+    {/if}
   </Tabs.Root>
 </main>

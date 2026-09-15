@@ -4,6 +4,7 @@ vi.mock('$lib/offline/db', () => ({
   getCachedSurveyByRkey: vi.fn(),
   cacheSurvey: vi.fn().mockResolvedValue(undefined),
   getCachedProtocolByRkey: vi.fn(),
+  cacheProtocol: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('$lib/logger', () => ({
@@ -11,6 +12,7 @@ vi.mock('$lib/logger', () => ({
 }));
 
 import {
+  cacheProtocol,
   cacheSurvey,
   getCachedProtocolByRkey,
   getCachedSurveyByRkey,
@@ -55,6 +57,7 @@ function makeLoad(urlStr: string, cachedSurvey: unknown = STALE_SURVEY) {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(cacheSurvey).mockResolvedValue(undefined);
+  vi.mocked(cacheProtocol).mockResolvedValue(undefined);
   vi.mocked(getCachedProtocolByRkey).mockResolvedValue(PROTOCOL as never);
 });
 
@@ -72,4 +75,33 @@ test('returns fresh survey when ?updated=1 is present even if cache exists', asy
     unknown
   >;
   expect(result.survey).toEqual(FRESH_SURVEY);
+});
+
+// Regression test: a cached protocol used to be trusted forever (only
+// fetched when nothing was cached at all), so a change the author made
+// after caching it — deleting it, issue #25 — never surfaced here. Now it's
+// refreshed in the background every load, same as the survey itself above.
+test('refreshes a cached protocol in the background instead of trusting it forever', async () => {
+  vi.mocked(getCachedSurveyByRkey).mockResolvedValue(STALE_SURVEY as never);
+  vi.mocked(getCachedProtocolByRkey).mockResolvedValue(PROTOCOL as never);
+  const mockFetch = vi.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve({ protocol: PROTOCOL }),
+  });
+
+  await load({
+    fetch: mockFetch,
+    params: { handle: 'testuser', rkey: 'abc' },
+    parent: async () => ({ handle: 'testuser' }),
+    url: new URL('http://localhost/app/surveys/testuser/abc'),
+  } as unknown as Parameters<typeof load>[0]);
+
+  // fetchAndCacheProtocol's fetch() call happens synchronously the moment
+  // it's invoked, even though it isn't awaited here (a fire-and-forget
+  // background refresh) — so this is observable right after load() resolves.
+  const calledProtocolEndpoint = mockFetch.mock.calls.some((c) =>
+    String(c[0]).includes('/api/protocols/'),
+  );
+  expect(calledProtocolEndpoint).toBe(true);
 });

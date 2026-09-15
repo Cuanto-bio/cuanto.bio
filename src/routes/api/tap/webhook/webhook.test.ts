@@ -4,6 +4,7 @@ vi.mock('$lib/server/db/survey-protocols', () => ({
   insertProtocol: vi.fn(),
   insertProtocolTarget: vi.fn(),
   tombstoneProtocolTargetsByUris: vi.fn(),
+  tombstoneProtocolByUri: vi.fn(),
 }));
 
 // backfillProtocol wraps its writes in sql.begin; stand in a fake transaction
@@ -73,6 +74,7 @@ import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
 import {
   insertProtocol,
   insertProtocolTarget,
+  tombstoneProtocolByUri,
   tombstoneProtocolTargetsByUris,
 } from '$lib/server/db/survey-protocols';
 import {
@@ -370,6 +372,26 @@ describe('POST /api/tap/webhook', () => {
       'at://did:plc:abc123/bio.cuanto.protocolTarget/3def',
     ]);
     expect(insertProtocolTarget).not.toHaveBeenCalled();
+  });
+
+  // A protocol delete can come from this app's own delete flow or from any
+  // other AT Protocol client (issue #25, same "we can only react" lesson as
+  // #41) — the webhook has to tombstone it either way, never hard-delete it,
+  // since surveys.protocol_uri and occurrences (via surveys) both reach this
+  // row through ON DELETE CASCADE foreign keys.
+  test('calls tombstoneProtocolByUri for a surveyProtocol delete event', async () => {
+    const deleteEvent = {
+      ...protocolEvent,
+      record: { ...protocolEvent.record, action: 'delete', record: undefined },
+    };
+    const resp = await POST({
+      request: makeRequest(deleteEvent, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(tombstoneProtocolByUri).toHaveBeenCalledWith(
+      'at://did:plc:abc123/bio.cuanto.surveyProtocol/3abc',
+    );
+    expect(insertProtocol).not.toHaveBeenCalled();
   });
 
   test('calls insertSurveyTarget with the event rev for a surveyTarget create event', async () => {

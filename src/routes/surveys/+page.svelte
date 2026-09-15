@@ -72,7 +72,7 @@ const hasFilters = $derived(
   {/if}
 
   {#if data.surveys.length === 0}
-    <p class="text-muted-foreground text-sm">No surveys yet.</p>
+    <p class="text-muted-foreground text-sm">No surveys conducted.</p>
   {:else}
     <ul class="flex flex-col gap-3">
       {#each data.surveys as survey (survey.atUri)}

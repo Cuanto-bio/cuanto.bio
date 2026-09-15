@@ -33,7 +33,13 @@ function toPageData(
 
 export const load: PageLoad = async ({ fetch, params, parent, url }) => {
   const { handle: currentUserHandle } = await parent();
-  const updated = url.searchParams.has('updated');
+  // Both mean "the cache is known-stale, fetch fresh instead of rendering it
+  // first": `updated` after an edit, `deleted` after this issue's delete
+  // action (issue #25) — without it, a protocol cached before deletion would
+  // render its old, not-deleted self first, since `protocol` below isn't a
+  // promise the streamed re-fetch below can update in place.
+  const forceFresh =
+    url.searchParams.has('updated') || url.searchParams.has('deleted');
 
   const findCached = async () => {
     const all = await getCachedProtocols();
@@ -43,7 +49,7 @@ export const load: PageLoad = async ({ fetch, params, parent, url }) => {
   };
 
   const cachedProtocol = await findCached();
-  if (cachedProtocol && !updated) {
+  if (cachedProtocol && !forceFresh) {
     // Render the cached protocol immediately and stream fresh activity,
     // follower count, and offline status in once the network fetch settles
     // (it also refreshes the cache). The follower count is never cached or
@@ -108,7 +114,7 @@ export const load: PageLoad = async ({ fetch, params, parent, url }) => {
     log.error({ err }, 'Failed to fetch protocol');
   }
 
-  // updated=1 but network unavailable — fall back to cache
+  // forceFresh but network unavailable — fall back to cache
   if (cachedProtocol) {
     const cachedFollowedProtocol = await getCachedFollowedProtocolByRkey(
       cachedProtocol.rkey,

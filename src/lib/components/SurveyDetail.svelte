@@ -13,6 +13,7 @@ import TargetFilterControls from '$lib/components/TargetFilterControls.svelte';
 import type { TaxonProp } from '$lib/components/Taxon.svelte';
 import Taxon from '$lib/components/Taxon.svelte';
 import TrackDistance from '$lib/components/TrackDistance.svelte';
+import { Badge } from '$lib/components/ui/badge';
 import * as Card from '$lib/components/ui/card';
 import * as Dialog from '$lib/components/ui/dialog';
 import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -304,10 +305,15 @@ const externalLinkProps =
                 <Table.Row>
                   <Table.Head class="ps-0">Protocol</Table.Head>
                   <Table.Cell>
-                    <p>
+                    <p class="flex items-center gap-2">
                       <a
                         href="/app/protocols/{survey.protocolHandle}/{survey.protocolRkey}"
                       >{survey.protocolTitle}</a>
+                      {#if protocol.deletedAt}
+                        <Badge variant="gone" title="The protocol's author deleted it">
+                          Deleted
+                        </Badge>
+                      {/if}
                     </p>
                   </Table.Cell>
                 </Table.Row>

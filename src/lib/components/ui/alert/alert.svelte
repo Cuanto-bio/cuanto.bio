@@ -8,6 +8,11 @@ export const alertVariants = tv({
       default: 'bg-card text-card-foreground',
       destructive:
         'text-destructive bg-card *:data-[slot=alert-description]:text-destructive/90 *:[svg]:text-current',
+      // Something the viewer can't act on and isn't at risk of causing —
+      // it's just gone (a deleted protocol, say). Deliberately not tied to
+      // the theme's light/dark pair: it reads as a flat, inert marker in
+      // both, rather than inverting like `destructive` effectively does.
+      gone: 'bg-neutral-900 text-neutral-100 *:data-[slot=alert-description]:text-neutral-300',
     },
   },
   defaultVariants: {

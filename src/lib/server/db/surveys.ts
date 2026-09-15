@@ -168,6 +168,17 @@ export async function countSurveysByDid(did: string): Promise<number> {
   return row?.count ?? 0;
 }
 
+// Across every surveyor, not just one — used to warn a protocol author before
+// they delete it (issue #25) how many surveys already reference it.
+export async function countSurveysByProtocolUri(
+  protocolUri: string,
+): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    SELECT COUNT(*)::int AS count FROM surveys WHERE protocol_uri = ${protocolUri}
+  `;
+  return row?.count ?? 0;
+}
+
 export function groupOccurrencesBySurvey(
   occurrences: (OccurrenceRowForSurvey & {
     identification?: Occurrence['identification'];

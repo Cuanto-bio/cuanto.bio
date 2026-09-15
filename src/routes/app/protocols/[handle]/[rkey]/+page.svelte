@@ -125,9 +125,13 @@ $effect(() => {
 // fresh content ASAP. This just removes that param from the URL.
 // afterNavigate ensures the router is initialized before calling replaceState.
 afterNavigate(() => {
-  if (page.url.searchParams.has('updated')) {
+  if (
+    page.url.searchParams.has('updated') ||
+    page.url.searchParams.has('deleted')
+  ) {
     const clean = new URL(page.url);
     clean.searchParams.delete('updated');
+    clean.searchParams.delete('deleted');
     replaceState(clean, page.state);
   }
 });

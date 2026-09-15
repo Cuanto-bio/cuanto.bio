@@ -45,23 +45,41 @@ export const load: PageLoad = async ({ fetch, params, parent, url }) => {
     survey = await fetchAndCacheSurvey();
   }
   if (!survey) return error(404, 'Survey not found');
+  // Captured into locals rather than read from `survey` inside the closure
+  // below: TypeScript doesn't carry the narrowing above into a nested
+  // function closing over a `let`, since the closure could in principle run
+  // after some later reassignment.
+  const { protocolHandle, protocolRkey } = survey;
 
-  let protocol: Protocol | undefined = await getCachedProtocolByRkey(
-    survey.protocolRkey,
-  );
-  if (!protocol) {
+  async function fetchAndCacheProtocol() {
     try {
       const res = await fetch(
-        `/api/protocols/${survey.protocolHandle}/${survey.protocolRkey}`,
+        `/api/protocols/${protocolHandle}/${protocolRkey}`,
       );
       if (res.ok) {
         const data: { protocol: Protocol } = await res.json();
         await cacheProtocol(data.protocol);
-        protocol = data.protocol;
+        return data.protocol;
       }
+      log.error(
+        `[${protocolHandle}/${protocolRkey}] failed to fetch protocol, res.status: ${res.status}`,
+      );
     } catch (err) {
-      log.error({ err }, 'Failed to fetch missing protocol');
+      log.error({ err }, 'Failed to fetch protocol');
     }
+  }
+
+  let protocol: Protocol | undefined = await getCachedProtocolByRkey(
+    survey.protocolRkey,
+  );
+  if (protocol) {
+    // Same reasoning as the survey above: a cached protocol renders
+    // immediately, but still needs refreshing in the background, or a
+    // change the author made after this was first cached (e.g. deleting it,
+    // issue #25) would never surface here.
+    fetchAndCacheProtocol();
+  } else {
+    protocol = await fetchAndCacheProtocol();
   }
   if (!protocol) return error(404, 'Protocol not found');
 

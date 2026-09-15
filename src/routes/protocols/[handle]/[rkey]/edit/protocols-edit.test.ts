@@ -21,6 +21,16 @@ vi.mock('$lib/server/db/survey-protocols', () => ({
   insertProtocol: vi.fn(),
   insertProtocolTarget: vi.fn(),
   tombstoneProtocolTargetsByUris: vi.fn().mockResolvedValue(undefined),
+  tombstoneProtocolByUri: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('$lib/server/db/protocol-follows', () => ({
+  getFollowByDidAndProtocol: vi.fn().mockResolvedValue(null),
+  deleteFollow: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('$lib/server/db/surveys', () => ({
+  countSurveysByProtocolUri: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock('$lib/server/db', () => ({
@@ -33,7 +43,15 @@ vi.mock('$lib/logger', () => ({
   },
 }));
 
-import { getProtocolDetailByHandleAndRkey } from '$lib/server/db/survey-protocols';
+import {
+  deleteFollow,
+  getFollowByDidAndProtocol,
+} from '$lib/server/db/protocol-follows';
+import {
+  getProtocolDetailByHandleAndRkey,
+  tombstoneProtocolByUri,
+  tombstoneProtocolTargetsByUris,
+} from '$lib/server/db/survey-protocols';
 import {
   createRecord,
   deleteRecord,
@@ -74,8 +92,21 @@ function makeFormRequest(fields: Record<string, string>): Request {
 async function submitEdit(fields: Record<string, string>) {
   try {
     // biome-ignore lint/complexity/noBannedTypes: ok for test
-    return await (actions as Record<string, Function>).default({
+    return await (actions as Record<string, Function>).save({
       request: makeFormRequest(fields),
+      locals: { did: DID },
+      params: { handle: HANDLE, rkey: RKEY },
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function submitDelete() {
+  try {
+    // biome-ignore lint/complexity/noBannedTypes: ok for test
+    return await (actions as Record<string, Function>).delete({
+      request: makeFormRequest({}),
       locals: { did: DID },
       params: { handle: HANDLE, rkey: RKEY },
     });
@@ -540,6 +571,200 @@ describe('POST /protocols/[handle]/[rkey]/edit — target write failures', () =>
 
     expect(result).not.toBeNull();
     expect(result?.status).toBe(502);
+  });
+});
+
+// Regression coverage for issue #25: surveys.protocol_uri and occurrences
+// (via surveys) reach survey_protocols through ON DELETE CASCADE foreign
+// keys, so the delete action must tombstone rather than hard-delete — these
+// tests can't see the DB directly (survey-protocols is mocked), but they can
+// pin down that the action calls the tombstone helpers, never anything that
+// hard-deletes a row.
+describe('POST /protocols/[handle]/[rkey]/edit?/delete', () => {
+  const PROTOCOL_URI = `at://${DID}/bio.cuanto.surveyProtocol/${RKEY}`;
+  const TARGET_A = {
+    atUri: `at://${DID}/bio.cuanto.protocolTarget/targetA`,
+    record: {
+      $type: 'bio.cuanto.protocolTarget',
+      protocol: PROTOCOL_URI,
+      scope: [
+        {
+          $type: 'bio.cuanto.protocolTarget#verbatimScope',
+          verbatimTargetScope: 'Existing target',
+        },
+      ],
+    },
+  };
+  const TARGET_B = {
+    atUri: `at://${DID}/bio.cuanto.protocolTarget/targetB`,
+    record: {
+      $type: 'bio.cuanto.protocolTarget',
+      protocol: PROTOCOL_URI,
+      scope: [
+        {
+          $type: 'bio.cuanto.protocolTarget#verbatimScope',
+          verbatimTargetScope: 'Another target',
+        },
+      ],
+    },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getProtocolDetailByHandleAndRkey).mockResolvedValue({
+      ...FAKE_PROTOCOL,
+      targets: [TARGET_A, TARGET_B],
+    } as never);
+    vi.mocked(getFollowByDidAndProtocol).mockResolvedValue(null);
+  });
+
+  test('tombstones the protocol and every target, deletes their PDS records in target-then-protocol order, and redirects', async () => {
+    const result = await submitDelete();
+
+    expect(result).toBeNull(); // redirect() throws, caught by the test helper
+    // Batched, one call for every target actually deleted from the PDS, not
+    // one call per target (see the failure-path tests below for why the
+    // batch has to wait until each PDS delete is confirmed).
+    expect(tombstoneProtocolTargetsByUris).toHaveBeenCalledWith([
+      TARGET_A.atUri,
+      TARGET_B.atUri,
+    ]);
+    expect(tombstoneProtocolByUri).toHaveBeenCalledWith(FAKE_PROTOCOL.atUri);
+
+    const deletedUris = vi.mocked(deleteRecord).mock.calls.map((c) => c[0]);
+    expect(deletedUris).toEqual([
+      TARGET_A.atUri,
+      TARGET_B.atUri,
+      FAKE_PROTOCOL.atUri,
+    ]);
+
+    // Tombstoning must trail its own PDS delete, not race ahead of it: a
+    // target that isn't yet confirmed gone from the PDS still needs to show
+    // up in a retry's live-target list.
+    const targetsCallOrder = vi.mocked(tombstoneProtocolTargetsByUris).mock
+      .invocationCallOrder[0];
+    const targetBDeleteOrder = vi
+      .mocked(deleteRecord)
+      .mock.calls.findIndex((c) => c[0] === TARGET_B.atUri);
+    expect(targetBDeleteOrder).toBeGreaterThanOrEqual(0);
+    expect(
+      vi.mocked(deleteRecord).mock.invocationCallOrder[targetBDeleteOrder],
+    ).toBeLessThan(targetsCallOrder);
+
+    const protocolCallOrder = vi.mocked(tombstoneProtocolByUri).mock
+      .invocationCallOrder[0];
+    const protocolDeleteOrder = vi
+      .mocked(deleteRecord)
+      .mock.calls.findIndex((c) => c[0] === FAKE_PROTOCOL.atUri);
+    expect(
+      vi.mocked(deleteRecord).mock.invocationCallOrder[protocolDeleteOrder],
+    ).toBeLessThan(protocolCallOrder);
+  });
+
+  test('does not tombstone a target whose PDS delete failed, but keeps the tombstone for one already confirmed deleted', async () => {
+    // Chained Once calls, not mockImplementation: this file's beforeEach only
+    // clearAllMocks (call history), not resetAllMocks, so an unconditional
+    // mockImplementation here would leak into every later test in this
+    // describe block.
+    vi.mocked(deleteRecord)
+      .mockResolvedValueOnce(undefined) // target A
+      .mockRejectedValueOnce(new Error('boom')); // target B
+
+    const result = await submitDelete();
+
+    expect(result?.status).toBe(502);
+    expect(tombstoneProtocolTargetsByUris).toHaveBeenCalledWith([
+      TARGET_A.atUri,
+    ]);
+    expect(tombstoneProtocolByUri).not.toHaveBeenCalled();
+  });
+
+  test('does not tombstone the protocol when its own PDS delete fails, even though every target succeeded', async () => {
+    vi.mocked(deleteRecord)
+      .mockResolvedValueOnce(undefined) // target A
+      .mockResolvedValueOnce(undefined) // target B
+      .mockRejectedValueOnce(new Error('boom')); // protocol itself
+
+    const result = await submitDelete();
+
+    expect(result?.status).toBe(502);
+    expect(tombstoneProtocolTargetsByUris).toHaveBeenCalledWith([
+      TARGET_A.atUri,
+      TARGET_B.atUri,
+    ]);
+    expect(tombstoneProtocolByUri).not.toHaveBeenCalled();
+  });
+
+  test("best-effort deletes the author's own follow record after the protocol is gone", async () => {
+    const followUri = `at://${DID}/bio.cuanto.surveyProtocol.follow/self`;
+    vi.mocked(getFollowByDidAndProtocol).mockResolvedValue({
+      at_uri: followUri,
+    } as never);
+
+    await submitDelete();
+
+    expect(getFollowByDidAndProtocol).toHaveBeenCalledWith(
+      DID,
+      FAKE_PROTOCOL.atUri,
+    );
+    expect(deleteRecord).toHaveBeenCalledWith(followUri);
+    expect(deleteFollow).toHaveBeenCalledWith(followUri);
+  });
+
+  test('does not look up a follow to delete when the author never followed their own protocol', async () => {
+    await submitDelete();
+    expect(deleteFollow).not.toHaveBeenCalled();
+  });
+
+  test('still redirects (protocol delete already succeeded) when deleting the own follow record fails', async () => {
+    vi.mocked(getFollowByDidAndProtocol).mockResolvedValue({
+      at_uri: `at://${DID}/bio.cuanto.surveyProtocol.follow/self`,
+    } as never);
+    vi.mocked(deleteRecord).mockImplementation(async (uri: string) => {
+      if (uri.includes('surveyProtocol.follow')) throw new Error('boom');
+    });
+
+    const result = await submitDelete();
+    expect(result).toBeNull(); // still redirected
+  });
+
+  test('returns fail(502) and does not delete the protocol when deleting a target fails', async () => {
+    vi.mocked(deleteRecord).mockRejectedValueOnce(new Error('boom'));
+
+    const result = await submitDelete();
+
+    expect(result?.status).toBe(502);
+    expect(deleteRecord).not.toHaveBeenCalledWith(FAKE_PROTOCOL.atUri);
+    // The very first target failed, so nothing was actually confirmed
+    // deleted from the PDS yet — there's nothing to tombstone.
+    expect(tombstoneProtocolTargetsByUris).not.toHaveBeenCalled();
+    expect(tombstoneProtocolByUri).not.toHaveBeenCalled();
+  });
+
+  test('returns fail(403) with permissionRequired when deleting a target throws PdsScopeInsufficientError', async () => {
+    vi.mocked(deleteRecord).mockRejectedValueOnce(
+      new PdsScopeInsufficientError(),
+    );
+
+    const result = await submitDelete();
+
+    expect(result?.status).toBe(403);
+    expect(
+      (result?.data as { permissionRequired?: boolean }).permissionRequired,
+    ).toBe(true);
+  });
+
+  test('returns fail(401) with sessionExpired when deleting the protocol itself throws PdsSessionExpiredError', async () => {
+    vi.mocked(deleteRecord).mockImplementation(async (uri: string) => {
+      if (uri === FAKE_PROTOCOL.atUri) throw new PdsSessionExpiredError();
+    });
+
+    const result = await submitDelete();
+
+    expect(result?.status).toBe(401);
+    expect((result?.data as { sessionExpired?: boolean }).sessionExpired).toBe(
+      true,
+    );
   });
 });
 

@@ -18,6 +18,7 @@ import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
 import {
   insertProtocol,
   insertProtocolTarget,
+  tombstoneProtocolByUri,
   tombstoneProtocolTargetsByUris,
 } from '$lib/server/db/survey-protocols';
 import {
@@ -286,6 +287,16 @@ export const POST: RequestHandler = async ({ request }) => {
   if (evt.collection === PROTOCOL_TARGET_NSID && evt.action === 'delete') {
     await tombstoneProtocolTargetsByUris([atUri]);
     log.info({ atUri }, 'deleted protocol target');
+    return json({ ok: true });
+  }
+
+  // Tombstone rather than hard-delete: surveys.protocol_uri and occurrences
+  // (via surveys) both reach survey_protocols through ON DELETE CASCADE
+  // foreign keys, so a hard delete here would silently wipe every survey and
+  // occurrence recorded under the protocol (issue #25).
+  if (evt.collection === PROTOCOL_NSID && evt.action === 'delete') {
+    await tombstoneProtocolByUri(atUri);
+    log.info({ atUri }, 'deleted survey protocol');
     return json({ ok: true });
   }
 
