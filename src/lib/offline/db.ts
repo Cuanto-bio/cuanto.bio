@@ -68,6 +68,15 @@ export interface Survey {
   protocolTitle: string;
   record: AtSurvey;
   occurrences: Occurrence[];
+  // The bio.lexicons.temp.v0-1.remark record named by record.eventRemarksID,
+  // hydrated server-side. App-level only (not part of the survey record):
+  // the remark is its own record with its own license so authored prose can be
+  // attributed separately from the survey's facts.
+  eventRemark?: {
+    atUri: string;
+    body: string;
+    license?: string;
+  };
 }
 
 export interface CachedSurvey extends Survey {
@@ -113,6 +122,11 @@ export interface PendingSurvey {
   // resuming lands on the same view instead of the defaults (#31). Purely a
   // view preference: never uploaded to the PDS.
   targetFilter?: TargetFilterState;
+  // The surveyor's note about the survey, uploaded as a separate remark record.
+  // Only the text is stored: the license is the account default, applied
+  // server-side at upload so a draft queued for days publishes under whatever
+  // is in force when it lands.
+  eventRemark?: { body: string };
   createdAt: number;
   complete: boolean;
 }

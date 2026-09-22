@@ -18,6 +18,7 @@ import * as Card from '$lib/components/ui/card';
 import * as Dialog from '$lib/components/ui/dialog';
 import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 import { generateGpx } from '$lib/gpx';
+import { licenseLabel } from '$lib/licenses';
 import type {
   Occurrence,
   Protocol,
@@ -320,6 +321,28 @@ const externalLinkProps =
               </Table.Body>
             </Table.Root>
           </div>
+          {#if survey.eventRemark}
+            <!--
+              The note is its own record with its own license, so it is credited
+              rather than folded into the table above as if it were another
+              survey field.
+            -->
+            <div class="space-y-1">
+              <h3 class="text-muted-foreground text-xs font-semibold uppercase">Notes</h3>
+              <p class="whitespace-pre-wrap">{survey.eventRemark.body}</p>
+              {#if survey.eventRemark.license}
+                <p class="text-muted-foreground text-xs">
+                  &copy; @{survey.handle},
+                  <a
+                    href={survey.eventRemark.license}
+                    class="hover:underline"
+                    rel="license noopener"
+                    target="_blank"
+                  >{licenseLabel(survey.eventRemark.license)}</a>
+                </p>
+              {/if}
+            </div>
+          {/if}
         </Card.Content>
       </div>
       {#if (geo.lat && geo.lon) || surveyBbox || displayTrack}

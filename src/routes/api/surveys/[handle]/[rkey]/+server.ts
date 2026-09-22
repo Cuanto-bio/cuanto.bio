@@ -1,5 +1,6 @@
 import type { l } from '@atproto/lex';
 import { error, json } from '@sveltejs/kit';
+import { parseAtUri } from '$lib/atUri';
 import {
   type TaxonScope,
   taxonScope as taxonScopeType,
@@ -14,6 +15,7 @@ import {
   occurrenceMetadataFromSurveyInput,
 } from '$lib/occurrenceMetadata';
 import { deleteIdentificationsByOccurrenceUris } from '$lib/server/db/identifications';
+import { deleteRemarkByAtUri } from '$lib/server/db/remarks';
 import {
   deleteOccurrenceByAtUri,
   deleteOccurrencesBySurveyUri,
@@ -31,7 +33,11 @@ import {
   materializeSurveyTargets,
 } from '$lib/server/materialize-targets';
 import { createRecord, deleteRecord, putRecord } from '$lib/server/pds';
-import { attachIdentificationToOccurrence } from '$lib/server/survey-records';
+import {
+  attachIdentificationToOccurrence,
+  deleteEventRemark,
+  writeEventRemark,
+} from '$lib/server/survey-records';
 import { eventDateIsInFuture } from '$lib/server/survey-validation';
 import { surveyTargetUriFor } from '$lib/surveyTargets';
 import type { RequestHandler } from './$types';
@@ -95,6 +101,19 @@ export const DELETE: RequestHandler = async ({ params, locals, url }) => {
     }
   }
 
+  // The survey's note goes with it. Logged rather than fatal, like every other
+  // PDS delete here. deleteEventRemark rethrows auth failures by design (so a
+  // note is never silently dropped on edit), but here the survey row is going
+  // away regardless, and a remark row left behind would be unreachable forever.
+  if (survey.record.eventRemarksID) {
+    try {
+      await deleteEventRemark(survey.record.eventRemarksID);
+    } catch (err) {
+      log.error({ err }, 'Failed to delete event remark from PDS');
+      await deleteRemarkByAtUri(survey.record.eventRemarksID);
+    }
+  }
+
   await deleteSurveyByAtUri(survey.atUri);
   try {
     await deleteRecord(survey.atUri);
@@ -108,6 +127,10 @@ export const DELETE: RequestHandler = async ({ params, locals, url }) => {
 
   return new Response(null, { status: 204 });
 };
+
+// Matches the maxLength on bio.lexicons.temp.v0-1.remark.body. See the same
+// constant in the collection route.
+const REMARK_MAX_LENGTH = 3000;
 
 type OccurrenceEditInput = {
   atUri?: string;
@@ -137,6 +160,11 @@ type SurveyEditInput = {
   // undefined: preserve the survey's existing track; null: remove it;
   // object: replace it.
   track?: { gpx: l.BlobRef; source: string } | null;
+  // Same tri-state as `track`: undefined preserves the survey's existing
+  // remark, null removes it, an object replaces it. An object whose body is
+  // blank is a removal too, so clearing the textarea deletes the record rather
+  // than publishing an empty one.
+  eventRemark?: { body: string } | null;
   occurrences: OccurrenceEditInput[];
   incidentals: IncidentalEditInput[];
   // Explicit deletions (#24). Only occurrences/incidentals whose at-uri appears
@@ -193,6 +221,18 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
 
   if (eventDateIsInFuture(body.eventDate)) {
     error(422, 'eventDate must not be in the future');
+  }
+
+  if (body.eventRemark != null) {
+    if (typeof body.eventRemark.body !== 'string') {
+      error(422, 'eventRemark.body must be a string');
+    }
+    if (body.eventRemark.body.trim().length > REMARK_MAX_LENGTH) {
+      error(
+        422,
+        `eventRemark.body must be ${REMARK_MAX_LENGTH} characters or fewer`,
+      );
+    }
   }
 
   // Validate incidentals before touching anything
@@ -258,6 +298,40 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
             source: body.track.source as 'device' | 'uploaded',
           };
 
+  // eventRemark: undefined preserves the existing remark, null (or a blank
+  // body) removes it, a body replaces it. Written before the survey record for
+  // the same reason as on create: the forward reference is authoritative, so
+  // the survey must never name a record that does not exist.
+  const existingRemarkUri = survey.record.eventRemarksID;
+  const newRemarkBody =
+    body.eventRemark === undefined
+      ? undefined
+      : (body.eventRemark?.body.trim() ?? '');
+
+  let eventRemarksID: string | undefined = existingRemarkUri;
+  if (newRemarkBody !== undefined) {
+    if (newRemarkBody) {
+      // Follow the rkey the remark already has: another client may have
+      // written it at a key of its own choosing, and overwriting our derived
+      // key instead would leave that record orphaned.
+      const remarkRkey = existingRemarkUri
+        ? parseAtUri(existingRemarkUri).rkey
+        : survey.rkey;
+      // On failure keep the old reference: the previous record is still there
+      // untouched, so dropping the link would orphan it.
+      eventRemarksID =
+        (await writeEventRemark(
+          did,
+          remarkRkey,
+          survey.atUri,
+          newRemarkBody,
+        )) ?? existingRemarkUri;
+    } else {
+      if (existingRemarkUri) await deleteEventRemark(existingRemarkUri);
+      eventRemarksID = undefined;
+    }
+  }
+
   // Update the survey record (preserve original createdAt and protocol ref)
   const surveyRecord = Survey.$build({
     protocol: survey.record.protocol,
@@ -272,6 +346,9 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
       : {}),
     location,
     ...(track ? { track } : {}),
+    ...(eventRemarksID
+      ? { eventRemarksID: eventRemarksID as l.AtUriString }
+      : {}),
   });
   const surveyRkey = survey.rkey;
   await putRecord(did, Survey.$type, surveyRkey, surveyRecord);

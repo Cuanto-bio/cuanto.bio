@@ -69,6 +69,7 @@ const REPO_COLLECTIONS = [
   'bio.lexicons.temp.v0-1.occurrence',
   'bio.lexicons.temp.v0-1.identification',
   'bio.lexicons.temp.v0-1.media',
+  'bio.lexicons.temp.v0-1.remark',
 ];
 
 // Old-namespace collections the admin lexicon cleanup (cleanupMigratedRecords

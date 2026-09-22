@@ -5,6 +5,7 @@ vi.mock('$lib/server/db/surveys', () => ({
   getOccurrencesForSurveys: vi.fn(),
   groupOccurrencesBySurvey: vi.fn(),
   toSurveyResponse: vi.fn(),
+  attachEventRemarks: vi.fn(),
 }));
 
 vi.mock('$lib/server/db/identifications', () => ({
@@ -18,6 +19,7 @@ vi.mock('$lib/server/db/survey-protocols', () => ({
 import { getIdentificationsForOccurrences } from '$lib/server/db/identifications';
 import { getFollowedProtocolsByDid } from '$lib/server/db/survey-protocols';
 import {
+  attachEventRemarks,
   getOccurrencesForSurveys,
   getSurveysByDid,
   groupOccurrencesBySurvey,
@@ -104,5 +106,41 @@ describe('GET /api/sync', () => {
         }),
       ]),
     );
+  });
+});
+
+describe('GET /api/sync — event remarks', () => {
+  test('hydrates notes onto the surveys it hands the offline cache', async () => {
+    // syncOfflineData runs on every /app navigation and cacheSurvey overwrites
+    // the whole IndexedDB entry, so a sync payload missing the note would strip
+    // it from a copy the detail page had already cached in full.
+    const withRemark = [
+      {
+        atUri: SURVEY_URI,
+        record: {
+          eventRemarksID: `at://${DID}/bio.lexicons.temp.v0-1.remark/s1`,
+        },
+        eventRemark: {
+          atUri: `at://${DID}/bio.lexicons.temp.v0-1.remark/s1`,
+          body: 'Foggy.',
+        },
+      },
+    ];
+    vi.mocked(toSurveyResponse).mockReturnValue(
+      [] as unknown as ReturnType<typeof toSurveyResponse>,
+    );
+    vi.mocked(attachEventRemarks).mockResolvedValue(
+      withRemark as unknown as Awaited<ReturnType<typeof attachEventRemarks>>,
+    );
+
+    const resp = await GET({ locals: { did: DID } } as unknown as Parameters<
+      typeof GET
+    >[0]);
+
+    expect(attachEventRemarks).toHaveBeenCalled();
+    const body = (await resp.json()) as {
+      surveys: { eventRemark?: { body: string } }[];
+    };
+    expect(body.surveys[0].eventRemark?.body).toBe('Foggy.');
   });
 });

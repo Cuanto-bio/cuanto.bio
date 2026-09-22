@@ -5,3 +5,4 @@
 export * as identification from './v0-1/identification.js'
 export * as media from './v0-1/media.js'
 export * as occurrence from './v0-1/occurrence.js'
+export * as remark from './v0-1/remark.js'

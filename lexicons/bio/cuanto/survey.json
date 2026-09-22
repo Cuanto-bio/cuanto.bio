@@ -53,6 +53,11 @@
             "type": "ref",
             "ref": "#track",
             "description": "A spatial path recorded during the survey."
+          },
+          "eventRemarksID": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT-URI of a bio.lexicons.temp.v0-1.remark record whose body holds comments or notes about this survey event. The remark body maps to Darwin Core dwc:eventRemarks."
           }
         }
       }

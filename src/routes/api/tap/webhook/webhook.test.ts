@@ -65,12 +65,18 @@ vi.mock('$lib/server/db/identifications', () => ({
   deleteIdentificationByAtUri: vi.fn(),
 }));
 
+vi.mock('$lib/server/db/remarks', () => ({
+  insertRemark: vi.fn(),
+  deleteRemarkByAtUri: vi.fn(),
+}));
+
 import {
   deleteIdentificationByAtUri,
   deleteIdentificationsByOccurrenceUris,
   insertIdentification,
 } from '$lib/server/db/identifications';
 import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
+import { deleteRemarkByAtUri, insertRemark } from '$lib/server/db/remarks';
 import {
   insertProtocol,
   insertProtocolTarget,
@@ -1220,5 +1226,117 @@ describe('POST /api/tap/webhook', () => {
     expect(insertSurvey).toHaveBeenCalledOnce();
     expect(insertOccurrence).toHaveBeenCalledTimes(2);
     expect(insertIdentification).toHaveBeenCalledTimes(2);
+  });
+});
+
+const REMARK_NSID = 'bio.lexicons.temp.v0-1.remark';
+const remarkSubject = 'at://did:plc:abc123/bio.cuanto.survey/3svy';
+
+function remarkEvent(
+  action: 'create' | 'update' | 'delete',
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    id: 20,
+    type: 'record',
+    record: {
+      did: 'did:plc:abc123',
+      rev: 'abc',
+      collection: REMARK_NSID,
+      rkey: '3svy',
+      action,
+      ...(action === 'delete'
+        ? {}
+        : {
+            record: {
+              $type: REMARK_NSID,
+              subject: remarkSubject,
+              dwcTerm: 'eventRemarks',
+              body: 'Heavy fog until 10am.',
+              license: 'https://creativecommons.org/publicdomain/zero/1.0/',
+              ...overrides,
+            },
+          }),
+      cid: TEST_CID,
+      live: true,
+    },
+  };
+}
+
+const remarkAtUri = `at://did:plc:abc123/${REMARK_NSID}/3svy`;
+
+describe('POST /api/tap/webhook — remarks', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test('ingests a created remark', async () => {
+    const resp = await POST({
+      request: makeRequest(remarkEvent('create'), VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+
+    expect(resp.status).toBe(200);
+    expect(insertRemark).toHaveBeenCalledWith(
+      'did:plc:abc123',
+      '3svy',
+      expect.objectContaining({
+        subject: remarkSubject,
+        dwcTerm: 'eventRemarks',
+        body: 'Heavy fog until 10am.',
+      }),
+      remarkAtUri,
+    );
+  });
+
+  test('ingests an updated remark through the same upsert', async () => {
+    const resp = await POST({
+      request: makeRequest(remarkEvent('update'), VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+
+    expect(resp.status).toBe(200);
+    expect(insertRemark).toHaveBeenCalledTimes(1);
+  });
+
+  test('deletes a remark', async () => {
+    const resp = await POST({
+      request: makeRequest(remarkEvent('delete'), VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+
+    expect(resp.status).toBe(200);
+    expect(deleteRemarkByAtUri).toHaveBeenCalledWith(remarkAtUri);
+    expect(insertRemark).not.toHaveBeenCalled();
+  });
+
+  test('ingests a remark whose subject we have never seen', async () => {
+    // remarks has no FK to surveys on purpose: tap can deliver a remark before
+    // the record it describes, and a remark can name any record as its subject.
+    const evt = remarkEvent('create', {
+      subject: 'at://did:plc:someoneelse/bio.cuanto.survey/x',
+    });
+
+    const resp = await POST({
+      request: makeRequest(evt, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+
+    expect(resp.status).toBe(200);
+    expect(insertRemark).toHaveBeenCalled();
+  });
+
+  test('ingests a remark for a dwcTerm we do not consume yet', async () => {
+    // occurrenceRemarks is coming (#74); an early one from another client must
+    // land rather than 500 the webhook and stall the queue behind it.
+    const evt = remarkEvent('create', { dwcTerm: 'occurrenceRemarks' });
+
+    const resp = await POST({
+      request: makeRequest(evt, VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+
+    expect(resp.status).toBe(200);
+    expect(insertRemark).toHaveBeenCalledWith(
+      'did:plc:abc123',
+      '3svy',
+      expect.objectContaining({ dwcTerm: 'occurrenceRemarks' }),
+      remarkAtUri,
+    );
   });
 });

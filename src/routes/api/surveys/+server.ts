@@ -19,6 +19,7 @@ import { getIdentificationsForOccurrences } from '$lib/server/db/identifications
 import type { ProtocolRow } from '$lib/server/db/survey-protocols';
 import { getProtocolByUri } from '$lib/server/db/survey-protocols';
 import {
+  attachEventRemarks,
   getOccurrencesForSurveys,
   getProtocolTargetsByUri,
   getSurveysByDid,
@@ -31,7 +32,10 @@ import logger from '$lib/server/logger';
 import { materializeSurveyTargets } from '$lib/server/materialize-targets';
 import { PdsSessionExpiredError, putRecord } from '$lib/server/pds';
 import { pdsAuthErrorResponse } from '$lib/server/pds-error-response';
-import { attachIdentificationToOccurrence } from '$lib/server/survey-records';
+import {
+  attachIdentificationToOccurrence,
+  writeEventRemark,
+} from '$lib/server/survey-records';
 import { eventDateIsInFuture } from '$lib/server/survey-validation';
 import type { IncidentalInput } from '$lib/surveys';
 import { surveyTargetUriFor } from '$lib/surveyTargets';
@@ -57,9 +61,21 @@ export const GET: RequestHandler = async ({ locals }) => {
     identification: identsByOccurrence.get(o.at_uri),
   }));
   return json(
-    toSurveyResponse(surveys, groupOccurrencesBySurvey(occurrencesWithIdents)),
+    // /app/surveys caches these, so they carry the note for the same reason
+    // /api/sync does (see attachEventRemarks).
+    await attachEventRemarks(
+      toSurveyResponse(
+        surveys,
+        groupOccurrencesBySurvey(occurrencesWithIdents),
+      ),
+    ),
   );
 };
+
+// Matches the maxLength on bio.lexicons.temp.v0-1.remark.body. Checked here so
+// an over-long note comes back as a 422 the form can show, rather than as a
+// lexicon build throw deep in the write path.
+const REMARK_MAX_LENGTH = 3000;
 
 type OccurrenceInput = {
   surveyTargetUri: string;
@@ -86,6 +102,11 @@ type SurveyInput = {
   surveyorCount?: number | null;
   occurrences: OccurrenceInput[];
   incidentals?: IncidentalInput[];
+  // The surveyor's note about the survey event. Written as its own
+  // bio.lexicons.temp.v0-1.remark record and referenced from the survey's
+  // eventRemarksID. The license is not sent by the client: the server stamps
+  // the surveyor's account default onto the record.
+  eventRemark?: { body: string };
 };
 
 async function fetchProtocolRecords(body: SurveyInput) {
@@ -120,6 +141,7 @@ async function createSurvey(
   body: SurveyInput,
   location: AtgeoPlace,
   did: string,
+  eventRemarksID: string | null,
 ) {
   const surveyRecord = Survey.$build({
     protocol: {
@@ -141,6 +163,9 @@ async function createSurvey(
             source: body.track.source as 'device' | 'uploaded',
           },
         }
+      : {}),
+    ...(eventRemarksID
+      ? { eventRemarksID: eventRemarksID as l.AtUriString }
       : {}),
   });
 
@@ -263,6 +288,18 @@ async function postSurvey(request: Request, did: string) {
     throw error(422, 'eventDate must not be in the future');
   }
 
+  if (body.eventRemark != null) {
+    if (typeof body.eventRemark.body !== 'string') {
+      throw error(422, 'eventRemark.body must be a string');
+    }
+    if (body.eventRemark.body.trim().length > REMARK_MAX_LENGTH) {
+      throw error(
+        422,
+        `eventRemark.body must be ${REMARK_MAX_LENGTH} characters or fewer`,
+      );
+    }
+  }
+
   if (body.track) {
     if (typeof body.track.source !== 'string' || !body.track.source) {
       throw error(422, 'track.source must be a non-empty string');
@@ -320,7 +357,27 @@ async function postSurvey(request: Request, did: string) {
     gpsBbox: body.gpsBbox,
   });
 
-  const surveyUri = await createSurvey(protocol, body, location, did);
+  // Write the remark first so the survey never points at a record that does
+  // not exist: the lexicon treats the forward reference as authoritative. Both
+  // AT-URIs are known up front because the rkey is client-chosen and the remark
+  // reuses it, so this needs no follow-up write to link them.
+  const remarkBody = body.eventRemark?.body.trim();
+  const eventRemarksID = remarkBody
+    ? await writeEventRemark(
+        did,
+        body.surveyRkey,
+        `at://${did}/${Survey.$nsid}/${body.surveyRkey}`,
+        remarkBody,
+      )
+    : null;
+
+  const surveyUri = await createSurvey(
+    protocol,
+    body,
+    location,
+    did,
+    eventRemarksID,
+  );
 
   for (const input of body.occurrences) {
     // We don't make absence occurrences

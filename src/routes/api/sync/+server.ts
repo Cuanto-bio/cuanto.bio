@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { getIdentificationsForOccurrences } from '$lib/server/db/identifications';
 import { getFollowedProtocolsByDid } from '$lib/server/db/survey-protocols';
 import {
+  attachEventRemarks,
   getOccurrencesForSurveys,
   getSurveysByDid,
   groupOccurrencesBySurvey,
@@ -32,9 +33,13 @@ export const GET: RequestHandler = async ({ locals }) => {
 
   return json({
     followedProtocols,
-    surveys: toSurveyResponse(
-      surveys,
-      groupOccurrencesBySurvey(occurrencesWithIdents),
+    // The client caches these wholesale, so they have to carry the note or the
+    // cached copy loses it (see attachEventRemarks).
+    surveys: await attachEventRemarks(
+      toSurveyResponse(
+        surveys,
+        groupOccurrencesBySurvey(occurrencesWithIdents),
+      ),
     ),
   });
 };

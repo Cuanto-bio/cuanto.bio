@@ -1,9 +1,35 @@
 <script lang="ts">
 import LogOutIcon from '@lucide/svelte/icons/log-out';
 import { Button } from '$lib/components/ui/button';
+import { Label } from '$lib/components/ui/label';
+import * as Select from '$lib/components/ui/select';
+import { licenseLabel, REMARK_LICENSES } from '$lib/licenses';
 import { signOut } from '$lib/offline/auth';
 
 let { data } = $props();
+
+// svelte-ignore state_referenced_locally -- intentional: initialize from props
+let license = $state(data.defaultRemarkLicense);
+let saveError = $state(false);
+
+async function setLicense(next: string) {
+  const previous = license;
+  license = next;
+  saveError = false;
+  try {
+    const res = await fetch('/api/me/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defaultRemarkLicense: next }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  } catch {
+    // Put the control back where it was so it never shows a choice the server
+    // did not accept.
+    license = previous;
+    saveError = true;
+  }
+}
 </script>
 
 <main class="mx-auto max-w-sm px-4 py-12">
@@ -22,6 +48,40 @@ let { data } = $props();
       </a>
     {/if}
   </div>
+
+  {#if license}
+    <div class="flex flex-col gap-2 pb-10">
+      <Label for="default-remark-license">Default license for your notes</Label>
+      <Select.Root
+        type="single"
+        bind:value={() => license as string, setLicense}
+      >
+        <Select.Trigger id="default-remark-license" class="w-full">
+          {licenseLabel(license)}
+        </Select.Trigger>
+        <Select.Content>
+          {#each REMARK_LICENSES as option (option.value)}
+            <Select.Item value={option.value} label={option.label}>
+              <span class="flex flex-col items-start">
+                <span>{option.label}</span>
+                <span class="text-muted-foreground text-xs">{option.description}</span>
+              </span>
+            </Select.Item>
+          {/each}
+        </Select.Content>
+      </Select.Root>
+      <p class="text-muted-foreground text-sm">
+        Notes you write on a survey are published as their own records, so they can be
+        credited and reused separately from the observations. This sets the license for
+        the ones you write from now on.
+      </p>
+      {#if saveError}
+        <p class="text-destructive text-sm" role="alert">
+          Could not save that. Check your connection and try again.
+        </p>
+      {/if}
+    </div>
+  {/if}
 
   <Button onclick={signOut} variant="outline" class="w-full">
     <LogOutIcon />

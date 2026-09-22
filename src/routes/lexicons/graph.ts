@@ -43,6 +43,11 @@ export const surveyors: EntityMeta[] = [
     nsid: 'bio.lexicons.temp.v0-1.identification',
     shared: true,
   },
+  {
+    name: 'Remark',
+    nsid: 'bio.lexicons.temp.v0-1.remark',
+    shared: true,
+  },
 ];
 
 export const relationships: Rel[] = [
@@ -137,6 +142,16 @@ export const relationships: Rel[] = [
   //   card: '1 : N',
   //   note: 'Observations recorded during the survey.',
   // },
+  {
+    from: 'Survey',
+    to: 'Remark',
+    toShared: true,
+    label: 'is described by',
+    compactLabel: 'described by',
+    field: 'survey.eventRemarksID',
+    card: '1 : 1',
+    note: "The surveyor's note about the survey, kept as its own record so the text can be licensed separately from the counts. The forward reference is authoritative: a remark nothing points at fills no Darwin Core term.",
+  },
   {
     from: 'Occurrence',
     to: 'Survey',

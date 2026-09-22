@@ -7,7 +7,7 @@
 //   pnpm backfill-surveys did:plc:abc123  # just that repo
 //
 // Records are written in FK order: surveys and surveyTargets, then occurrences,
-// then identifications. surveys.protocol_uri references survey_protocols, so a
+// then identifications, then remarks (which have no FK of their own). surveys.protocol_uri references survey_protocols, so a
 // survey whose protocol is not indexed locally is skipped and counted; run
 // `pnpm reindex-protocol <protocol-uri>` for those and re-run.
 //
@@ -24,6 +24,7 @@ const SURVEY_NSID = 'bio.cuanto.survey';
 const SURVEY_TARGET_NSID = 'bio.cuanto.surveyTarget';
 const OCCURRENCE_NSID = 'bio.lexicons.temp.v0-1.occurrence';
 const IDENTIFICATION_NSID = 'bio.lexicons.temp.v0-1.identification';
+const REMARK_NSID = 'bio.lexicons.temp.v0-1.remark';
 
 interface AtRecord {
   uri: string;
@@ -113,6 +114,7 @@ type Counts = {
   surveyTargets: number;
   occurrences: number;
   identifications: number;
+  remarks: number;
   skippedNoProtocol: number;
   skippedNoSurvey: number;
   skippedNoOccurrence: number;
@@ -157,6 +159,7 @@ async function backfillDid(sql: Sql, did: string): Promise<Counts> {
     surveyTargets: 0,
     occurrences: 0,
     identifications: 0,
+    remarks: 0,
     skippedNoProtocol: 0,
     skippedNoSurvey: 0,
     skippedNoOccurrence: 0,
@@ -165,12 +168,13 @@ async function backfillDid(sql: Sql, did: string): Promise<Counts> {
   const atProtoData = await idResolver.did.resolveAtprotoData(did);
   const pdsUrl = atProtoData.pds;
 
-  const [surveys, surveyTargets, occurrences, identifications] =
+  const [surveys, surveyTargets, occurrences, identifications, remarks] =
     await Promise.all([
       listAtRecords(did, SURVEY_NSID, pdsUrl),
       listAtRecords(did, SURVEY_TARGET_NSID, pdsUrl),
       listAtRecords(did, OCCURRENCE_NSID, pdsUrl),
       listAtRecords(did, IDENTIFICATION_NSID, pdsUrl),
+      listAtRecords(did, REMARK_NSID, pdsUrl),
     ]);
 
   // Which protocols this index already knows about; surveys referencing
@@ -409,6 +413,47 @@ async function backfillDid(sql: Sql, did: string): Promise<Counts> {
     counts.identifications += identificationRows.length;
   }
 
+  // Remarks last, though the order is arbitrary: the table deliberately has no
+  // foreign key to its subject, so nothing here can be skipped for a missing
+  // parent the way surveys, occurrences and identifications can.
+  const remarkRows = dedupeByUri(
+    remarks.flatMap((rec) => {
+      const record = rec.value as {
+        subject?: string;
+        dwcTerm?: string;
+      };
+      if (!record.subject || !record.dwcTerm) return [];
+      return [
+        {
+          at_uri: rec.uri,
+          rkey: parseAtUri(rec.uri).rkey,
+          subject_uri: record.subject,
+          dwc_term: record.dwcTerm,
+          record: JSON.stringify(record),
+        },
+      ];
+    }),
+  );
+
+  if (remarkRows.length > 0) {
+    await sql`
+      INSERT INTO remarks (at_uri, did, rkey, subject_uri, dwc_term, record, indexed_at)
+      SELECT u.at_uri, ${did}, u.rkey, u.subject_uri, u.dwc_term, u.record::jsonb, now()
+      FROM UNNEST(
+        ${remarkRows.map((r) => r.at_uri)}::text[],
+        ${remarkRows.map((r) => r.rkey)}::text[],
+        ${remarkRows.map((r) => r.subject_uri)}::text[],
+        ${remarkRows.map((r) => r.dwc_term)}::text[],
+        ${remarkRows.map((r) => r.record)}::text[]
+      ) AS u(at_uri, rkey, subject_uri, dwc_term, record)
+      ON CONFLICT (at_uri) DO UPDATE SET
+        subject_uri = EXCLUDED.subject_uri,
+        dwc_term = EXCLUDED.dwc_term,
+        record = EXCLUDED.record
+    `;
+    counts.remarks += remarkRows.length;
+  }
+
   return counts;
 }
 
@@ -440,6 +485,7 @@ async function main() {
       surveyTargets: 0,
       occurrences: 0,
       identifications: 0,
+      remarks: 0,
       skippedNoProtocol: 0,
       skippedNoSurvey: 0,
       skippedNoOccurrence: 0,
@@ -453,7 +499,8 @@ async function main() {
         }
         console.log(
           `  ${did}: ${counts.surveys} survey(s), ${counts.surveyTargets} target(s), ` +
-            `${counts.occurrences} occurrence(s), ${counts.identifications} identification(s)`,
+            `${counts.occurrences} occurrence(s), ${counts.identifications} identification(s), ` +
+            `${counts.remarks} remark(s)`,
         );
       } catch (err) {
         // One unreachable PDS should not abandon the remaining repos.
@@ -463,7 +510,8 @@ async function main() {
 
     console.log(
       `\nIndexed ${totals.surveys} survey(s), ${totals.surveyTargets} surveyTarget(s), ` +
-        `${totals.occurrences} occurrence(s), ${totals.identifications} identification(s).`,
+        `${totals.occurrences} occurrence(s), ${totals.identifications} identification(s), ` +
+        `${totals.remarks} remark(s).`,
     );
     if (totals.skippedNoProtocol > 0) {
       console.log(

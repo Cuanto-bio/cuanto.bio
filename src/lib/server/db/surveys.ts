@@ -5,6 +5,7 @@ import type { Occurrence, Survey } from '$lib/offline/db';
 import type { SurveyParams } from '$lib/surveys.js';
 import { getIdentificationsForOccurrences } from './identifications.js';
 import sql from './index.js';
+import { getRemarksByUris } from './remarks.js';
 
 function extractSurveyCoords(
   record: AtSurvey,
@@ -236,10 +237,36 @@ export async function getSurveyDetailByHandleAndRkey(
     ...o,
     identification: identsByOccurrence.get(o.at_uri),
   }));
-  return toSurveyResponse(
-    [survey],
-    groupOccurrencesBySurvey(occurrencesWithIdents),
-  )[0];
+  const [detail] = await attachEventRemarks(
+    toSurveyResponse([survey], groupOccurrencesBySurvey(occurrencesWithIdents)),
+  );
+  return detail;
+}
+
+/**
+ * Hydrates each survey's note from the remark record its eventRemarksID names.
+ *
+ * Every endpoint whose surveys the client caches has to call this, not just the
+ * detail route: syncOfflineData runs on each /app navigation and cacheSurvey
+ * replaces the whole IndexedDB entry, so one payload missing the note strips it
+ * from a copy another route had already cached in full.
+ *
+ * Follows the survey's forward reference rather than looking remarks up by
+ * subject, because the lexicon makes eventRemarksID authoritative: a remark that
+ * names a survey but is not pointed at from it fills no Darwin Core term.
+ */
+export async function attachEventRemarks(surveys: Survey[]): Promise<Survey[]> {
+  const uris = surveys
+    .map((s) => s.record.eventRemarksID)
+    .filter((uri): uri is NonNullable<typeof uri> => !!uri);
+  if (uris.length === 0) return surveys;
+  const remarks = await getRemarksByUris(uris);
+  for (const survey of surveys) {
+    const uri = survey.record.eventRemarksID;
+    const remark = uri ? remarks.get(uri) : undefined;
+    if (remark) survey.eventRemark = remark;
+  }
+  return surveys;
 }
 
 export async function getSurveysPage(

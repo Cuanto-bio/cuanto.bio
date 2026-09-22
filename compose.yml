@@ -25,7 +25,7 @@ services:
       TAP_ADMIN_PASSWORD: "${TAP_ADMIN_PASSWORD}"
       TAP_NO_REPLAY: "true"
       TAP_SIGNAL_COLLECTION: bio.cuanto.surveyProtocol
-      TAP_COLLECTION_FILTERS: "bio.cuanto.surveyProtocol,bio.cuanto.surveyTarget,bio.cuanto.survey,bio.cuanto.surveyProtocol.follow,bio.lexicons.temp.v0-1.occurrence,bio.lexicons.temp.v0-1.identification"
+      TAP_COLLECTION_FILTERS: "bio.cuanto.surveyProtocol,bio.cuanto.surveyTarget,bio.cuanto.survey,bio.cuanto.surveyProtocol.follow,bio.lexicons.temp.v0-1.occurrence,bio.lexicons.temp.v0-1.identification,bio.lexicons.temp.v0-1.remark"
     volumes:
       - tap_data:/data
     restart: unless-stopped

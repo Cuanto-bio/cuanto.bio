@@ -8,6 +8,7 @@ import type { Main as SurveyProtocol } from '$lib/lexicons/bio/cuanto/surveyProt
 import type { Main as SurveyTarget } from '$lib/lexicons/bio/cuanto/surveyTarget.defs';
 import type { Main as Identification } from '$lib/lexicons/bio/lexicons/temp/v0-1/identification.defs';
 import type { Main as Occurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs';
+import type { Main as Remark } from '$lib/lexicons/bio/lexicons/temp/v0-1/remark.defs';
 import sql from '$lib/server/db';
 import {
   deleteIdentificationByAtUri,
@@ -15,6 +16,7 @@ import {
   insertIdentification,
 } from '$lib/server/db/identifications';
 import { createFollow, deleteFollow } from '$lib/server/db/protocol-follows';
+import { deleteRemarkByAtUri, insertRemark } from '$lib/server/db/remarks';
 import {
   insertProtocol,
   insertProtocolTarget,
@@ -49,6 +51,7 @@ const SURVEY_TARGET_NSID = 'bio.cuanto.surveyTarget';
 const OCCURRENCE_NSID = 'bio.lexicons.temp.v0-1.occurrence';
 const IDENTIFICATION_NSID = 'bio.lexicons.temp.v0-1.identification';
 const FOLLOW_NSID = 'bio.cuanto.surveyProtocol.follow';
+const REMARK_NSID = 'bio.lexicons.temp.v0-1.remark';
 
 const log = logger.child({ component: 'tap-webhook' });
 
@@ -316,6 +319,12 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ ok: true });
   }
 
+  if (evt.collection === REMARK_NSID && evt.action === 'delete') {
+    await deleteRemarkByAtUri(atUri);
+    log.info({ atUri }, 'deleted remark');
+    return json({ ok: true });
+  }
+
   if (!evt.record || evt.action === 'delete') {
     return json({ ok: true });
   }
@@ -508,6 +517,22 @@ export const POST: RequestHandler = async ({ request }) => {
       } else throw e;
     }
     log.info({ atUri }, 'ingested identification');
+  }
+
+  if (evt.collection === REMARK_NSID) {
+    // No FK to chase and so no backfill branch: remarks deliberately have no
+    // foreign key to their subject, because tap can deliver a remark before the
+    // record it describes and because a remark can name any record as its
+    // subject. An early one simply lands and waits to be pointed at. We also
+    // ingest terms we do not consume yet (occurrenceRemarks, #74) rather than
+    // drop them, since another client may already be writing them.
+    await insertRemark(
+      evt.did,
+      evt.rkey,
+      evt.record as unknown as Remark,
+      atUri,
+    );
+    log.info({ atUri }, 'ingested remark');
   }
 
   return json({ ok: true });

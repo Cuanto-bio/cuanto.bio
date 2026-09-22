@@ -71,8 +71,19 @@ describe('isScopeSufficient with include: permission sets', () => {
     expect(isScopeSufficient(REAL_GRANTED_SCOPE)).toBe(false);
   });
 
-  test('accepts the real granted scope for a session that consented in full post-#72', () => {
+  test('rejects a pre-#73 granted scope missing the remark collection', () => {
+    // Adding bio.lexicons.temp.v0-1.remark to REPO_COLLECTIONS (#73) widened
+    // SCOPE, so every session that consented before it is stale and has to
+    // re-consent. This is the forced re-consent, asserted rather than
+    // discovered in production.
     const granted = `${REAL_GRANTED_SCOPE} repo:bio.cuanto.protocolTarget`;
+    expect(isScopeSufficient(granted)).toBe(false);
+  });
+
+  test('accepts the real granted scope for a session that consented in full', () => {
+    const granted =
+      `${REAL_GRANTED_SCOPE} repo:bio.cuanto.protocolTarget` +
+      ' repo:bio.lexicons.temp.v0-1.remark';
     expect(isScopeSufficient(granted)).toBe(true);
   });
 

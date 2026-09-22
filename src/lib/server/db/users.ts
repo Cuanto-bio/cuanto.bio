@@ -126,3 +126,25 @@ export async function insertUser(
       avatar_url = EXCLUDED.avatar_url
   `;
 }
+
+// The license URI stamped onto every Remark record this user writes. Returns
+// null when they have never chosen one; callers fall back to
+// DEFAULT_REMARK_LICENSE rather than storing the default eagerly, so changing
+// that default later moves everyone who never expressed a preference.
+export async function getDefaultRemarkLicense(
+  did: string,
+): Promise<string | null> {
+  const [row] = await sql<{ default_remark_license: string | null }[]>`
+    SELECT default_remark_license FROM users WHERE did = ${did}
+  `;
+  return row?.default_remark_license ?? null;
+}
+
+export async function setDefaultRemarkLicense(
+  did: string,
+  license: string,
+): Promise<void> {
+  await sql`
+    UPDATE users SET default_remark_license = ${license} WHERE did = ${did}
+  `;
+}

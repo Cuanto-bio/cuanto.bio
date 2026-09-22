@@ -23,11 +23,21 @@ vi.mock('$lib/server/db/surveys', () => ({
   getProtocolTargetsByUri: vi.fn().mockResolvedValue([]),
   groupOccurrencesBySurvey: vi.fn(),
   toSurveyResponse: vi.fn(),
+  attachEventRemarks: vi.fn((surveys) => Promise.resolve(surveys)),
 }));
 
 vi.mock('$lib/server/db/identifications', () => ({
   insertIdentification: vi.fn(),
   getIdentificationsForOccurrences: vi.fn(),
+}));
+
+vi.mock('$lib/server/db/remarks', () => ({
+  insertRemark: vi.fn(),
+  deleteRemarkByAtUri: vi.fn(),
+}));
+
+vi.mock('$lib/server/db/users', () => ({
+  getDefaultRemarkLicense: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock('$lib/server/db/survey-protocols', () => ({
@@ -55,6 +65,7 @@ import {
   getIdentificationsForOccurrences,
   insertIdentification,
 } from '$lib/server/db/identifications';
+import { insertRemark } from '$lib/server/db/remarks';
 import { getProtocolByUri } from '$lib/server/db/survey-protocols';
 import {
   getOccurrencesForSurveys,
@@ -572,5 +583,152 @@ describe('GET /api/surveys', () => {
         }),
       ]),
     );
+  });
+});
+
+describe('POST /api/surveys — event remarks', () => {
+  const REMARK_NSID = 'bio.lexicons.temp.v0-1.remark';
+
+  test('writes the remark before the survey and links it from eventRemarksID', async () => {
+    const resp = await callPost({
+      request: makeRequest({
+        ...baseSurveyBody,
+        eventRemark: { body: 'Heavy fog until 10am.' },
+      }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+
+    // Order matters: the lexicon treats the forward reference as
+    // authoritative, so the survey must never point at a record that does not
+    // exist yet.
+    const collections = vi.mocked(putRecord).mock.calls.map((c) => c[1]);
+    expect(collections[0]).toBe(REMARK_NSID);
+    expect(collections[1]).toBe('bio.cuanto.survey');
+
+    // Reuses the survey's own rkey in the remark collection.
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      REMARK_NSID,
+      baseSurveyBody.surveyRkey,
+      expect.objectContaining({
+        subject: `at://${DID}/bio.cuanto.survey/${baseSurveyBody.surveyRkey}`,
+        dwcTerm: 'eventRemarks',
+        body: 'Heavy fog until 10am.',
+      }),
+    );
+    expect(insertRemark).toHaveBeenCalled();
+
+    const surveyRecord = vi.mocked(insertSurvey).mock.calls[0][2] as Record<
+      string,
+      unknown
+    >;
+    expect(surveyRecord.eventRemarksID).toBe(
+      `at://${DID}/${REMARK_NSID}/${baseSurveyBody.surveyRkey}`,
+    );
+  });
+
+  test('writes no remark and no eventRemarksID when none was given', async () => {
+    const resp = await callPost({
+      request: makeRequest(baseSurveyBody),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+
+    const collections = vi.mocked(putRecord).mock.calls.map((c) => c[1]);
+    expect(collections).not.toContain(REMARK_NSID);
+    const surveyRecord = vi.mocked(insertSurvey).mock.calls[0][2] as Record<
+      string,
+      unknown
+    >;
+    expect(surveyRecord.eventRemarksID).toBeUndefined();
+  });
+
+  test('treats a whitespace-only note as no note', async () => {
+    const resp = await callPost({
+      request: makeRequest({
+        ...baseSurveyBody,
+        eventRemark: { body: '   \n  ' },
+      }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    const collections = vi.mocked(putRecord).mock.calls.map((c) => c[1]);
+    expect(collections).not.toContain(REMARK_NSID);
+  });
+
+  test('trims the note before writing it', async () => {
+    await callPost({
+      request: makeRequest({
+        ...baseSurveyBody,
+        eventRemark: { body: '  Foggy.  ' },
+      }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      REMARK_NSID,
+      baseSurveyBody.surveyRkey,
+      expect.objectContaining({ body: 'Foggy.' }),
+    );
+  });
+
+  test('returns 422 when the note is longer than the lexicon allows', async () => {
+    const resp = await callPost({
+      request: makeRequest({
+        ...baseSurveyBody,
+        eventRemark: { body: 'x'.repeat(3001) },
+      }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(422);
+    expect(putRecord).not.toHaveBeenCalled();
+  });
+
+  test('accepts a note exactly at the limit', async () => {
+    const resp = await callPost({
+      request: makeRequest({
+        ...baseSurveyBody,
+        eventRemark: { body: 'x'.repeat(3000) },
+      }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+  });
+
+  test('still saves the survey when the remark write fails', async () => {
+    vi.mocked(putRecord).mockRejectedValueOnce(new Error('PDS unavailable'));
+    const resp = await callPost({
+      request: makeRequest({
+        ...baseSurveyBody,
+        eventRemark: { body: 'Foggy.' },
+      }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+
+    expect(resp.status).toBe(200);
+    expect(insertSurvey).toHaveBeenCalled();
+    const surveyRecord = vi.mocked(insertSurvey).mock.calls[0][2] as Record<
+      string,
+      unknown
+    >;
+    expect(surveyRecord.eventRemarksID).toBeUndefined();
+  });
+
+  test('returns 403 rather than dropping the note when scope is insufficient', async () => {
+    // Adding the remark collection to the OAuth scope invalidates every
+    // pre-existing session. Saving the survey and silently losing the note
+    // would be the worst possible outcome there.
+    vi.mocked(putRecord).mockRejectedValueOnce(new PdsScopeInsufficientError());
+    const resp = await callPost({
+      request: makeRequest({
+        ...baseSurveyBody,
+        eventRemark: { body: 'Foggy.' },
+      }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+
+    expect(resp.status).toBe(403);
+    expect(insertSurvey).not.toHaveBeenCalled();
   });
 });

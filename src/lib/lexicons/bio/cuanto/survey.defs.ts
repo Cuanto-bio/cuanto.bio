@@ -60,6 +60,11 @@ type Main = {
    * A spatial path recorded during the survey.
    */
   track?: Track
+
+  /**
+   * AT-URI of a bio.lexicons.temp.v0-1.remark record whose body holds comments or notes about this survey event. The remark body maps to Darwin Core dwc:eventRemarks.
+   */
+  eventRemarksID?: l.AtUriString
 }
 
 export type { Main }
@@ -85,6 +90,9 @@ const main = /*#__PURE__*/ l.record<'tid', Main>(
     ),
     track: /*#__PURE__*/ l.optional(
       /*#__PURE__*/ l.ref<Track>((() => track) as any),
+    ),
+    eventRemarksID: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string({ format: 'at-uri' }),
     ),
   }),
 )

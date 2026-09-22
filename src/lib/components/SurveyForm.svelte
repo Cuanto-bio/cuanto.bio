@@ -27,6 +27,7 @@ import { Label } from '$lib/components/ui/label';
 import * as Popover from '$lib/components/ui/popover';
 import * as RadioGroup from '$lib/components/ui/radio-group';
 import * as Sheet from '$lib/components/ui/sheet';
+import { Textarea } from '$lib/components/ui/textarea';
 import { useGpsTrack } from '$lib/composables/gpsTrack.svelte';
 import {
   checkConnectivity,
@@ -303,6 +304,18 @@ let submitting = $state(false);
 let pastDateError = $state<string | null>(null);
 let pastDurationError = $state<string | null>(null);
 let surveyorCountError = $state<string | null>(null);
+
+// The survey's note (dwc:eventRemarks). Published as its own remark record
+// under the license set on /app/account, so the text stays attributable and
+// licensable separately from the counts.
+// svelte-ignore state_referenced_locally -- intentional: initialize from props
+const initialRemarkBody = sv
+  ? (sv.eventRemark?.body ?? '')
+  : (initialResumeState?.eventRemark?.body ?? '');
+let eventRemarkBody = $state(initialRemarkBody);
+// Matches the maxLength on bio.lexicons.temp.v0-1.remark.body, so the textarea
+// cannot produce a note the API would reject with a 422.
+const REMARK_MAX_LENGTH = 3000;
 let locationError = $state<string | null>(null);
 let locationFieldEl = $state<HTMLElement | null>(null);
 let gpsLoading = $state(false);
@@ -573,6 +586,9 @@ function buildNewSurveyPayload(complete: boolean): PendingSurvey {
     eventDurationValue,
     eventDurationUnit: complete ? 'minutes' : null,
     surveyorCount: surveyorCountStr ? parseInt(surveyorCountStr, 10) : null,
+    ...(eventRemarkBody.trim()
+      ? { eventRemark: { body: eventRemarkBody.trim() } }
+      : {}),
     occurrences,
     incidentals: $state.snapshot(incidentals),
     gpsTrack: trackSnapshot,
@@ -679,6 +695,18 @@ async function autoSave() {
 
 // ─── edit payload builder ────────────────────────────────────────────────────
 
+// The PUT treats eventRemark as a tri-state, like track: omitted preserves the
+// existing note, null deletes it, an object replaces it. Sending it only when it
+// actually changed keeps an untouched survey from re-writing (or newly
+// requiring scope for) a remark record the surveyor never opened.
+function eventRemarkEdit():
+  | { eventRemark: { body: string } | null }
+  | Record<string, never> {
+  const next = eventRemarkBody.trim();
+  if (next === initialRemarkBody.trim()) return {};
+  return { eventRemark: next ? { body: next } : null };
+}
+
 async function buildEditPayload() {
   const { eventDate, eventDurationValue } = buildSurveyTiming(
     'past',
@@ -735,6 +763,7 @@ async function buildEditPayload() {
     longitude: lonOut,
     gpsBbox: bboxOut,
     ...(track !== undefined ? { track } : {}),
+    ...eventRemarkEdit(),
     occurrences: protocol.targets.map((t) => ({
       atUri: existingOccurrenceUris[t.atUri],
       surveyTargetUri: t.atUri,
@@ -1548,6 +1577,26 @@ function displayCount(qty: undefined | string | number) {
       Add incidental
     </Button>
   </div>
+
+  <Field.Field class="mb-6">
+    <Field.Label for="eventRemark">
+      Notes
+      <span class="text-muted-foreground font-normal">(optional)</span>
+    </Field.Label>
+    <Textarea
+      id="eventRemark"
+      rows={3}
+      maxlength={REMARK_MAX_LENGTH}
+      placeholder="Conditions, anything unusual, anything the counts don't capture"
+      bind:value={eventRemarkBody}
+      aria-describedby="event-remark-description"
+    />
+    <Field.Description id="event-remark-description">
+      Saved as its own record so it can be credited and licensed separately from your
+      counts. <a href="/app/account" class="text-primary hover:underline">Set the license</a>
+      for your notes on your account.
+    </Field.Description>
+  </Field.Field>
 
   <div class="sticky bottom-0 -mx-4 border-t bg-background px-4 py-4 sm:mx-0">
     <div class="flex gap-2">

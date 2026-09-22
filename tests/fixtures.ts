@@ -394,6 +394,7 @@ export async function seedNativeToken(
 }
 
 export async function teardownDid(sql: Sql, did: string): Promise<void> {
+  await sql`DELETE FROM remarks WHERE did = ${did}`;
   await sql`DELETE FROM identifications WHERE did = ${did}`;
   await sql`DELETE FROM occurrences WHERE did = ${did}`;
   await sql`DELETE FROM surveys WHERE did = ${did}`;

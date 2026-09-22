@@ -113,6 +113,27 @@ Because this record lives in the user's PDS, it is portable across cuanto instan
 |`subject`|at-uri|required|The Protocol the user intends to participate in.|
 |`createdAt`|datetime|required|Client-declared timestamp when this follow was created.|
 
+### Remark (`bio.lexicons.temp.v0-1.remark`)
+
+Free text that fills a Darwin Core `*Remarks` term on another record. Kept as
+its own record so authored prose, a potential creative work, can be attributed
+and licensed separately from the facts in the record it describes.
+
+`bio.cuanto.survey.eventRemarksID` names the Remark holding a survey's
+`dwc:eventRemarks`. That forward reference is authoritative: a Remark nothing
+points at fills no term, even though it carries a `subject` naming what it
+describes. The `subject` exists so the Remark can be understood on its own and
+so a reference pointing at the wrong Remark can be detected.
+
+|Attribute|Type|Required|Description|
+|---------|----|--------|-----------|
+|`subject`|at-uri|required|The record this remark describes, which should be the record whose forward reference points here.|
+|`dwcTerm`|string|required|The Darwin Core term this remark fills. Known values: "occurrenceRemarks", "eventRemarks", "identificationRemarks".|
+|`body`|string|required|The text, max 3000 characters. Becomes the value of `dwcTerm` on Darwin Core export.|
+|`license`|string|optional|URI of the license this text is published under (sensu [DCMI](http://purl.org/dc/terms/license)). Note this is a license *document URI*, not an SPDX identifier.|
+
+See [`docs/2026-09-21-survey-event-remarks.md`](./2026-09-21-survey-event-remarks.md).
+
 ## Updates to lexicons.bio
 
 ### Occurrence
