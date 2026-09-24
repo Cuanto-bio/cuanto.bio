@@ -14,7 +14,7 @@ test('a survey note is written as its own remark record and shown on the detail 
   await cacheAndOpenNewSurvey(page, HANDLE, protocolRkey);
 
   await page.fill(LOCATION_PLACEHOLDER, 'Remark Test Park');
-  await page.getByLabel('Notes').fill('Heavy fog until 10am.');
+  await page.getByLabel('Remarks').fill('Heavy fog until 10am.');
   await confirmFinishSurvey(page);
 
   await expect(page).toHaveURL(/\/app\/surveys\/user-survey-spec\/\w+/);
@@ -73,7 +73,7 @@ test('editing a survey updates its note, and clearing it deletes the remark', as
 }) => {
   await cacheAndOpenNewSurvey(page, HANDLE, protocolRkey);
   await page.fill(LOCATION_PLACEHOLDER, 'Edit Remark Park');
-  await page.getByLabel('Notes').fill('First draft.');
+  await page.getByLabel('Remarks').fill('First draft.');
   await confirmFinishSurvey(page);
   await expect(page).toHaveURL(/\/app\/surveys\/user-survey-spec\/\w+/);
   const rkey = page.url().split('/').pop();
@@ -81,8 +81,8 @@ test('editing a survey updates its note, and clearing it deletes the remark', as
   // Edit the note.
   await page.goto(`/app/surveys/${HANDLE}/${rkey}/edit`);
   await page.waitForSelector(LOCATION_PLACEHOLDER, { state: 'visible' });
-  await expect(page.getByLabel('Notes')).toHaveValue('First draft.');
-  await page.getByLabel('Notes').fill('Second draft.');
+  await expect(page.getByLabel('Remarks')).toHaveValue('First draft.');
+  await page.getByLabel('Remarks').fill('Second draft.');
   await page.getByRole('button', { name: 'Save Survey' }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Second draft.')).toBeVisible();
@@ -96,7 +96,7 @@ test('editing a survey updates its note, and clearing it deletes the remark', as
   // one, and drops the survey's reference to it.
   await page.goto(`/app/surveys/${HANDLE}/${rkey}/edit`);
   await page.waitForSelector(LOCATION_PLACEHOLDER, { state: 'visible' });
-  await page.getByLabel('Notes').fill('');
+  await page.getByLabel('Remarks').fill('');
   await page.getByRole('button', { name: 'Save Survey' }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   // Anchored: /edit also matches an unanchored regex, which would hide a save
@@ -122,7 +122,7 @@ test('deleting a survey deletes its note too', async ({
 }) => {
   await cacheAndOpenNewSurvey(page, HANDLE, protocolRkey);
   await page.fill(LOCATION_PLACEHOLDER, 'Doomed Park');
-  await page.getByLabel('Notes').fill('This goes away.');
+  await page.getByLabel('Remarks').fill('This goes away.');
   await confirmFinishSurvey(page);
   await expect(page).toHaveURL(/\/app\/surveys\/user-survey-spec\/\w+/);
   const rkey = page.url().split('/').pop();
@@ -138,7 +138,7 @@ test('deleting a survey deletes its note too', async ({
 const LICENSE_DID = 'did:test:survey-remark-license';
 const LICENSE_HANDLE = 'user-survey-remark-license';
 
-test('the account default license is stamped onto new notes', async ({
+test('the account default license is stamped onto new remarks', async ({
   page,
   sql,
   context,
@@ -158,7 +158,7 @@ test('the account default license is stamped onto new notes', async ({
 
   try {
     await page.goto('/app/account');
-    await page.getByLabel('Default license for your notes').click();
+    await page.getByLabel('Default license for your remarks').click();
     await page.getByRole('option', { name: 'CC BY 4.0' }).click();
     await expect
       .poll(async () => {
@@ -171,7 +171,7 @@ test('the account default license is stamped onto new notes', async ({
 
     await cacheAndOpenNewSurvey(page, LICENSE_HANDLE, protocolRkey);
     await page.fill(LOCATION_PLACEHOLDER, 'Licensed Park');
-    await page.getByLabel('Notes').fill('Mine, with credit.');
+    await page.getByLabel('Remarks').fill('Mine, with credit.');
     await confirmFinishSurvey(page);
     await expect(page).toHaveURL(
       new RegExp(`/app/surveys/${LICENSE_HANDLE}/\\w+`),

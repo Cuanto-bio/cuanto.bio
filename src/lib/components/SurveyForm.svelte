@@ -1580,7 +1580,7 @@ function displayCount(qty: undefined | string | number) {
 
   <Field.Field class="mb-6">
     <Field.Label for="eventRemark">
-      Notes
+      Remarks
       <span class="text-muted-foreground font-normal">(optional)</span>
     </Field.Label>
     <Textarea
@@ -1594,7 +1594,7 @@ function displayCount(qty: undefined | string | number) {
     <Field.Description id="event-remark-description">
       Saved as its own record so it can be credited and licensed separately from your
       counts. <a href="/app/account" class="text-primary hover:underline">Set the license</a>
-      for your notes on your account.
+      for your remarks on your account.
     </Field.Description>
   </Field.Field>
 

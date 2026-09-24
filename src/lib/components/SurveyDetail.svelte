@@ -328,7 +328,7 @@ const externalLinkProps =
               survey field.
             -->
             <div class="space-y-1">
-              <h3 class="text-muted-foreground text-xs font-semibold uppercase">Notes</h3>
+              <h3 class="text-muted-foreground text-xs font-semibold uppercase">Remarks</h3>
               <p class="whitespace-pre-wrap">{survey.eventRemark.body}</p>
               {#if survey.eventRemark.license}
                 <p class="text-muted-foreground text-xs">

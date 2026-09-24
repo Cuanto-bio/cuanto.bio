@@ -51,7 +51,7 @@ async function setLicense(next: string) {
 
   {#if license}
     <div class="flex flex-col gap-2 pb-10">
-      <Label for="default-remark-license">Default license for your notes</Label>
+      <Label for="default-remark-license">Default license for your remarks</Label>
       <Select.Root
         type="single"
         bind:value={() => license as string, setLicense}
@@ -71,7 +71,7 @@ async function setLicense(next: string) {
         </Select.Content>
       </Select.Root>
       <p class="text-muted-foreground text-sm">
-        Notes you write on a survey are published as their own records, so they can be
+        Remarks you write on a survey are published as their own records, so they can be
         credited and reused separately from the observations. This sets the license for
         the ones you write from now on.
       </p>
