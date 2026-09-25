@@ -10,6 +10,7 @@ import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
 import { bbox, geo } from '$lib/lexicons/community/lexicon/location';
 import * as Place from '$lib/lexicons/org/atgeo/place';
 import type { Main as AtgeoPlace } from '$lib/lexicons/org/atgeo/place.defs';
+import { isKnownLicense, type RemarkLicense } from '$lib/licenses';
 import {
   type OccurrenceMetadata,
   occurrenceMetadataFromSurveyInput,
@@ -104,9 +105,9 @@ type SurveyInput = {
   incidentals?: IncidentalInput[];
   // The surveyor's remark about the survey event. Written as its own
   // bio.lexicons.temp.v0-1.remark record and referenced from the survey's
-  // eventRemarksID. The license is not sent by the client: the server stamps
-  // the surveyor's account default onto the record.
-  eventRemark?: { body: string };
+  // eventRemarksID. `license` is the one the surveyor picked for this remark;
+  // when it is omitted the server stamps their account default at upload.
+  eventRemark?: { body: string; license?: string };
 };
 
 async function fetchProtocolRecords(body: SurveyInput) {
@@ -298,6 +299,12 @@ async function postSurvey(request: Request, did: string) {
         `eventRemark.body must be ${REMARK_MAX_LENGTH} characters or fewer`,
       );
     }
+    if (
+      body.eventRemark.license !== undefined &&
+      !isKnownLicense(body.eventRemark.license)
+    ) {
+      throw error(422, 'eventRemark.license must be a supported license URI');
+    }
   }
 
   if (body.track) {
@@ -368,6 +375,7 @@ async function postSurvey(request: Request, did: string) {
         body.surveyRkey,
         `at://${did}/${Survey.$nsid}/${body.surveyRkey}`,
         remarkBody,
+        body.eventRemark?.license as RemarkLicense | undefined,
       )
     : null;
 

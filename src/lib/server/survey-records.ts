@@ -3,7 +3,11 @@ import type { TaxonScope } from '$lib/lexicons/bio/cuanto/protocolTarget.defs';
 import * as Identification from '$lib/lexicons/bio/lexicons/temp/v0-1/identification';
 import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
 import * as Remark from '$lib/lexicons/bio/lexicons/temp/v0-1/remark';
-import { DEFAULT_REMARK_LICENSE, isKnownLicense } from '$lib/licenses';
+import {
+  DEFAULT_REMARK_LICENSE,
+  isKnownLicense,
+  type RemarkLicense,
+} from '$lib/licenses';
 import { insertIdentification } from '$lib/server/db/identifications';
 import { deleteRemarkByAtUri, insertRemark } from '$lib/server/db/remarks';
 import { insertOccurrence } from '$lib/server/db/surveys';
@@ -87,11 +91,11 @@ export async function attachIdentificationToOccurrence(
   await insertOccurrence(did, occRkey, updatedOcc, occUri);
 }
 
-// Resolves the license URI to stamp onto a remark. The surveyor picks this once
-// on /app/account rather than per remark (#75), and it is applied here rather
-// than sent by the client so a survey drafted offline days ago publishes under
-// whatever default is in force when it finally uploads. A stored value we no
-// longer offer is ignored rather than trusted onto the record.
+// Resolves the account default license to stamp onto a remark whose surveyor
+// did not pick one for it. The default is applied here rather than sent by the
+// client so a survey drafted offline days ago publishes under whatever default
+// is in force when it finally uploads. A stored value we no longer offer is
+// ignored rather than trusted onto the record.
 async function resolveRemarkLicense(did: string) {
   let stored: string | null = null;
   try {
@@ -114,14 +118,18 @@ async function resolveRemarkLicense(did: string) {
  * fails to attach to its occurrence). Auth failures are the exception and
  * propagate: the remark would otherwise vanish with no explanation on exactly the
  * sessions that predate the remark collection joining our OAuth scope.
+ *
+ * `license` is the one the surveyor picked for this remark; without it the
+ * account default applies. Callers validate it with isKnownLicense.
  */
 export async function writeEventRemark(
   did: string,
   surveyRkey: string,
   surveyUri: string,
   body: string,
+  license?: RemarkLicense,
 ): Promise<string | null> {
-  const license = await resolveRemarkLicense(did);
+  license ??= await resolveRemarkLicense(did);
   const record = Remark.$build({
     subject: surveyUri as l.AtUriString,
     dwcTerm: 'eventRemarks',

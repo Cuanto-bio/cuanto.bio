@@ -26,6 +26,7 @@ import { Input } from '$lib/components/ui/input';
 import { Label } from '$lib/components/ui/label';
 import * as Popover from '$lib/components/ui/popover';
 import * as RadioGroup from '$lib/components/ui/radio-group';
+import * as Select from '$lib/components/ui/select';
 import * as Sheet from '$lib/components/ui/sheet';
 import { Textarea } from '$lib/components/ui/textarea';
 import { useGpsTrack } from '$lib/composables/gpsTrack.svelte';
@@ -36,6 +37,7 @@ import {
 } from '$lib/composables/online.svelte';
 import { type GpsBbox, type GpsTrackPoint, generateGpx } from '$lib/gpx';
 import type { Main as AtgeoPlaceMain } from '$lib/lexicons/org/atgeo/place.defs';
+import { isKnownLicense, licenseLabel, REMARK_LICENSES } from '$lib/licenses';
 import {
   type CachedProtocol,
   deletePendingSurvey,
@@ -306,13 +308,31 @@ let pastDurationError = $state<string | null>(null);
 let surveyorCountError = $state<string | null>(null);
 
 // The survey's remark (dwc:eventRemarks). Published as its own remark record
-// under the license set on /app/account, so the text stays attributable and
-// licensable separately from the counts.
+// with its own license, so the text stays attributable and licensable
+// separately from the counts.
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
 const initialRemarkBody = sv
   ? (sv.eventRemark?.body ?? '')
   : (initialResumeState?.eventRemark?.body ?? '');
 let eventRemarkBody = $state(initialRemarkBody);
+// Sends no license, so the server stamps the account default at upload (see
+// PendingSurvey.eventRemark). A remark whose license we do not offer starts
+// here too, since the Select has no option that could show it.
+const ACCOUNT_DEFAULT_LICENSE = 'account-default';
+// svelte-ignore state_referenced_locally -- intentional: initialize from props
+const initialRemarkLicense = (() => {
+  const license = sv
+    ? sv.eventRemark?.license
+    : initialResumeState?.eventRemark?.license;
+  return isKnownLicense(license) ? license : ACCOUNT_DEFAULT_LICENSE;
+})();
+let eventRemarkLicense = $state<string>(initialRemarkLicense);
+
+function eventRemarkPayload(body: string): { body: string; license?: string } {
+  return eventRemarkLicense === ACCOUNT_DEFAULT_LICENSE
+    ? { body }
+    : { body, license: eventRemarkLicense };
+}
 // Matches the maxLength on bio.lexicons.temp.v0-1.remark.body, so the textarea
 // cannot produce a remark the API would reject with a 422.
 const REMARK_MAX_LENGTH = 3000;
@@ -587,7 +607,7 @@ function buildNewSurveyPayload(complete: boolean): PendingSurvey {
     eventDurationUnit: complete ? 'minutes' : null,
     surveyorCount: surveyorCountStr ? parseInt(surveyorCountStr, 10) : null,
     ...(eventRemarkBody.trim()
-      ? { eventRemark: { body: eventRemarkBody.trim() } }
+      ? { eventRemark: eventRemarkPayload(eventRemarkBody.trim()) }
       : {}),
     occurrences,
     incidentals: $state.snapshot(incidentals),
@@ -700,11 +720,16 @@ async function autoSave() {
 // actually changed keeps an untouched survey from re-writing (or newly
 // requiring scope for) a remark record the surveyor never opened.
 function eventRemarkEdit():
-  | { eventRemark: { body: string } | null }
+  | { eventRemark: { body: string; license?: string } | null }
   | Record<string, never> {
   const next = eventRemarkBody.trim();
-  if (next === initialRemarkBody.trim()) return {};
-  return { eventRemark: next ? { body: next } : null };
+  if (
+    next === initialRemarkBody.trim() &&
+    eventRemarkLicense === initialRemarkLicense
+  ) {
+    return {};
+  }
+  return { eventRemark: next ? eventRemarkPayload(next) : null };
 }
 
 async function buildEditPayload() {
@@ -1589,12 +1614,49 @@ function displayCount(qty: undefined | string | number) {
       maxlength={REMARK_MAX_LENGTH}
       placeholder="Conditions, anything unusual, anything the counts don't capture"
       bind:value={eventRemarkBody}
-      aria-describedby="event-remark-description"
     />
-    <Field.Description id="event-remark-description">
-      <a href="/app/account" class="text-primary hover:underline">Set the license</a>
-      for your remarks on your account.
-    </Field.Description>
+    <!-- Deliberately subordinate to the textarea rather than a field of its
+         own: the license covers the remark text, not the survey. -->
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+      <Label
+        for="eventRemarkLicense"
+        class="text-muted-foreground font-normal"
+      >
+        License
+      </Label>
+      <Select.Root type="single" bind:value={eventRemarkLicense}>
+        <Select.Trigger
+          id="eventRemarkLicense"
+          size="sm"
+          class="bg-transparent px-2"
+        >
+          {eventRemarkLicense === ACCOUNT_DEFAULT_LICENSE
+            ? 'Account default'
+            : licenseLabel(eventRemarkLicense)}
+        </Select.Trigger>
+        <Select.Content>
+          <Select.Item value={ACCOUNT_DEFAULT_LICENSE} label="Account default">
+            <span class="flex flex-col items-start">
+              <span>Account default</span>
+              <span class="text-muted-foreground text-xs">
+                Whatever is set on your account when this uploads
+              </span>
+            </span>
+          </Select.Item>
+          {#each REMARK_LICENSES as option (option.value)}
+            <Select.Item value={option.value} label={option.label}>
+              <span class="flex flex-col items-start">
+                <span>{option.fullLabel}</span>
+                <span class="text-muted-foreground text-xs">{option.description}</span>
+              </span>
+            </Select.Item>
+          {/each}
+        </Select.Content>
+      </Select.Root>
+      <a href="/app/account" class="text-primary ml-auto text-xs hover:underline">
+        Set your default
+      </a>
+    </div>
   </Field.Field>
 
   <div class="sticky bottom-0 -mx-4 border-t bg-background px-4 py-4 sm:mx-0">

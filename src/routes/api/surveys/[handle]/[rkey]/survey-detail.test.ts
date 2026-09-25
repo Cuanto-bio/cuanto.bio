@@ -252,6 +252,41 @@ describe('PUT /api/surveys/[handle]/[rkey] — event remarks', () => {
     expect(deleteRemarkByAtUri).not.toHaveBeenCalled();
   });
 
+  test('stamps the license the surveyor chose onto the rewritten remark', async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      makeSurvey({ eventRemarksID: REMARK_URI }) as unknown as Awaited<
+        ReturnType<typeof getSurveyDetailByHandleAndRkey>
+      >,
+    );
+
+    const resp = await callPut({
+      ...baseEditBody,
+      eventRemark: {
+        body: 'Windy.',
+        license: 'https://creativecommons.org/licenses/by-nc/4.0/',
+      },
+    });
+    expect(resp.status).toBe(200);
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      REMARK_NSID,
+      RKEY,
+      expect.objectContaining({
+        body: 'Windy.',
+        license: 'https://creativecommons.org/licenses/by-nc/4.0/',
+      }),
+    );
+  });
+
+  test('returns 422 for a license we do not offer', async () => {
+    const resp = await callPut({
+      ...baseEditBody,
+      eventRemark: { body: 'Windy.', license: 'MIT' },
+    });
+    expect(resp.status).toBe(422);
+    expect(putRecord).not.toHaveBeenCalled();
+  });
+
   test('returns 422 when the remark is longer than the lexicon allows', async () => {
     const resp = await callPut({
       ...baseEditBody,

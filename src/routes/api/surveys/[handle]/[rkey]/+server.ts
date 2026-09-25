@@ -10,6 +10,7 @@ import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
 import { bbox, geo } from '$lib/lexicons/community/lexicon/location';
 import * as Place from '$lib/lexicons/org/atgeo/place';
 import type { Main as AtgeoPlace } from '$lib/lexicons/org/atgeo/place.defs';
+import { isKnownLicense, type RemarkLicense } from '$lib/licenses';
 import {
   mergeOccurrenceMetadata,
   occurrenceMetadataFromSurveyInput,
@@ -163,8 +164,9 @@ type SurveyEditInput = {
   // Same tri-state as `track`: undefined preserves the survey's existing
   // remark, null removes it, an object replaces it. An object whose body is
   // blank is a removal too, so clearing the textarea deletes the record rather
-  // than publishing an empty one.
-  eventRemark?: { body: string } | null;
+  // than publishing an empty one. `license` works as on create: omitted means
+  // the account default.
+  eventRemark?: { body: string; license?: string } | null;
   occurrences: OccurrenceEditInput[];
   incidentals: IncidentalEditInput[];
   // Explicit deletions (#24). Only occurrences/incidentals whose at-uri appears
@@ -232,6 +234,12 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
         422,
         `eventRemark.body must be ${REMARK_MAX_LENGTH} characters or fewer`,
       );
+    }
+    if (
+      body.eventRemark.license !== undefined &&
+      !isKnownLicense(body.eventRemark.license)
+    ) {
+      error(422, 'eventRemark.license must be a supported license URI');
     }
   }
 
@@ -325,6 +333,7 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
           remarkRkey,
           survey.atUri,
           newRemarkBody,
+          body.eventRemark?.license as RemarkLicense | undefined,
         )) ?? existingRemarkUri;
     } else {
       if (existingRemarkUri) await deleteEventRemark(existingRemarkUri);

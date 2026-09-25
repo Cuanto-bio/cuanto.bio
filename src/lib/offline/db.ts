@@ -123,10 +123,10 @@ export interface PendingSurvey {
   // view preference: never uploaded to the PDS.
   targetFilter?: TargetFilterState;
   // The surveyor's remark about the survey, uploaded as a separate remark record.
-  // Only the text is stored: the license is the account default, applied
-  // server-side at upload so a draft queued for days publishes under whatever
-  // is in force when it lands.
-  eventRemark?: { body: string };
+  // `license` is set only when the surveyor picked one for this remark. Without
+  // it the server applies the account default at upload, so a draft queued for
+  // days publishes under whatever default is in force when it lands.
+  eventRemark?: { body: string; license?: string };
   createdAt: number;
   complete: boolean;
 }

@@ -12,31 +12,39 @@ export const REMARK_LICENSES = [
   {
     value: 'https://creativecommons.org/publicdomain/zero/1.0/',
     label: 'CC0 1.0',
+    fullLabel: 'Creative Commons Zero 1.0',
     description: 'No rights reserved',
   },
   {
     value: 'https://creativecommons.org/licenses/by/4.0/',
     label: 'CC BY 4.0',
+    fullLabel: 'Creative Commons BY 4.0',
     description: 'Reuse with attribution',
   },
   {
     value: 'https://creativecommons.org/licenses/by-nc/4.0/',
     label: 'CC BY-NC 4.0',
+    fullLabel: 'Creative Commons BY-NC 4.0',
     description: 'Attribution, non-commercial use only',
   },
   {
     value: 'https://creativecommons.org/licenses/by-sa/4.0/',
     label: 'CC BY-SA 4.0',
+    fullLabel: 'Creative Commons BY-SA 4.0',
     description: 'Attribution, share alike',
   },
   {
     value: 'https://creativecommons.org/licenses/by-nc-sa/4.0/',
     label: 'CC BY-NC-SA 4.0',
+    fullLabel: 'Creative Commons BY-NC-SA 4.0',
     description: 'Attribution, non-commercial, share alike',
   },
 ] as const satisfies readonly {
   value: RemarkLicense;
+  // Short form for compact spots (a Select trigger, a link on a remark).
   label: string;
+  // Spelled out for the list a surveyor picks from.
+  fullLabel: string;
   description: string;
 }[];
 

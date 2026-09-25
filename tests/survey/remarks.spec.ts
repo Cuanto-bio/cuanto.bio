@@ -185,7 +185,7 @@ test('the account default license is stamped onto new remarks', async ({
   try {
     await page.goto('/app/account');
     await page.getByLabel('Default license for your remarks').click();
-    await page.getByRole('option', { name: 'CC BY 4.0' }).click();
+    await page.getByRole('option', { name: 'Creative Commons BY 4.0' }).click();
     await expect
       .poll(async () => {
         const [user] = await sql<{ default_remark_license: string | null }[]>`
@@ -211,4 +211,75 @@ test('the account default license is stamped onto new remarks', async ({
   } finally {
     await teardownDid(sql, LICENSE_DID);
   }
+});
+
+const CC_BY_NC = 'https://creativecommons.org/licenses/by-nc/4.0/';
+
+test('a license picked on the form is stamped onto the remark', async ({
+  page,
+  sql,
+  protocolRkey,
+}) => {
+  await cacheAndOpenNewSurvey(page, HANDLE, protocolRkey);
+  await page.fill(LOCATION_PLACEHOLDER, 'Picked License Park');
+  await page.getByLabel('Remarks').fill('Credit me.');
+  await page.getByLabel('License').click();
+  await page
+    .getByRole('option', { name: 'Creative Commons BY-NC 4.0' })
+    .click();
+  await confirmFinishSurvey(page);
+  await expect(page).toHaveURL(/\/app\/surveys\/user-survey-spec\/\w+/);
+
+  const [remark] = await sql<{ record: { license?: string } }[]>`
+    SELECT record FROM remarks WHERE did = 'did:test:survey-spec'
+  `;
+  expect(remark.record.license).toBe(CC_BY_NC);
+  await expect(page.getByRole('link', { name: 'CC BY-NC 4.0' })).toBeVisible();
+});
+
+test('editing a remark keeps its license, and changing only the license rewrites it', async ({
+  page,
+  sql,
+  protocolRkey,
+}) => {
+  await cacheAndOpenNewSurvey(page, HANDLE, protocolRkey);
+  await page.fill(LOCATION_PLACEHOLDER, 'Relicensed Park');
+  await page.getByLabel('Remarks').fill('First draft.');
+  await page.getByLabel('License').click();
+  await page
+    .getByRole('option', { name: 'Creative Commons BY-NC 4.0' })
+    .click();
+  await confirmFinishSurvey(page);
+  await expect(page).toHaveURL(/\/app\/surveys\/user-survey-spec\/\w+/);
+  const rkey = page.url().split('/').pop();
+
+  // Editing only the text must not reset the license to the account default.
+  await page.goto(`/app/surveys/${HANDLE}/${rkey}/edit`);
+  await page.waitForSelector(LOCATION_PLACEHOLDER, { state: 'visible' });
+  await expect(page.getByLabel('License')).toHaveText('CC BY-NC 4.0');
+  await page.getByLabel('Remarks').fill('Second draft.');
+  await page.getByRole('button', { name: 'Save Survey' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Second draft.')).toBeVisible();
+
+  const [edited] = await sql<{ record: { body: string; license?: string } }[]>`
+    SELECT record FROM remarks WHERE did = 'did:test:survey-spec'
+  `;
+  expect(edited.record.body).toBe('Second draft.');
+  expect(edited.record.license).toBe(CC_BY_NC);
+
+  // Changing only the license still rewrites the record.
+  await page.goto(`/app/surveys/${HANDLE}/${rkey}/edit`);
+  await page.waitForSelector(LOCATION_PLACEHOLDER, { state: 'visible' });
+  await page.getByLabel('License').click();
+  await page.getByRole('option', { name: 'Creative Commons BY 4.0' }).click();
+  await page.getByRole('button', { name: 'Save Survey' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'CC BY 4.0' })).toBeVisible();
+
+  const [relicensed] = await sql<
+    { record: { body: string; license?: string } }[]
+  >`SELECT record FROM remarks WHERE did = 'did:test:survey-spec'`;
+  expect(relicensed.record.body).toBe('Second draft.');
+  expect(relicensed.record.license).toBe(CC_BY);
 });

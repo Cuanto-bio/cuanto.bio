@@ -63,7 +63,7 @@ async function setLicense(next: string) {
           {#each REMARK_LICENSES as option (option.value)}
             <Select.Item value={option.value} label={option.label}>
               <span class="flex flex-col items-start">
-                <span>{option.label}</span>
+                <span>{option.fullLabel}</span>
                 <span class="text-muted-foreground text-xs">{option.description}</span>
               </span>
             </Select.Item>
@@ -73,7 +73,8 @@ async function setLicense(next: string) {
       <p class="text-muted-foreground text-sm">
         Remarks (like the ones you might include on a survey) are published as
         their own records, separate from the data they describe. This sets
-        the license for the ones you write from now on.
+        the default license for the ones you write from now on; you can pick
+        a different one on each remark.
       </p>
       {#if saveError}
         <p class="text-destructive text-sm" role="alert">

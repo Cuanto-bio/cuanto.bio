@@ -75,6 +75,7 @@ import {
   insertSurvey,
   toSurveyResponse,
 } from '$lib/server/db/surveys';
+import { getDefaultRemarkLicense } from '$lib/server/db/users';
 import {
   createRecord,
   PdsScopeInsufficientError,
@@ -671,6 +672,61 @@ describe('POST /api/surveys — event remarks', () => {
       baseSurveyBody.surveyRkey,
       expect.objectContaining({ body: 'Foggy.' }),
     );
+  });
+
+  test('stamps the license the surveyor chose onto the remark', async () => {
+    const resp = await callPost({
+      request: makeRequest({
+        ...baseSurveyBody,
+        eventRemark: {
+          body: 'Foggy.',
+          license: 'https://creativecommons.org/licenses/by/4.0/',
+        },
+      }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      REMARK_NSID,
+      baseSurveyBody.surveyRkey,
+      expect.objectContaining({
+        license: 'https://creativecommons.org/licenses/by/4.0/',
+      }),
+    );
+  });
+
+  test('stamps the account default when no license was chosen', async () => {
+    vi.mocked(getDefaultRemarkLicense).mockResolvedValueOnce(
+      'https://creativecommons.org/licenses/by-sa/4.0/',
+    );
+    await callPost({
+      request: makeRequest({
+        ...baseSurveyBody,
+        eventRemark: { body: 'Foggy.' },
+      }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      REMARK_NSID,
+      baseSurveyBody.surveyRkey,
+      expect.objectContaining({
+        license: 'https://creativecommons.org/licenses/by-sa/4.0/',
+      }),
+    );
+  });
+
+  test('returns 422 for a license we do not offer', async () => {
+    const resp = await callPost({
+      request: makeRequest({
+        ...baseSurveyBody,
+        eventRemark: { body: 'Foggy.', license: 'MIT' },
+      }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(422);
+    expect(putRecord).not.toHaveBeenCalled();
   });
 
   test('returns 422 when the remark is longer than the lexicon allows', async () => {
