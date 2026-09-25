@@ -319,9 +319,10 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
           };
 
   // eventRemark: undefined preserves the existing remark, null (or a blank
-  // body) removes it, a body replaces it. Written before the survey record for
-  // the same reason as on create: the forward reference is authoritative, so
-  // the survey must never name a record that does not exist.
+  // body) removes it, a body replaces it. Written before the survey record, and
+  // deleted after it, for the same reason as on create: the forward reference
+  // is authoritative, so the survey must never name a record that does not
+  // exist.
   // A reference into another user's repo is never ours to rewrite or delete:
   // an edit that sets or clears the remark replaces or drops the reference
   // without touching the record it names.
@@ -332,6 +333,7 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
       : (body.eventRemark?.body.trim() ?? '');
 
   let eventRemarksID: string | undefined = survey.record.eventRemarksID;
+  let remarkUriToDelete: string | undefined;
   if (newRemarkBody !== undefined) {
     if (newRemarkBody) {
       // Follow the rkey the remark already has: another client may have
@@ -351,7 +353,7 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
           body.eventRemark?.license as RemarkLicense | undefined,
         )) ?? eventRemarksID;
     } else {
-      if (existingRemarkUri) await deleteEventRemark(existingRemarkUri);
+      remarkUriToDelete = existingRemarkUri;
       eventRemarksID = undefined;
     }
   }
@@ -377,6 +379,7 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
   const surveyRkey = survey.rkey;
   await putRecord(did, Survey.$type, surveyRkey, surveyRecord);
   await insertSurvey(did, surveyRkey, surveyRecord, survey.atUri);
+  if (remarkUriToDelete) await deleteEventRemark(remarkUriToDelete);
 
   // Survey-derived metadata for occurrences. On edit we fill gaps but never
   // clobber metadata already on an occurrence (see mergeOccurrenceMetadata).

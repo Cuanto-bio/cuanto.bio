@@ -228,6 +228,23 @@ describe('PUT /api/surveys/[handle]/[rkey] — event remarks', () => {
     expect(surveyRecord.eventRemarksID).toBeUndefined();
   });
 
+  test('keeps the remark when rewriting the survey fails', async () => {
+    // Deleting first would leave the PDS survey pointing at a deleted record.
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      makeSurvey({ eventRemarksID: REMARK_URI }) as unknown as Awaited<
+        ReturnType<typeof getSurveyDetailByHandleAndRkey>
+      >,
+    );
+    vi.mocked(putRecord).mockRejectedValueOnce(new Error('PDS unavailable'));
+
+    await expect(
+      callPut({ ...baseEditBody, eventRemark: null }),
+    ).rejects.toThrow('PDS unavailable');
+
+    expect(deleteRecord).not.toHaveBeenCalled();
+    expect(deleteRemarkByAtUri).not.toHaveBeenCalled();
+  });
+
   test('treats clearing the text as a delete', async () => {
     vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
       makeSurvey({ eventRemarksID: REMARK_URI }) as unknown as Awaited<
