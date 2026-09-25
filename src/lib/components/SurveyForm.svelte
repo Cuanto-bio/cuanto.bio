@@ -1592,8 +1592,7 @@ function displayCount(qty: undefined | string | number) {
       aria-describedby="event-remark-description"
     />
     <Field.Description id="event-remark-description">
-      Saved as its own record so it can be credited and licensed separately from your
-      counts. <a href="/app/account" class="text-primary hover:underline">Set the license</a>
+      <a href="/app/account" class="text-primary hover:underline">Set the license</a>
       for your remarks on your account.
     </Field.Description>
   </Field.Field>

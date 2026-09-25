@@ -1,10 +1,14 @@
 import { LinkifyIt } from 'linkify-it';
 
-// For Bluesky bios, which are free text, not HTML -- unlike protocol/survey
-// descriptions (see $lib/sanitize.ts), which already come from a rich-text
-// editor. fuzzyLink defaults to false, so a bare domain like "cuanto.bio"
-// (no scheme) is left as plain text; only explicit http(s)/ftp/mailto links
-// are recognized.
+// For Bluesky bios, which are free text, not HTML -- unlike protocol
+// descriptions, which are typed into a plain textarea but rendered as HTML
+// through $lib/sanitize.ts's tag allowlist. See also $lib/userText, which adds
+// **bold** and *italic* on top of this for text written in this app, such as
+// survey remarks.
+//
+// fuzzyLink defaults to false, so a bare domain like "cuanto.bio" (no scheme)
+// is left as plain text; only explicit http(s)/ftp/mailto links are
+// recognized.
 const linkify = new LinkifyIt();
 
 export type LinkSegment =

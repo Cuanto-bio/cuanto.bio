@@ -71,9 +71,9 @@ async function setLicense(next: string) {
         </Select.Content>
       </Select.Root>
       <p class="text-muted-foreground text-sm">
-        Remarks you write on a survey are published as their own records, so they can be
-        credited and reused separately from the observations. This sets the license for
-        the ones you write from now on.
+        Remarks (like the ones you might include on a survey) are published as
+        their own records, separate from the data they describe. This sets
+        the license for the ones you write from now on.
       </p>
       {#if saveError}
         <p class="text-destructive text-sm" role="alert">

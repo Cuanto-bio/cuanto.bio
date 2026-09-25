@@ -50,6 +50,32 @@ test('a survey remark is written as its own record and shown on the detail page'
   expect(survey.record.eventRemarksID).toBe(remark.at_uri);
 });
 
+test('a remark renders bold, italics and links, keeping line breaks', async ({
+  page,
+  protocolRkey,
+}) => {
+  await cacheAndOpenNewSurvey(page, HANDLE, protocolRkey);
+  await page.fill(LOCATION_PLACEHOLDER, 'Formatted Remark Park');
+  await page
+    .getByLabel('Remarks')
+    .fill('Heavy **fog**, mostly *Quercus*.\nPhotos: https://cuanto.bio');
+  await confirmFinishSurvey(page);
+  await expect(page).toHaveURL(/\/app\/surveys\/user-survey-spec\/\w+/);
+
+  const remark = page.locator('p', { hasText: 'Heavy' });
+  await expect(remark.locator('strong')).toHaveText('fog');
+  await expect(remark.locator('em')).toHaveText('Quercus');
+  await expect(remark.getByRole('link')).toHaveAttribute(
+    'href',
+    'https://cuanto.bio',
+  );
+  // Markers gone, the typed line break kept, and no stray whitespace from the
+  // template leaking into the pre-wrap element.
+  expect(await remark.innerText()).toBe(
+    'Heavy fog, mostly Quercus.\nPhotos: https://cuanto.bio',
+  );
+});
+
 test('a survey saved without a remark writes no remark record', async ({
   page,
   sql,

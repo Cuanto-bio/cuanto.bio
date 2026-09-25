@@ -13,6 +13,7 @@ import TargetFilterControls from '$lib/components/TargetFilterControls.svelte';
 import type { TaxonProp } from '$lib/components/Taxon.svelte';
 import Taxon from '$lib/components/Taxon.svelte';
 import TrackDistance from '$lib/components/TrackDistance.svelte';
+import UserText from '$lib/components/UserText.svelte';
 import { Badge } from '$lib/components/ui/badge';
 import * as Card from '$lib/components/ui/card';
 import * as Dialog from '$lib/components/ui/dialog';
@@ -329,17 +330,20 @@ const externalLinkProps =
             -->
             <div class="space-y-1">
               <h3 class="text-muted-foreground text-xs font-semibold uppercase">Remarks</h3>
-              <p class="whitespace-pre-wrap">{survey.eventRemark.body}</p>
+              <UserText text={survey.eventRemark.body} />
               {#if survey.eventRemark.license}
-                <p class="text-muted-foreground text-xs">
-                  &copy; @{survey.handle},
-                  <a
+                <div class="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
+                  <span>Text &copy; @{survey.handle}</span>
+                  <Badge
+                    variant="secondary"
                     href={survey.eventRemark.license}
-                    class="hover:underline"
                     rel="license noopener"
                     target="_blank"
-                  >{licenseLabel(survey.eventRemark.license)}</a>
-                </p>
+                  >
+                    {licenseLabel(survey.eventRemark.license)}
+                    <ExternalLink />
+                  </Badge>
+                </div>
               {/if}
             </div>
           {/if}
