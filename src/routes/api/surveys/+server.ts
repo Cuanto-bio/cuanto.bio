@@ -61,7 +61,7 @@ export const GET: RequestHandler = async ({ locals }) => {
     identification: identsByOccurrence.get(o.at_uri),
   }));
   return json(
-    // /app/surveys caches these, so they carry the note for the same reason
+    // /app/surveys caches these, so they carry the remark for the same reason
     // /api/sync does (see attachEventRemarks).
     await attachEventRemarks(
       toSurveyResponse(
@@ -73,7 +73,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 };
 
 // Matches the maxLength on bio.lexicons.temp.v0-1.remark.body. Checked here so
-// an over-long note comes back as a 422 the form can show, rather than as a
+// an over-long remark comes back as a 422 the form can show, rather than as a
 // lexicon build throw deep in the write path.
 const REMARK_MAX_LENGTH = 3000;
 
@@ -102,7 +102,7 @@ type SurveyInput = {
   surveyorCount?: number | null;
   occurrences: OccurrenceInput[];
   incidentals?: IncidentalInput[];
-  // The surveyor's note about the survey event. Written as its own
+  // The surveyor's remark about the survey event. Written as its own
   // bio.lexicons.temp.v0-1.remark record and referenced from the survey's
   // eventRemarksID. The license is not sent by the client: the server stamps
   // the surveyor's account default onto the record.

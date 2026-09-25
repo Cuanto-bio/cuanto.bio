@@ -33,7 +33,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 
   return json({
     followedProtocols,
-    // The client caches these wholesale, so they have to carry the note or the
+    // The client caches these wholesale, so they have to carry the remark or the
     // cached copy loses it (see attachEventRemarks).
     surveys: await attachEventRemarks(
       toSurveyResponse(

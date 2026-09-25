@@ -305,7 +305,7 @@ let pastDateError = $state<string | null>(null);
 let pastDurationError = $state<string | null>(null);
 let surveyorCountError = $state<string | null>(null);
 
-// The survey's note (dwc:eventRemarks). Published as its own remark record
+// The survey's remark (dwc:eventRemarks). Published as its own remark record
 // under the license set on /app/account, so the text stays attributable and
 // licensable separately from the counts.
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
@@ -314,7 +314,7 @@ const initialRemarkBody = sv
   : (initialResumeState?.eventRemark?.body ?? '');
 let eventRemarkBody = $state(initialRemarkBody);
 // Matches the maxLength on bio.lexicons.temp.v0-1.remark.body, so the textarea
-// cannot produce a note the API would reject with a 422.
+// cannot produce a remark the API would reject with a 422.
 const REMARK_MAX_LENGTH = 3000;
 let locationError = $state<string | null>(null);
 let locationFieldEl = $state<HTMLElement | null>(null);
@@ -696,7 +696,7 @@ async function autoSave() {
 // ─── edit payload builder ────────────────────────────────────────────────────
 
 // The PUT treats eventRemark as a tri-state, like track: omitted preserves the
-// existing note, null deletes it, an object replaces it. Sending it only when it
+// existing remark, null deletes it, an object replaces it. Sending it only when it
 // actually changed keeps an untouched survey from re-writing (or newly
 // requiring scope for) a remark record the surveyor never opened.
 function eventRemarkEdit():

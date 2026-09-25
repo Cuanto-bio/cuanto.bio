@@ -101,9 +101,9 @@ export const DELETE: RequestHandler = async ({ params, locals, url }) => {
     }
   }
 
-  // The survey's note goes with it. Logged rather than fatal, like every other
+  // The survey's remark goes with it. Logged rather than fatal, like every other
   // PDS delete here. deleteEventRemark rethrows auth failures by design (so a
-  // note is never silently dropped on edit), but here the survey row is going
+  // remark is never silently dropped on edit), but here the survey row is going
   // away regardless, and a remark row left behind would be unreachable forever.
   if (survey.record.eventRemarksID) {
     try {

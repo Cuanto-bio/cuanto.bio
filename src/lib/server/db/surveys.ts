@@ -244,11 +244,11 @@ export async function getSurveyDetailByHandleAndRkey(
 }
 
 /**
- * Hydrates each survey's note from the remark record its eventRemarksID names.
+ * Hydrates each survey's remark from the remark record its eventRemarksID names.
  *
  * Every endpoint whose surveys the client caches has to call this, not just the
  * detail route: syncOfflineData runs on each /app navigation and cacheSurvey
- * replaces the whole IndexedDB entry, so one payload missing the note strips it
+ * replaces the whole IndexedDB entry, so one payload missing the remark strips it
  * from a copy another route had already cached in full.
  *
  * Follows the survey's forward reference rather than looking remarks up by

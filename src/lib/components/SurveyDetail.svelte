@@ -323,7 +323,7 @@ const externalLinkProps =
           </div>
           {#if survey.eventRemark}
             <!--
-              The note is its own record with its own license, so it is credited
+              The remark is its own record with its own license, so it is credited
               rather than folded into the table above as if it were another
               survey field.
             -->

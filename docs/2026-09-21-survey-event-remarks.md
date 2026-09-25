@@ -9,7 +9,7 @@ Darwin Core `*Remarks` term on another record, kept as its own record so
 authored prose, a potential creative work, can be attributed and licensed
 separately from the facts in the record it describes.
 
-Surveyors can now write a note on a survey. The note becomes a Remark record
+Surveyors can now write a remark on a survey. The remark becomes a Remark record
 with `dwcTerm: "eventRemarks"` whose `subject` is the survey, and the survey
 points back at it through a new `bio.cuanto.survey.eventRemarksID`.
 
@@ -19,7 +19,7 @@ The lexicon is explicit that the forward reference is authoritative: "a remark
 nothing references fills no term." So `survey.eventRemarksID` is the only thing
 the read path follows. `remarks.subject_uri` exists for indexing a subject's
 remarks and for spotting a reference that points at the wrong record, but it is
-never the basis for displaying a note.
+never the basis for displaying a remark.
 
 That decides the write order everywhere: **write the remark first, then the
 survey**, so the survey never names a record that does not exist.
@@ -44,13 +44,13 @@ choosing and overwriting our derived key would orphan that record.
 ## Failure behavior
 
 `writeEventRemark` returns null on an ordinary failure, and the survey saves
-without a note: the same bargain as an identification that fails to attach to
+without a remark: the same bargain as an identification that fails to attach to
 its occurrence, where losing the extra record must not cost the surveyor the
 observation.
 
 Auth failures are the deliberate exception and propagate. Widening the OAuth
 scope (below) invalidates every existing session, so swallowing that error would
-save the survey and silently drop the note on exactly the sessions that need to
+save the survey and silently drop the remark on exactly the sessions that need to
 re-consent. It reaches the route's 403 `pds_permission_required` instead.
 
 ## The OAuth scope widens, so every session re-consents
@@ -92,20 +92,20 @@ The webhook also ingests terms we do not consume yet (`occurrenceRemarks`, #74)
 rather than dropping them, since another client may already be writing them and
 a 500 there stalls every queued record behind it.
 
-## Every cacheable survey payload has to carry the note
+## Every cacheable survey payload has to carry the remark
 
 Found while writing the integration tests, and the one non-obvious bug in this
 change. `syncOfflineData` runs on every `/app` navigation and `cacheSurvey`
-replaces the whole IndexedDB entry, so a payload missing the note strips it from
+replaces the whole IndexedDB entry, so a payload missing the remark strips it from
 a copy another route had already cached in full. Opening the edit form then
-showed an empty textarea, and saving would have deleted the note the surveyor
+showed an empty textarea, and saving would have deleted the remark the surveyor
 never touched.
 
 So hydration lives in a shared `attachEventRemarks`
 (`src/lib/server/db/surveys.ts`) applied by every endpoint whose surveys the
 client caches: `getSurveyDetailByHandleAndRkey`, `GET /api/sync`, and
 `GET /api/surveys`. The public `getSurveysPage` list is deliberately left alone;
-nothing caches from it and the list does not show notes.
+nothing caches from it and the list does not show remarks.
 
 ## Deploy note
 

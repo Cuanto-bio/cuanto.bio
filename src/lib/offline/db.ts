@@ -122,7 +122,7 @@ export interface PendingSurvey {
   // resuming lands on the same view instead of the defaults (#31). Purely a
   // view preference: never uploaded to the PDS.
   targetFilter?: TargetFilterState;
-  // The surveyor's note about the survey, uploaded as a separate remark record.
+  // The surveyor's remark about the survey, uploaded as a separate remark record.
   // Only the text is stored: the license is the account default, applied
   // server-side at upload so a draft queued for days publishes under whatever
   // is in force when it lands.

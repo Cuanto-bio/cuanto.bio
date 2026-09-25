@@ -109,10 +109,10 @@ async function resolveRemarkLicense(did: string) {
  * points at a record that does not exist; the lexicon treats that forward
  * reference as authoritative.
  *
- * Returns null when the write fails for an ordinary reason, so a lost note
+ * Returns null when the write fails for an ordinary reason, so a lost remark
  * never costs the surveyor the survey (same bargain as an identification that
  * fails to attach to its occurrence). Auth failures are the exception and
- * propagate: the note would otherwise vanish with no explanation on exactly the
+ * propagate: the remark would otherwise vanish with no explanation on exactly the
  * sessions that predate the remark collection joining our OAuth scope.
  */
 export async function writeEventRemark(

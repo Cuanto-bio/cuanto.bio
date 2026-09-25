@@ -150,7 +150,7 @@ export const relationships: Rel[] = [
     compactLabel: 'described by',
     field: 'survey.eventRemarksID',
     card: '1 : 1',
-    note: "The surveyor's note about the survey, kept as its own record so the text can be licensed separately from the counts. The forward reference is authoritative: a remark nothing points at fills no Darwin Core term.",
+    note: "The surveyor's remark about the survey, kept as its own record so the text can be licensed separately from the counts. The forward reference is authoritative: a remark nothing points at fills no Darwin Core term.",
   },
   {
     from: 'Occurrence',
