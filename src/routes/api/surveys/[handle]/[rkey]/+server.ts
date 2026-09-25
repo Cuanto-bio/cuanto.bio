@@ -1,6 +1,6 @@
 import type { l } from '@atproto/lex';
 import { error, json } from '@sveltejs/kit';
-import { parseAtUri } from '$lib/atUri';
+import { didFromAtUri, parseAtUri } from '$lib/atUri';
 import {
   type TaxonScope,
   taxonScope as taxonScopeType,
@@ -53,7 +53,7 @@ function ownRemarkUri(
   survey: { record: { eventRemarksID?: string } },
 ) {
   const uri = survey.record.eventRemarksID;
-  return uri && parseAtUri(uri).did === did ? uri : undefined;
+  return uri && didFromAtUri(uri) === did ? uri : undefined;
 }
 
 // Surveys are publicly readable. Auth is required only to prevent anonymous

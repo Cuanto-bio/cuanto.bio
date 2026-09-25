@@ -422,3 +422,20 @@ describe("remarks in another user's repo", () => {
     expect(surveyRecord.eventRemarksID).toBe(REMARK_URI);
   });
 });
+
+test('DELETE tolerates a malformed eventRemarksID', async () => {
+  vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+    makeSurvey({ eventRemarksID: 'not-an-at-uri' }) as unknown as Awaited<
+      ReturnType<typeof getSurveyDetailByHandleAndRkey>
+    >,
+  );
+
+  const resp = await DELETE({
+    params: { handle: 'alice', rkey: RKEY },
+    locals: { did: DID },
+    url: new URL(`http://localhost/api/surveys/alice/${RKEY}`),
+  } as unknown as Parameters<typeof DELETE>[0]);
+
+  expect(resp.status).toBe(204);
+  expect(deleteRemarkByAtUri).not.toHaveBeenCalled();
+});
