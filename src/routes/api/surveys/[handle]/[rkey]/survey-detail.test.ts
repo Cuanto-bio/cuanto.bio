@@ -312,6 +312,15 @@ describe('PUT /api/surveys/[handle]/[rkey] — event remarks', () => {
     expect(resp.status).toBe(422);
     expect(putRecord).not.toHaveBeenCalled();
   });
+
+  test('measures the remark limit in UTF-8 bytes, as the lexicon does', async () => {
+    const resp = await callPut({
+      ...baseEditBody,
+      eventRemark: { body: 'あ'.repeat(1001) },
+    });
+    expect(resp.status).toBe(422);
+    expect(putRecord).not.toHaveBeenCalled();
+  });
 });
 
 describe('DELETE /api/surveys/[handle]/[rkey] — event remarks', () => {

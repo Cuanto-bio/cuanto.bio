@@ -76,6 +76,26 @@ test('a remark renders bold, italics and links, keeping line breaks', async ({
   );
 });
 
+test('a remark over the lexicon byte limit is caught on the form', async ({
+  page,
+  sql,
+  protocolRkey,
+}) => {
+  await cacheAndOpenNewSurvey(page, HANDLE, protocolRkey);
+
+  await page.fill(LOCATION_PLACEHOLDER, 'Long Remark Park');
+  // 1001 characters fit the textarea's maxlength, but at three UTF-8 bytes
+  // each they exceed the lexicon's 3000-byte limit.
+  await page.getByLabel('Remarks').fill('あ'.repeat(1001));
+  await confirmFinishSurvey(page);
+
+  await expect(page.getByText('Remarks are too long')).toBeVisible();
+  await expect(page).toHaveURL(/\/new/);
+  const rows =
+    await sql`SELECT at_uri FROM surveys WHERE did = 'did:test:survey-spec'`;
+  expect(rows).toHaveLength(0);
+});
+
 test('a survey saved without a remark writes no remark record', async ({
   page,
   sql,

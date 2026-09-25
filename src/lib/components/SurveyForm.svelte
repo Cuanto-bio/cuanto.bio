@@ -59,6 +59,7 @@ import {
   uploadPendingSurvey,
 } from '$lib/offline/upload';
 import { LOCATION_COMBOBOX_THRESHOLD } from '$lib/places';
+import { REMARK_MAX_BYTES, remarkByteLength } from '$lib/remarks';
 import {
   buildSurveyTiming,
   calcElapsed,
@@ -333,9 +334,7 @@ function eventRemarkPayload(body: string): { body: string; license?: string } {
     ? { body }
     : { body, license: eventRemarkLicense };
 }
-// Matches the maxLength on bio.lexicons.temp.v0-1.remark.body, so the textarea
-// cannot produce a remark the API would reject with a 422.
-const REMARK_MAX_LENGTH = 3000;
+let remarkError = $state<string | null>(null);
 let locationError = $state<string | null>(null);
 let locationFieldEl = $state<HTMLElement | null>(null);
 let gpsLoading = $state(false);
@@ -826,6 +825,13 @@ async function finish() {
       return;
     }
   }
+  // The lexicon limit is in UTF-8 bytes, which the textarea's maxlength cannot
+  // enforce, so check it before the API rejects it with a 422.
+  if (remarkByteLength(eventRemarkBody) > REMARK_MAX_BYTES) {
+    remarkError = 'Remarks are too long. Please shorten them.';
+    finishDialogOpen = false;
+    return;
+  }
   const surveyorCountErr = validateSurveyorCount(
     protocol.record.requiredFields,
     surveyorCountStr,
@@ -842,6 +848,7 @@ async function finish() {
   pastDateError = null;
   pastDurationError = null;
   surveyorCountError = null;
+  remarkError = null;
   // Past validation: this survey is being finished, so any backgrounded draft
   // in the write-ahead log is stale. `submitting` now also blocks a fresh one.
   if (!isEdit) clearDraftWal();
@@ -1611,10 +1618,16 @@ function displayCount(qty: undefined | string | number) {
     <Textarea
       id="eventRemark"
       rows={3}
-      maxlength={REMARK_MAX_LENGTH}
+      maxlength={REMARK_MAX_BYTES}
       placeholder="Conditions, anything unusual, anything the counts don't capture"
       bind:value={eventRemarkBody}
+      oninput={() => (remarkError = null)}
+      aria-invalid={remarkError ? 'true' : undefined}
+      aria-describedby={remarkError ? 'remark-error' : undefined}
     />
+    {#if remarkError}
+      <p id="remark-error" class="text-destructive text-sm">{remarkError}</p>
+    {/if}
     <!-- Deliberately subordinate to the textarea rather than a field of its
          own: the license covers the remark text, not the survey. -->
     <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">

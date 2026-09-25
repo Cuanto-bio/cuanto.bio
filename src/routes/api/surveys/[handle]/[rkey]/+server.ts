@@ -10,11 +10,12 @@ import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
 import { bbox, geo } from '$lib/lexicons/community/lexicon/location';
 import * as Place from '$lib/lexicons/org/atgeo/place';
 import type { Main as AtgeoPlace } from '$lib/lexicons/org/atgeo/place.defs';
-import { isKnownLicense, type RemarkLicense } from '$lib/licenses';
+import type { RemarkLicense } from '$lib/licenses';
 import {
   mergeOccurrenceMetadata,
   occurrenceMetadataFromSurveyInput,
 } from '$lib/occurrenceMetadata';
+import { validateEventRemark } from '$lib/remarks';
 import { deleteIdentificationsByOccurrenceUris } from '$lib/server/db/identifications';
 import { deleteRemarkByAtUri } from '$lib/server/db/remarks';
 import {
@@ -141,10 +142,6 @@ export const DELETE: RequestHandler = async ({ params, locals, url }) => {
   return new Response(null, { status: 204 });
 };
 
-// Matches the maxLength on bio.lexicons.temp.v0-1.remark.body. See the same
-// constant in the collection route.
-const REMARK_MAX_LENGTH = 3000;
-
 type OccurrenceEditInput = {
   atUri?: string;
   surveyTargetUri: string;
@@ -238,21 +235,8 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
   }
 
   if (body.eventRemark != null) {
-    if (typeof body.eventRemark.body !== 'string') {
-      error(422, 'eventRemark.body must be a string');
-    }
-    if (body.eventRemark.body.trim().length > REMARK_MAX_LENGTH) {
-      error(
-        422,
-        `eventRemark.body must be ${REMARK_MAX_LENGTH} characters or fewer`,
-      );
-    }
-    if (
-      body.eventRemark.license !== undefined &&
-      !isKnownLicense(body.eventRemark.license)
-    ) {
-      error(422, 'eventRemark.license must be a supported license URI');
-    }
+    const remarkError = validateEventRemark(body.eventRemark);
+    if (remarkError) error(422, remarkError);
   }
 
   // Validate incidentals before touching anything

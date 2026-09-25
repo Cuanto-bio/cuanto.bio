@@ -10,11 +10,12 @@ import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
 import { bbox, geo } from '$lib/lexicons/community/lexicon/location';
 import * as Place from '$lib/lexicons/org/atgeo/place';
 import type { Main as AtgeoPlace } from '$lib/lexicons/org/atgeo/place.defs';
-import { isKnownLicense, type RemarkLicense } from '$lib/licenses';
+import type { RemarkLicense } from '$lib/licenses';
 import {
   type OccurrenceMetadata,
   occurrenceMetadataFromSurveyInput,
 } from '$lib/occurrenceMetadata';
+import { validateEventRemark } from '$lib/remarks';
 import sql from '$lib/server/db';
 import { getIdentificationsForOccurrences } from '$lib/server/db/identifications';
 import type { ProtocolRow } from '$lib/server/db/survey-protocols';
@@ -72,11 +73,6 @@ export const GET: RequestHandler = async ({ locals }) => {
     ),
   );
 };
-
-// Matches the maxLength on bio.lexicons.temp.v0-1.remark.body. Checked here so
-// an over-long remark comes back as a 422 the form can show, rather than as a
-// lexicon build throw deep in the write path.
-const REMARK_MAX_LENGTH = 3000;
 
 type OccurrenceInput = {
   surveyTargetUri: string;
@@ -290,21 +286,8 @@ async function postSurvey(request: Request, did: string) {
   }
 
   if (body.eventRemark != null) {
-    if (typeof body.eventRemark.body !== 'string') {
-      throw error(422, 'eventRemark.body must be a string');
-    }
-    if (body.eventRemark.body.trim().length > REMARK_MAX_LENGTH) {
-      throw error(
-        422,
-        `eventRemark.body must be ${REMARK_MAX_LENGTH} characters or fewer`,
-      );
-    }
-    if (
-      body.eventRemark.license !== undefined &&
-      !isKnownLicense(body.eventRemark.license)
-    ) {
-      throw error(422, 'eventRemark.license must be a supported license URI');
-    }
+    const remarkError = validateEventRemark(body.eventRemark);
+    if (remarkError) throw error(422, remarkError);
   }
 
   if (body.track) {

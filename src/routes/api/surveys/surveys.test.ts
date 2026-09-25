@@ -741,6 +741,19 @@ describe('POST /api/surveys — event remarks', () => {
     expect(putRecord).not.toHaveBeenCalled();
   });
 
+  test('measures the remark limit in UTF-8 bytes, as the lexicon does', async () => {
+    // 1001 code units, 3003 bytes.
+    const resp = await callPost({
+      request: makeRequest({
+        ...baseSurveyBody,
+        eventRemark: { body: 'あ'.repeat(1001) },
+      }),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(422);
+    expect(putRecord).not.toHaveBeenCalled();
+  });
+
   test('accepts a remark exactly at the limit', async () => {
     const resp = await callPost({
       request: makeRequest({
