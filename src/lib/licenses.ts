@@ -64,3 +64,17 @@ export function isKnownLicense(
 export function licenseLabel(value: string): string {
   return REMARK_LICENSES.find((l) => l.value === value)?.label ?? value;
 }
+
+/**
+ * The license URI if it is safe to use as a link, otherwise null. license comes
+ * from any user's record, so only http(s) URLs are linked; anything else (e.g.
+ * javascript:) would be a script link on a public page.
+ */
+export function licenseHref(value: string): string | null {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === 'https:' || protocol === 'http:' ? value : null;
+  } catch {
+    return null;
+  }
+}

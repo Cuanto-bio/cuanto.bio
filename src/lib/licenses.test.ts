@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_REMARK_LICENSE,
   isKnownLicense,
+  licenseHref,
   licenseLabel,
   REMARK_LICENSES,
 } from './licenses';
@@ -47,5 +48,26 @@ describe('remark licenses', () => {
     expect(licenseLabel('http://example.com/license')).toBe(
       'http://example.com/license',
     );
+  });
+});
+
+describe('licenseHref', () => {
+  it('links known and unknown http(s) license URIs', () => {
+    expect(licenseHref('https://creativecommons.org/licenses/by/4.0/')).toBe(
+      'https://creativecommons.org/licenses/by/4.0/',
+    );
+    expect(licenseHref('http://example.com/license')).toBe(
+      'http://example.com/license',
+    );
+  });
+
+  it('refuses to link anything that is not http(s)', () => {
+    // license comes from any user's record via tap, so it is untrusted input
+    // that ends up in an href on a public page.
+    expect(licenseHref('javascript:alert(1)')).toBeNull();
+    expect(licenseHref(' JavaScript:alert(1)')).toBeNull();
+    expect(licenseHref('data:text/html,<script>alert(1)</script>')).toBeNull();
+    expect(licenseHref('CC0-1.0')).toBeNull();
+    expect(licenseHref('')).toBeNull();
   });
 });

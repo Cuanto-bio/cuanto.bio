@@ -19,7 +19,7 @@ import * as Card from '$lib/components/ui/card';
 import * as Dialog from '$lib/components/ui/dialog';
 import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 import { generateGpx } from '$lib/gpx';
-import { licenseLabel } from '$lib/licenses';
+import { licenseHref, licenseLabel } from '$lib/licenses';
 import type {
   Occurrence,
   Protocol,
@@ -332,17 +332,19 @@ const externalLinkProps =
               <h3 class="text-muted-foreground text-xs font-semibold uppercase">Remarks</h3>
               <UserText text={survey.eventRemark.body} />
               {#if survey.eventRemark.license}
+                {@const href = licenseHref(survey.eventRemark.license)}
                 <div class="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
                   <span>Text &copy; @{survey.handle}</span>
-                  <Badge
-                    variant="secondary"
-                    href={survey.eventRemark.license}
-                    rel="license noopener"
-                    target="_blank"
-                  >
-                    {licenseLabel(survey.eventRemark.license)}
-                    <ExternalLink />
-                  </Badge>
+                  {#if href}
+                    <Badge variant="secondary" {href} rel="license noopener" target="_blank">
+                      {licenseLabel(survey.eventRemark.license)}
+                      <ExternalLink />
+                    </Badge>
+                  {:else}
+                    <Badge variant="secondary">
+                      {licenseLabel(survey.eventRemark.license)}
+                    </Badge>
+                  {/if}
                 </div>
               {/if}
             </div>
