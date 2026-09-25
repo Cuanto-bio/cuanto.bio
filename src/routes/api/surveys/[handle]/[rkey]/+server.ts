@@ -45,6 +45,17 @@ import type { RequestHandler } from './$types';
 
 const log = logger.child({ component: 'api-surveys-detail' });
 
+// The survey's eventRemarksID, but only if it is in the surveyor's own repo.
+// Another client can put any AT-URI there, and deleteRecord signs in as the DID
+// in the URI, so following a foreign one would touch another user's records.
+function ownRemarkUri(
+  did: string,
+  survey: { record: { eventRemarksID?: string } },
+) {
+  const uri = survey.record.eventRemarksID;
+  return uri && parseAtUri(uri).did === did ? uri : undefined;
+}
+
 // Surveys are publicly readable. Auth is required only to prevent anonymous
 // scraping; any authenticated user may view any other user's survey.
 export const GET: RequestHandler = async ({ params, locals }) => {
@@ -106,12 +117,13 @@ export const DELETE: RequestHandler = async ({ params, locals, url }) => {
   // PDS delete here. deleteEventRemark rethrows auth failures by design (so a
   // remark is never silently dropped on edit), but here the survey row is going
   // away regardless, and a remark row left behind would be unreachable forever.
-  if (survey.record.eventRemarksID) {
+  const remarkUri = ownRemarkUri(did, survey);
+  if (remarkUri) {
     try {
-      await deleteEventRemark(survey.record.eventRemarksID);
+      await deleteEventRemark(remarkUri);
     } catch (err) {
       log.error({ err }, 'Failed to delete event remark from PDS');
-      await deleteRemarkByAtUri(survey.record.eventRemarksID);
+      await deleteRemarkByAtUri(remarkUri);
     }
   }
 
@@ -310,13 +322,16 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
   // body) removes it, a body replaces it. Written before the survey record for
   // the same reason as on create: the forward reference is authoritative, so
   // the survey must never name a record that does not exist.
-  const existingRemarkUri = survey.record.eventRemarksID;
+  // A reference into another user's repo is never ours to rewrite or delete:
+  // an edit that sets or clears the remark replaces or drops the reference
+  // without touching the record it names.
+  const existingRemarkUri = ownRemarkUri(did, survey);
   const newRemarkBody =
     body.eventRemark === undefined
       ? undefined
       : (body.eventRemark?.body.trim() ?? '');
 
-  let eventRemarksID: string | undefined = existingRemarkUri;
+  let eventRemarksID: string | undefined = survey.record.eventRemarksID;
   if (newRemarkBody !== undefined) {
     if (newRemarkBody) {
       // Follow the rkey the remark already has: another client may have
@@ -334,7 +349,7 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
           survey.atUri,
           newRemarkBody,
           body.eventRemark?.license as RemarkLicense | undefined,
-        )) ?? existingRemarkUri;
+        )) ?? eventRemarksID;
     } else {
       if (existingRemarkUri) await deleteEventRemark(existingRemarkUri);
       eventRemarksID = undefined;

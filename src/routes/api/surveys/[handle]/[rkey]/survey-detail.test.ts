@@ -350,3 +350,75 @@ describe('DELETE /api/surveys/[handle]/[rkey] — event remarks', () => {
     expect(deleteRemarkByAtUri).not.toHaveBeenCalled();
   });
 });
+
+describe("remarks in another user's repo", () => {
+  // eventRemarksID is whatever the survey record says, and another client can
+  // write any AT-URI there. deleteRecord signs in as the DID in the URI, so
+  // following it blindly would delete another user's record with their session.
+  const OTHER_REMARK_URI = `at://did:test:someone-else/${REMARK_NSID}/xyz`;
+
+  beforeEach(() => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      makeSurvey({ eventRemarksID: OTHER_REMARK_URI }) as unknown as Awaited<
+        ReturnType<typeof getSurveyDetailByHandleAndRkey>
+      >,
+    );
+  });
+
+  test('DELETE leaves it alone', async () => {
+    const resp = await DELETE({
+      params: { handle: 'alice', rkey: RKEY },
+      locals: { did: DID },
+      url: new URL(`http://localhost/api/surveys/alice/${RKEY}`),
+    } as unknown as Parameters<typeof DELETE>[0]);
+
+    expect(resp.status).toBe(204);
+    expect(deleteRecord).not.toHaveBeenCalledWith(OTHER_REMARK_URI);
+    expect(deleteRemarkByAtUri).not.toHaveBeenCalledWith(OTHER_REMARK_URI);
+  });
+
+  test('PUT that does not touch the remark keeps the reference', async () => {
+    await callPut(baseEditBody);
+
+    expect(putRecord).not.toHaveBeenCalledWith(
+      DID,
+      REMARK_NSID,
+      expect.anything(),
+      expect.anything(),
+    );
+    const surveyRecord = vi.mocked(insertSurvey).mock.calls[0][2] as Record<
+      string,
+      unknown
+    >;
+    expect(surveyRecord.eventRemarksID).toBe(OTHER_REMARK_URI);
+  });
+
+  test('PUT clearing the remark leaves it alone and drops the reference', async () => {
+    const resp = await callPut({ ...baseEditBody, eventRemark: null });
+
+    expect(resp.status).toBe(200);
+    expect(deleteRecord).not.toHaveBeenCalled();
+    expect(deleteRemarkByAtUri).not.toHaveBeenCalled();
+    const surveyRecord = vi.mocked(insertSurvey).mock.calls[0][2] as Record<
+      string,
+      unknown
+    >;
+    expect(surveyRecord.eventRemarksID).toBeUndefined();
+  });
+
+  test("PUT with a body writes the surveyor's own remark instead", async () => {
+    await callPut({ ...baseEditBody, eventRemark: { body: 'Windy.' } });
+
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      REMARK_NSID,
+      RKEY,
+      expect.objectContaining({ body: 'Windy.' }),
+    );
+    const surveyRecord = vi.mocked(insertSurvey).mock.calls[0][2] as Record<
+      string,
+      unknown
+    >;
+    expect(surveyRecord.eventRemarksID).toBe(REMARK_URI);
+  });
+});
