@@ -245,6 +245,22 @@ describe('PUT /api/surveys/[handle]/[rkey] — event remarks', () => {
     expect(deleteRemarkByAtUri).not.toHaveBeenCalled();
   });
 
+  test('maps a PDS auth failure to the slug the client prompts on', async () => {
+    // Sessions that predate the remark collection joining our OAuth scope fail
+    // here; a 500 would hide the "grant permission" prompt.
+    vi.mocked(putRecord).mockRejectedValueOnce(new PdsScopeInsufficientError());
+
+    const resp = await callPut({
+      ...baseEditBody,
+      eventRemark: { body: 'Windy.' },
+    });
+
+    expect(resp.status).toBe(403);
+    expect(await resp.json()).toMatchObject({
+      error: 'pds_permission_required',
+    });
+  });
+
   test('treats clearing the text as a delete', async () => {
     vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
       makeSurvey({ eventRemarksID: REMARK_URI }) as unknown as Awaited<

@@ -1,10 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-vi.mock('$lib/server/pds', () => ({
-  createRecord: vi.fn(),
-  putRecord: vi.fn(),
-  deleteRecord: vi.fn(),
-}));
+vi.mock('$lib/server/pds', () => {
+  class PdsSessionExpiredError extends Error {}
+  class PdsScopeInsufficientError extends PdsSessionExpiredError {}
+  return {
+    createRecord: vi.fn(),
+    putRecord: vi.fn(),
+    deleteRecord: vi.fn(),
+    PdsSessionExpiredError,
+    PdsScopeInsufficientError,
+  };
+});
 
 vi.mock('$lib/server/db/surveys', () => ({
   getSurveyDetailByHandleAndRkey: vi.fn(),

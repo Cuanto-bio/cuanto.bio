@@ -42,13 +42,24 @@ async function throwUploadError(
   context: string,
 ): Promise<never> {
   const body = (await resp.json().catch(() => ({}))) as { error?: string };
-  if (resp.status === 403 && body.error === 'pds_permission_required') {
-    throw new PdsScopeInsufficientError();
+  throw (
+    pdsAuthErrorFromResponse(resp.status, body) ??
+    new Error(`${context}: ${resp.status}`)
+  );
+}
+
+/** The auth error class for a failed /api response's status and body, if any. */
+export function pdsAuthErrorFromResponse(
+  status: number,
+  body: { error?: string },
+): PdsSessionExpiredError | null {
+  if (status === 403 && body.error === 'pds_permission_required') {
+    return new PdsScopeInsufficientError();
   }
-  if (resp.status === 401 && body.error === 'pds_session_expired') {
-    throw new PdsSessionExpiredError();
+  if (status === 401 && body.error === 'pds_session_expired') {
+    return new PdsSessionExpiredError();
   }
-  throw new Error(`${context}: ${resp.status}`);
+  return null;
 }
 
 type GpxBlobRef = {

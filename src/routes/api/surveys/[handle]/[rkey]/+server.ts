@@ -35,6 +35,7 @@ import {
   materializeSurveyTargets,
 } from '$lib/server/materialize-targets';
 import { createRecord, deleteRecord, putRecord } from '$lib/server/pds';
+import { pdsAuthErrorResponse } from '$lib/server/pds-error-response';
 import {
   attachIdentificationToOccurrence,
   deleteEventRemark,
@@ -209,10 +210,27 @@ async function deleteOccurrenceAndIdentifications(
   }
 }
 
-export const PUT: RequestHandler = async ({ params, locals, request }) => {
-  if (!locals.did) return json({ error: 'Unauthorized' }, { status: 401 });
-  const { did } = locals;
+export const PUT: RequestHandler = async (event) => {
+  if (!event.locals.did) {
+    return json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
+  try {
+    return await putSurvey(event, event.locals.did);
+  } catch (err) {
+    // writeEventRemark and deleteEventRemark rethrow auth failures so the
+    // client can prompt for sign-in or the missing scope rather than show a
+    // generic error.
+    const authResp = pdsAuthErrorResponse(err);
+    if (authResp) return authResp;
+    throw err;
+  }
+};
+
+async function putSurvey(
+  { params, request }: Parameters<RequestHandler>[0],
+  did: string,
+) {
   const survey = await getSurveyDetailByHandleAndRkey(
     params.handle,
     params.rkey,
@@ -564,4 +582,4 @@ export const PUT: RequestHandler = async ({ params, locals, request }) => {
     params.rkey,
   );
   return json(updated);
-};
+}

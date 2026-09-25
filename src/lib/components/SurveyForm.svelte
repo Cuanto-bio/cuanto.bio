@@ -55,6 +55,7 @@ import { clearDraftWal, writeDraftWal } from '$lib/offline/draftWal';
 import { loadSurveyTrack } from '$lib/offline/track';
 import {
   authIssueFromError,
+  pdsAuthErrorFromResponse,
   uploadGpxBlob,
   uploadPendingSurvey,
 } from '$lib/offline/upload';
@@ -863,7 +864,10 @@ async function finish() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.message ?? `Error ${res.status}`);
+        throw (
+          pdsAuthErrorFromResponse(res.status, body) ??
+          new Error(body.message ?? `Error ${res.status}`)
+        );
       }
       navigatingAway = true;
       await goto(`/app/surveys/${sv.handle}/${sv.rkey}?updated=1`);

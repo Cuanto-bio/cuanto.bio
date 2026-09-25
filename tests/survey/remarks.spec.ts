@@ -161,6 +161,39 @@ test('editing a survey updates its remark, and clearing it deletes the record', 
   expect(survey.record.eventRemarksID).toBeUndefined();
 });
 
+test('an edit rejected for missing permission prompts to grant it', async ({
+  page,
+  protocolRkey,
+}) => {
+  // Sessions that predate the remark collection joining our OAuth scope fail on
+  // the remark write; the surveyor needs the prompt, not a generic error.
+  await cacheAndOpenNewSurvey(page, HANDLE, protocolRkey);
+  await page.fill(LOCATION_PLACEHOLDER, 'Permission Remark Park');
+  await confirmFinishSurvey(page);
+  await expect(page).toHaveURL(/\/app\/surveys\/user-survey-spec\/\w+/);
+  const rkey = page.url().split('/').pop();
+
+  await page.route(`**/api/surveys/${HANDLE}/${rkey}`, (route) =>
+    route.request().method() === 'PUT'
+      ? route.fulfill({
+          status: 403,
+          json: {
+            error: 'pds_permission_required',
+            permissionRequired: true,
+            message: 'scope missing',
+          },
+        })
+      : route.continue(),
+  );
+  await page.goto(`/app/surveys/${HANDLE}/${rkey}/edit`);
+  await page.waitForSelector(LOCATION_PLACEHOLDER, { state: 'visible' });
+  await page.getByLabel('Remarks').fill('Needs a new scope.');
+  await page.getByRole('button', { name: 'Save Survey' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+  await expect(page.getByText('Additional permission needed')).toBeVisible();
+});
+
 test('deleting a survey deletes its remark too', async ({
   page,
   sql,
