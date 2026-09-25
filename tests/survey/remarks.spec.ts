@@ -96,6 +96,37 @@ test('a remark over the lexicon byte limit is caught on the form', async ({
   expect(rows).toHaveLength(0);
 });
 
+test('the license picker names the default license for a new remark', async ({
+  page,
+  protocolRkey,
+}) => {
+  await cacheAndOpenNewSurvey(page, HANDLE, protocolRkey);
+  await expect(page.locator('#eventRemarkLicense')).toHaveText(
+    /^\s*CC0 1\.0\s*$/,
+  );
+  await page.locator('#eventRemarkLicense').click();
+  await expect(
+    page.getByRole('option', { name: /Your default: CC0 1\.0/ }),
+  ).toBeVisible();
+});
+
+test('the license picker names the default when adding a remark on edit', async ({
+  page,
+  protocolRkey,
+}) => {
+  await cacheAndOpenNewSurvey(page, HANDLE, protocolRkey);
+  await page.fill(LOCATION_PLACEHOLDER, 'No Remark Yet Park');
+  await confirmFinishSurvey(page);
+  await expect(page).toHaveURL(/\/app\/surveys\/user-survey-spec\/\w+/);
+  const rkey = page.url().split('/').pop();
+
+  await page.goto(`/app/surveys/${HANDLE}/${rkey}/edit`);
+  await page.waitForSelector(LOCATION_PLACEHOLDER, { state: 'visible' });
+  await expect(page.locator('#eventRemarkLicense')).toHaveText(
+    /^\s*CC0 1\.0\s*$/,
+  );
+});
+
 test('a survey saved without a remark writes no remark record', async ({
   page,
   sql,
@@ -249,6 +280,10 @@ test('the account default license is stamped onto new remarks', async ({
       .toBe(CC_BY);
 
     await cacheAndOpenNewSurvey(page, LICENSE_HANDLE, protocolRkey);
+    // The picker names the default rather than just saying "Account default".
+    await expect(page.locator('#eventRemarkLicense')).toHaveText(
+      /^\s*CC BY 4\.0\s*$/,
+    );
     await page.fill(LOCATION_PLACEHOLDER, 'Licensed Park');
     await page.getByLabel('Remarks').fill('Mine, with credit.');
     await confirmFinishSurvey(page);

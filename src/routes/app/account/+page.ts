@@ -1,3 +1,4 @@
+import { fetchDefaultRemarkLicense } from '$lib/licenses';
 import type { PageLoad } from './$types';
 
 // The default-license setting is a server-side preference, so it is fetched
@@ -7,12 +8,5 @@ import type { PageLoad } from './$types';
 export const load: PageLoad = async ({ fetch, parent }) => {
   const { did } = await parent();
   if (!did) return { defaultRemarkLicense: undefined };
-  try {
-    const res = await fetch('/api/me/settings');
-    if (!res.ok) return { defaultRemarkLicense: undefined };
-    const settings = (await res.json()) as { defaultRemarkLicense: string };
-    return { defaultRemarkLicense: settings.defaultRemarkLicense };
-  } catch {
-    return { defaultRemarkLicense: undefined };
-  }
+  return { defaultRemarkLicense: await fetchDefaultRemarkLicense(fetch) };
 };

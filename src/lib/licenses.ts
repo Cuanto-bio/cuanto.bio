@@ -78,3 +78,25 @@ export function licenseHref(value: string): string | null {
     return null;
   }
 }
+
+/**
+ * The signed-in user's default remark license from /api/me/settings, or
+ * undefined when it cannot be fetched (offline, signed out). Callers treat
+ * undefined as "unknown" and degrade rather than fail, since /app works offline.
+ */
+export async function fetchDefaultRemarkLicense(
+  fetchFn: typeof fetch = fetch,
+): Promise<RemarkLicense | undefined> {
+  try {
+    const res = await fetchFn('/api/me/settings');
+    if (!res.ok) return undefined;
+    const { defaultRemarkLicense } = (await res.json()) as {
+      defaultRemarkLicense?: string;
+    };
+    return isKnownLicense(defaultRemarkLicense)
+      ? defaultRemarkLicense
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}

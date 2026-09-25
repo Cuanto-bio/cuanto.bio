@@ -37,7 +37,12 @@ import {
 } from '$lib/composables/online.svelte';
 import { type GpsBbox, type GpsTrackPoint, generateGpx } from '$lib/gpx';
 import type { Main as AtgeoPlaceMain } from '$lib/lexicons/org/atgeo/place.defs';
-import { isKnownLicense, licenseLabel, REMARK_LICENSES } from '$lib/licenses';
+import {
+  fetchDefaultRemarkLicense,
+  isKnownLicense,
+  licenseLabel,
+  REMARK_LICENSES,
+} from '$lib/licenses';
 import {
   type CachedProtocol,
   deletePendingSurvey,
@@ -329,6 +334,21 @@ const initialRemarkLicense = (() => {
   return isKnownLicense(license) ? license : ACCOUNT_DEFAULT_LICENSE;
 })();
 let eventRemarkLicense = $state<string>(initialRemarkLicense);
+// What the account default currently is, so the picker can name it instead of
+// just saying "Account default". Fetched in the background rather than in a
+// load function so an offline or slow connection never holds up the form; the
+// server still stamps whatever default is in force at upload.
+let accountDefaultLicense = $state<string | undefined>();
+onMount(() => {
+  fetchDefaultRemarkLicense().then((license) => {
+    accountDefaultLicense = license;
+  });
+});
+const accountDefaultLabel = $derived(
+  accountDefaultLicense
+    ? licenseLabel(accountDefaultLicense)
+    : 'Account default',
+);
 
 function eventRemarkPayload(body: string): { body: string; license?: string } {
   return eventRemarkLicense === ACCOUNT_DEFAULT_LICENSE
@@ -1648,13 +1668,17 @@ function displayCount(qty: undefined | string | number) {
           class="bg-transparent px-2"
         >
           {eventRemarkLicense === ACCOUNT_DEFAULT_LICENSE
-            ? 'Account default'
+            ? accountDefaultLabel
             : licenseLabel(eventRemarkLicense)}
         </Select.Trigger>
         <Select.Content>
-          <Select.Item value={ACCOUNT_DEFAULT_LICENSE} label="Account default">
+          <Select.Item value={ACCOUNT_DEFAULT_LICENSE} label={accountDefaultLabel}>
             <span class="flex flex-col items-start">
-              <span>Account default</span>
+              <span>
+                {accountDefaultLicense
+                  ? `Your default: ${accountDefaultLabel}`
+                  : 'Account default'}
+              </span>
               <span class="text-muted-foreground text-xs">
                 Whatever is set on your account when this uploads
               </span>
@@ -1671,7 +1695,7 @@ function displayCount(qty: undefined | string | number) {
         </Select.Content>
       </Select.Root>
       <a href="/app/account" class="text-primary ml-auto text-xs hover:underline">
-        Set your default
+        Change your default
       </a>
     </div>
   </Field.Field>
