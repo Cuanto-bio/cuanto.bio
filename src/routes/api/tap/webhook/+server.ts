@@ -8,6 +8,7 @@ import type { Main as SurveyProtocol } from '$lib/lexicons/bio/cuanto/surveyProt
 import type { Main as SurveyTarget } from '$lib/lexicons/bio/cuanto/surveyTarget.defs';
 import type { Main as Identification } from '$lib/lexicons/bio/lexicons/temp/v0-1/identification.defs';
 import type { Main as Occurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs';
+import * as RemarkRecord from '$lib/lexicons/bio/lexicons/temp/v0-1/remark';
 import type { Main as Remark } from '$lib/lexicons/bio/lexicons/temp/v0-1/remark.defs';
 import sql from '$lib/server/db';
 import {
@@ -526,12 +527,19 @@ export const POST: RequestHandler = async ({ request }) => {
     // subject. An early one simply lands and waits to be pointed at. We also
     // ingest terms we do not consume yet (occurrenceRemarks, #74) rather than
     // drop them, since another client may already be writing them.
-    await insertRemark(
-      evt.did,
-      evt.rkey,
-      evt.record as unknown as Remark,
-      atUri,
-    );
+    // Unlike our own collections, anyone can publish under this NSID, so
+    // validate against the lexicon: a record missing subject or dwcTerm would
+    // violate NOT NULL and stall tap on retries, and a non-string body would
+    // break the survey page that renders it.
+    const result = RemarkRecord.$safeValidate(evt.record);
+    if (!result.success) {
+      log.warn(
+        { atUri, err: result.reason },
+        'invalid remark; skipping ingestion',
+      );
+      return json({ ok: true });
+    }
+    await insertRemark(evt.did, evt.rkey, result.value as Remark, atUri);
     log.info({ atUri }, 'ingested remark');
   }
 

@@ -1322,6 +1322,23 @@ describe('POST /api/tap/webhook — remarks', () => {
     expect(insertRemark).toHaveBeenCalled();
   });
 
+  test.each([
+    ['missing dwcTerm', { dwcTerm: undefined }],
+    ['missing subject', { subject: undefined }],
+    ['a non-string body', { body: 42 }],
+    ['a body over the lexicon limit', { body: 'あ'.repeat(1001) }],
+  ])('skips a remark with %s rather than 500ing the queue', async (_, overrides) => {
+    // Another client can publish anything under this NSID. Inserting it would
+    // violate NOT NULL (and stall tap on retries), or hand the survey page a
+    // body it cannot render.
+    const resp = await POST({
+      request: makeRequest(remarkEvent('create', overrides), VALID_AUTH),
+    } as Parameters<typeof POST>[0]);
+
+    expect(resp.status).toBe(200);
+    expect(insertRemark).not.toHaveBeenCalled();
+  });
+
   test('ingests a remark for a dwcTerm we do not consume yet', async () => {
     // occurrenceRemarks is coming (#74); an early one from another client must
     // land rather than 500 the webhook and stall the queue behind it.
