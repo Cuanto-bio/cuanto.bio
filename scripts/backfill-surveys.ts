@@ -7,8 +7,9 @@
 //   pnpm backfill-surveys did:plc:abc123  # just that repo
 //
 // Records are written in FK order: surveys and surveyTargets, then occurrences,
-// then identifications, then remarks (which have no FK of their own). surveys.protocol_uri references survey_protocols, so a
-// survey whose protocol is not indexed locally is skipped and counted; run
+// then identifications, then remarks (which have no FK of their own).
+// surveys.protocol_uri references survey_protocols, so a survey whose protocol
+// is not indexed locally is skipped and counted; run
 // `pnpm reindex-protocol <protocol-uri>` for those and re-run.
 //
 // NOTE: the INSERTs here duplicate insertSurvey/insertSurveyTarget/
