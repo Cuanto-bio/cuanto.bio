@@ -12,8 +12,13 @@ vi.mock('$lib/server/db', () => {
   return { default: tag };
 });
 
+vi.mock('./remarks', () => ({ getRemarksByUris: vi.fn() }));
+
+import type { Survey } from '$lib/offline/db';
 import sql from '$lib/server/db';
+import { getRemarksByUris } from './remarks';
 import {
+  attachEventRemarks,
   getLastSurveyByTargetUris,
   insertOccurrence,
   insertSurvey,
@@ -259,5 +264,71 @@ describe('toLastSurveyMap', () => {
 
   test('returns an empty object for no rows', () => {
     expect(toLastSurveyMap([])).toEqual({});
+  });
+});
+
+// ── attachEventRemarks ───────────────────────────────────────────────────────
+
+describe('attachEventRemarks', () => {
+  const DID = 'did:test:alice';
+  const SURVEY_URI = `at://${DID}/bio.cuanto.survey/s1`;
+  const REMARK_URI = `at://${DID}/bio.lexicons.temp.v0-1.remark/s1`;
+
+  function survey(eventRemarksID: string): Survey {
+    return {
+      atUri: SURVEY_URI,
+      did: DID,
+      record: { eventRemarksID },
+    } as unknown as Survey;
+  }
+
+  function remark(overrides: Record<string, unknown> = {}) {
+    return {
+      atUri: REMARK_URI,
+      body: 'Windy.',
+      license: 'https://creativecommons.org/publicdomain/zero/1.0/',
+      subject: SURVEY_URI,
+      dwcTerm: 'eventRemarks',
+      ...overrides,
+    };
+  }
+
+  function mockRemarks(...rows: ReturnType<typeof remark>[]) {
+    vi.mocked(getRemarksByUris).mockResolvedValue(
+      new Map(rows.map((r) => [r.atUri, r])) as Awaited<
+        ReturnType<typeof getRemarksByUris>
+      >,
+    );
+  }
+
+  test('attaches only the displayed fields of a matching remark', async () => {
+    mockRemarks(remark());
+    const [s] = await attachEventRemarks([survey(REMARK_URI)]);
+    expect(s.eventRemark).toEqual({
+      atUri: REMARK_URI,
+      body: 'Windy.',
+      license: 'https://creativecommons.org/publicdomain/zero/1.0/',
+    });
+  });
+
+  test("skips a remark in another user's repo", async () => {
+    // Shown under the surveyor's name, someone else's prose would be
+    // misattributed.
+    const otherUri = 'at://did:test:bob/bio.lexicons.temp.v0-1.remark/s1';
+    mockRemarks(remark({ atUri: otherUri }));
+    const [s] = await attachEventRemarks([survey(otherUri)]);
+    expect(s.eventRemark).toBeUndefined();
+  });
+
+  test('skips a remark about some other record', async () => {
+    mockRemarks(remark({ subject: `at://${DID}/bio.cuanto.survey/other` }));
+    const [s] = await attachEventRemarks([survey(REMARK_URI)]);
+    expect(s.eventRemark).toBeUndefined();
+  });
+
+  test('skips a remark filling some other term', async () => {
+    mockRemarks(remark({ dwcTerm: 'occurrenceRemarks' }));
+    const [s] = await attachEventRemarks([survey(REMARK_URI)]);
+    expect(s.eventRemark).toBeUndefined();
   });
 });

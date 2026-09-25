@@ -5,6 +5,8 @@ export interface RemarkRow {
   atUri: string;
   body: string;
   license?: string;
+  subject: string;
+  dwcTerm: string;
 }
 
 function toRemarkRow(row: { at_uri: string; record: AtRemark }): RemarkRow {
@@ -12,6 +14,8 @@ function toRemarkRow(row: { at_uri: string; record: AtRemark }): RemarkRow {
     atUri: row.at_uri,
     body: row.record.body,
     license: row.record.license,
+    subject: row.record.subject,
+    dwcTerm: row.record.dwcTerm,
   };
 }
 

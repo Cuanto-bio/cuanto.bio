@@ -1,3 +1,4 @@
+import { didFromAtUri } from '$lib/atUri';
 import type { Main as AtProtocolTarget } from '$lib/lexicons/bio/cuanto/protocolTarget.defs.js';
 import type { Main as AtSurvey } from '$lib/lexicons/bio/cuanto/survey.defs.js';
 import type { Main as AtOccurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs.js';
@@ -264,7 +265,19 @@ export async function attachEventRemarks(surveys: Survey[]): Promise<Survey[]> {
   for (const survey of surveys) {
     const uri = survey.record.eventRemarksID;
     const remark = uri ? remarks.get(uri) : undefined;
-    if (remark) survey.eventRemark = remark;
+    // Anyone can write any AT-URI into eventRemarksID, so only accept a remark
+    // the surveyor wrote about this survey's eventRemarks. Someone else's
+    // record would be shown, and licensed, under the surveyor's name.
+    if (
+      !remark ||
+      didFromAtUri(remark.atUri) !== survey.did ||
+      remark.subject !== survey.atUri ||
+      remark.dwcTerm !== 'eventRemarks'
+    ) {
+      continue;
+    }
+    const { atUri, body, license } = remark;
+    survey.eventRemark = { atUri, body, license };
   }
   return surveys;
 }
