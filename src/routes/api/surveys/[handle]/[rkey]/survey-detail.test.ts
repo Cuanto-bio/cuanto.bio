@@ -46,6 +46,8 @@ vi.mock('$lib/server/materialize-targets', () => ({
 import { isHttpError } from '@sveltejs/kit';
 import { deleteRemarkByAtUri, insertRemark } from '$lib/server/db/remarks';
 import {
+  deleteOccurrencesBySurveyUri,
+  deleteSurveyByAtUri,
   getSurveyDetailByHandleAndRkey,
   getSurveyOwnerDid,
   insertSurvey,
@@ -358,10 +360,9 @@ describe('DELETE /api/surveys/[handle]/[rkey] — event remarks', () => {
     expect(deleteRemarkByAtUri).toHaveBeenCalledWith(REMARK_URI);
   });
 
-  test('clears the remark row even when the PDS delete fails on auth', async () => {
-    // The survey row is going away, so a remark row left behind would be
-    // unreachable forever. deleteEventRemark rethrows auth failures by design,
-    // which must not skip the local cleanup here.
+  test('stops and prompts when the remark delete fails on auth', async () => {
+    // Carrying on would drop the survey from the index while it and its remark
+    // stay on the PDS, with no prompt to sign in and try again.
     vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
       makeSurvey({ eventRemarksID: REMARK_URI }) as unknown as Awaited<
         ReturnType<typeof getSurveyDetailByHandleAndRkey>
@@ -377,8 +378,14 @@ describe('DELETE /api/surveys/[handle]/[rkey] — event remarks', () => {
       url: new URL(`http://localhost/api/surveys/alice/${RKEY}`),
     } as unknown as Parameters<typeof DELETE>[0]);
 
-    expect(resp.status).toBe(204);
-    expect(deleteRemarkByAtUri).toHaveBeenCalledWith(REMARK_URI);
+    expect(resp.status).toBe(403);
+    expect(await resp.json()).toMatchObject({
+      error: 'pds_permission_required',
+    });
+    expect(deleteRemarkByAtUri).not.toHaveBeenCalled();
+    expect(deleteOccurrencesBySurveyUri).not.toHaveBeenCalled();
+    expect(deleteSurveyByAtUri).not.toHaveBeenCalled();
+    expect(deleteRecord).toHaveBeenCalledTimes(1);
   });
 
   test('deletes nothing extra when the survey had no remark', async () => {

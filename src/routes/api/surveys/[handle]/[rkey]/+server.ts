@@ -17,7 +17,6 @@ import {
 } from '$lib/occurrenceMetadata';
 import { validateEventRemark } from '$lib/remarks';
 import { deleteIdentificationsByOccurrenceUris } from '$lib/server/db/identifications';
-import { deleteRemarkByAtUri } from '$lib/server/db/remarks';
 import {
   deleteOccurrenceByAtUri,
   deleteOccurrencesBySurveyUri,
@@ -85,6 +84,20 @@ export const DELETE: RequestHandler = async ({ params, locals, url }) => {
   const ownerDid = await getSurveyOwnerDid(survey.atUri);
   if (ownerDid !== did) error(403, 'Forbidden');
 
+  // The survey's remark goes with it, and goes first: deleteEventRemark
+  // rethrows auth failures, and on one we stop before touching anything so the
+  // surveyor can sign in and retry with the survey and index still intact.
+  const remarkUri = ownRemarkUri(did, survey);
+  if (remarkUri) {
+    try {
+      await deleteEventRemark(remarkUri);
+    } catch (err) {
+      const authResp = pdsAuthErrorResponse(err);
+      if (authResp) return authResp;
+      throw err;
+    }
+  }
+
   const deleteOccurrences =
     url.searchParams.get('deleteOccurrences') !== 'false';
 
@@ -112,20 +125,6 @@ export const DELETE: RequestHandler = async ({ params, locals, url }) => {
       } catch (err) {
         log.error({ err, at_uri }, 'Failed to delete occurrence from PDS');
       }
-    }
-  }
-
-  // The survey's remark goes with it. Logged rather than fatal, like every other
-  // PDS delete here. deleteEventRemark rethrows auth failures by design (so a
-  // remark is never silently dropped on edit), but here the survey row is going
-  // away regardless, and a remark row left behind would be unreachable forever.
-  const remarkUri = ownRemarkUri(did, survey);
-  if (remarkUri) {
-    try {
-      await deleteEventRemark(remarkUri);
-    } catch (err) {
-      log.error({ err }, 'Failed to delete event remark from PDS');
-      await deleteRemarkByAtUri(remarkUri);
     }
   }
 
