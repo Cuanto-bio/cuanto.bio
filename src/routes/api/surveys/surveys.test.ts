@@ -644,7 +644,7 @@ describe('POST /api/surveys — event remarks', () => {
     expect(surveyRecord.eventRemarksID).toBeUndefined();
   });
 
-  test('treats a whitespace-only note as no note', async () => {
+  test('treats a whitespace-only remark as no remark', async () => {
     const resp = await callPost({
       request: makeRequest({
         ...baseSurveyBody,
@@ -657,7 +657,7 @@ describe('POST /api/surveys — event remarks', () => {
     expect(collections).not.toContain(REMARK_NSID);
   });
 
-  test('trims the note before writing it', async () => {
+  test('trims the remark before writing it', async () => {
     await callPost({
       request: makeRequest({
         ...baseSurveyBody,
@@ -673,7 +673,7 @@ describe('POST /api/surveys — event remarks', () => {
     );
   });
 
-  test('returns 422 when the note is longer than the lexicon allows', async () => {
+  test('returns 422 when the remark is longer than the lexicon allows', async () => {
     const resp = await callPost({
       request: makeRequest({
         ...baseSurveyBody,
@@ -685,7 +685,7 @@ describe('POST /api/surveys — event remarks', () => {
     expect(putRecord).not.toHaveBeenCalled();
   });
 
-  test('accepts a note exactly at the limit', async () => {
+  test('accepts a remark exactly at the limit', async () => {
     const resp = await callPost({
       request: makeRequest({
         ...baseSurveyBody,
@@ -715,9 +715,9 @@ describe('POST /api/surveys — event remarks', () => {
     expect(surveyRecord.eventRemarksID).toBeUndefined();
   });
 
-  test('returns 403 rather than dropping the note when scope is insufficient', async () => {
+  test('returns 403 rather than dropping the remark when scope is insufficient', async () => {
     // Adding the remark collection to the OAuth scope invalidates every
-    // pre-existing session. Saving the survey and silently losing the note
+    // pre-existing session. Saving the survey and silently losing the remark
     // would be the worst possible outcome there.
     vi.mocked(putRecord).mockRejectedValueOnce(new PdsScopeInsufficientError());
     const resp = await callPost({

@@ -110,9 +110,9 @@ describe('GET /api/sync', () => {
 });
 
 describe('GET /api/sync — event remarks', () => {
-  test('hydrates notes onto the surveys it hands the offline cache', async () => {
+  test('hydrates remarks onto the surveys it hands the offline cache', async () => {
     // syncOfflineData runs on every /app navigation and cacheSurvey overwrites
-    // the whole IndexedDB entry, so a sync payload missing the note would strip
+    // the whole IndexedDB entry, so a sync payload missing the remark would strip
     // it from a copy the detail page had already cached in full.
     const withRemark = [
       {

@@ -252,7 +252,7 @@ describe('PUT /api/surveys/[handle]/[rkey] — event remarks', () => {
     expect(deleteRemarkByAtUri).not.toHaveBeenCalled();
   });
 
-  test('returns 422 when the note is longer than the lexicon allows', async () => {
+  test('returns 422 when the remark is longer than the lexicon allows', async () => {
     const resp = await callPut({
       ...baseEditBody,
       eventRemark: { body: 'x'.repeat(3001) },

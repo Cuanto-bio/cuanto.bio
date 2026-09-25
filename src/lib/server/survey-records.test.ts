@@ -249,10 +249,10 @@ describe('writeEventRemark', () => {
     expect(insertRemark).not.toHaveBeenCalled();
   });
 
-  test('rethrows an auth failure instead of silently dropping the note', async () => {
+  test('rethrows an auth failure instead of silently dropping the remark', async () => {
     // Widening the OAuth scope to cover the remark collection means existing
     // sessions lack it. Swallowing that would save the survey and lose the
-    // note with no explanation, so it has to reach the route's 403.
+    // remark with no explanation, so it has to reach the route's 403.
     vi.mocked(putRecord).mockRejectedValueOnce(new PdsScopeInsufficientError());
 
     await expect(

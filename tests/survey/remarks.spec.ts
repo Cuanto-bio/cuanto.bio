@@ -6,7 +6,7 @@ const LOCATION_PLACEHOLDER = '[placeholder="e.g. Mission Dolores Park"]';
 const CC0 = 'https://creativecommons.org/publicdomain/zero/1.0/';
 const CC_BY = 'https://creativecommons.org/licenses/by/4.0/';
 
-test('a survey note is written as its own remark record and shown on the detail page', async ({
+test('a survey remark is written as its own record and shown on the detail page', async ({
   page,
   sql,
   protocolRkey,
@@ -50,7 +50,7 @@ test('a survey note is written as its own remark record and shown on the detail 
   expect(survey.record.eventRemarksID).toBe(remark.at_uri);
 });
 
-test('a survey saved without a note writes no remark', async ({
+test('a survey saved without a remark writes no remark record', async ({
   page,
   sql,
   protocolRkey,
@@ -66,7 +66,7 @@ test('a survey saved without a note writes no remark', async ({
   expect(rows).toHaveLength(0);
 });
 
-test('editing a survey updates its note, and clearing it deletes the remark', async ({
+test('editing a survey updates its remark, and clearing it deletes the record', async ({
   page,
   sql,
   protocolRkey,
@@ -78,7 +78,7 @@ test('editing a survey updates its note, and clearing it deletes the remark', as
   await expect(page).toHaveURL(/\/app\/surveys\/user-survey-spec\/\w+/);
   const rkey = page.url().split('/').pop();
 
-  // Edit the note.
+  // Edit the remark.
   await page.goto(`/app/surveys/${HANDLE}/${rkey}/edit`);
   await page.waitForSelector(LOCATION_PLACEHOLDER, { state: 'visible' });
   await expect(page.getByLabel('Remarks')).toHaveValue('First draft.');
@@ -115,7 +115,7 @@ test('editing a survey updates its note, and clearing it deletes the remark', as
   expect(survey.record.eventRemarksID).toBeUndefined();
 });
 
-test('deleting a survey deletes its note too', async ({
+test('deleting a survey deletes its remark too', async ({
   page,
   sql,
   protocolRkey,
