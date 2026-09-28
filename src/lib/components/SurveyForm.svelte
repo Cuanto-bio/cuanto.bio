@@ -405,7 +405,9 @@ let editTrackLoaded = $state(!isEdit || !sv.record.track);
 // The track a save would leave behind, so the distance readout tracks a pending
 // replace/remove rather than the points that happened to load.
 const editDistanceTrack = $derived.by(() => {
-  if (editTrack.action === 'replace') return editTrack.points;
+  if (editTrack.action === 'replace' || editTrack.action === 'trim') {
+    return editTrack.points;
+  }
   if (editTrack.action === 'remove') return null;
   return editTrackPoints;
 });
@@ -766,18 +768,25 @@ async function buildEditPayload() {
   const lonOut = longitude;
   const bboxOut = gpsBbox ?? null;
 
-  // Track is a tri-state: omit the key to preserve the existing track, send null
-  // to remove it, or upload a replacement and send the blob ref.
-  let track: { gpx: unknown; source: 'uploaded' } | null | undefined;
+  // Omit the track key to preserve the existing track, send null to remove it,
+  // or upload a replacement and send the blob ref. A trimmed track is still the
+  // one the surveyor recorded or uploaded, so it keeps its source.
+  let track: { gpx: unknown; source: string } | null | undefined;
   if (editTrack.action === 'remove') {
     track = null;
-  } else if (editTrack.action === 'replace') {
+  } else if (editTrack.action === 'replace' || editTrack.action === 'trim') {
     const gpxText = generateGpx(
       locationName.trim() || 'Survey track',
       editTrack.points,
     );
     const blob = await uploadGpxBlob(gpxText);
-    track = { gpx: blob, source: 'uploaded' };
+    track = {
+      gpx: blob,
+      source:
+        editTrack.action === 'trim'
+          ? (sv.record.track?.source ?? 'uploaded')
+          : 'uploaded',
+    };
   }
 
   // Explicit deletions (#24): the server only deletes what we name here, so
@@ -1044,12 +1053,27 @@ function onLocationChange(p: {
   trackSource = p.trackSource;
 }
 
+// The survey date and duration from before a track trim started driving them,
+// restored if the trim is undone or stops syncing the survey time.
+let timingBeforeTrim: { date: string; duration: string } | null = null;
+
 // Edit mode: independent point/bbox/track from SurveyLocationEditor.
 function onLocationEditChange(p: LocationEditPayload) {
   latitude = p.latitude;
   longitude = p.longitude;
   gpsBbox = p.bbox;
   editTrack = p.track;
+  if (p.surveyTiming) {
+    timingBeforeTrim ??= { date: pastDate, duration: pastDurationMinutes };
+    pastDate = toDatetimeLocal(new Date(p.surveyTiming.start).toISOString());
+    pastDurationMinutes = String(p.surveyTiming.durationMinutes);
+    pastDateError = null;
+    pastDurationError = null;
+  } else if (timingBeforeTrim) {
+    pastDate = timingBeforeTrim.date;
+    pastDurationMinutes = timingBeforeTrim.duration;
+    timingBeforeTrim = null;
+  }
 }
 
 // ─── target sheet helpers ────────────────────────────────────────────────────

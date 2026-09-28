@@ -14,6 +14,18 @@ export type Bbox = { north: string; south: string; east: string; west: string };
 // Coordinate precision (~1cm) matching GeoMap's existing toFixed(7).
 const COORD_PRECISION = 7;
 const fmt = (n: number) => n.toFixed(COORD_PRECISION);
+// Parse and round a stored coordinate for a terra-draw feature. terra-draw
+// rejects coordinates with more decimals than it's configured for, and values
+// derived from a track (e.g. a bbox centre) can carry float noise.
+const coord = (s: string) => Number(fmt(parseFloat(s)));
+
+// Cut typed or pasted coordinate text down to COORD_PRECISION decimals, so the
+// fields can't hold more precision than the map (and terra-draw) accepts.
+export function limitCoordDecimals(value: string): string {
+  const dot = value.indexOf('.');
+  if (dot === -1) return value;
+  return value.slice(0, dot + 1 + COORD_PRECISION);
+}
 
 // Extract a lat/lng pair from a terra-draw Point feature.
 // Returns null when the geometry is missing or not a usable point.
@@ -64,7 +76,7 @@ export function latLngToPointFeature(
     type: 'Feature',
     geometry: {
       type: 'Point',
-      coordinates: [parseFloat(longitude), parseFloat(latitude)],
+      coordinates: [coord(longitude), coord(latitude)],
     },
     properties: { mode },
   };
@@ -76,10 +88,10 @@ export function bboxToRectangleFeature(
   bbox: Bbox,
   mode: string,
 ): GeoJSONStoreFeatures {
-  const n = parseFloat(bbox.north);
-  const s = parseFloat(bbox.south);
-  const e = parseFloat(bbox.east);
-  const w = parseFloat(bbox.west);
+  const n = coord(bbox.north);
+  const s = coord(bbox.south);
+  const e = coord(bbox.east);
+  const w = coord(bbox.west);
   const ring: Position[] = [
     [w, s],
     [e, s],

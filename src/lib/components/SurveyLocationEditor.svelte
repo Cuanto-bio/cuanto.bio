@@ -4,14 +4,17 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { onDestroy, onMount } from 'svelte';
 import type { TerraDraw } from 'terra-draw';
 import Button from '$lib/components/Button.svelte';
+import TrackTrimSlider from '$lib/components/TrackTrimSlider.svelte';
 import * as AlertDialog from '$lib/components/ui/alert-dialog';
 import { buttonVariants } from '$lib/components/ui/button';
+import { Checkbox } from '$lib/components/ui/checkbox';
 import { Input } from '$lib/components/ui/input';
 import { type GpsTrackPoint, parseGpx, trackToBbox } from '$lib/gpx';
 import {
   type Bbox,
   bboxToRectangleFeature,
   latLngToPointFeature,
+  limitCoordDecimals,
   pointFeatureToLatLng,
   rectangleFeatureToBbox,
 } from '$lib/map/locationGeometry';
@@ -27,20 +30,33 @@ import {
   RECTANGLE,
   renderTrack,
   SELECT,
+  setTrimmedTrackLayer,
 } from '$lib/map/terraDrawSetup';
+import {
+  surveyGeometryForTrack,
+  surveyTimingForRange,
+  type TimeRange,
+  trackTimeRange,
+  trimTrack,
+} from '$lib/trackTrim';
 import { cn } from '$lib/utils';
 
-// Track is a tri-state on save: keep the existing one, drop it, or replace it.
+// Track on save: keep the existing one, drop it, replace it with an upload, or
+// trim it (a replacement that keeps the existing track's source).
 export type TrackChange =
   | { action: 'preserve' }
   | { action: 'remove' }
-  | { action: 'replace'; points: GpsTrackPoint[] };
+  | { action: 'replace'; points: GpsTrackPoint[] }
+  | { action: 'trim'; points: GpsTrackPoint[] };
 
 export type LocationEditPayload = {
   latitude: string | null;
   longitude: string | null;
   bbox: Bbox | null;
   track: TrackChange;
+  // Survey start and duration matching a trimmed track, or null to leave the
+  // survey's timing as the surveyor set it.
+  surveyTiming: { start: number; durationMinutes: number } | null;
 };
 
 type Props = {
@@ -86,11 +102,40 @@ let editing = $state<'point' | 'bbox' | null>(null);
 let drawing = $state<'point' | 'bbox' | null>(null);
 // Pending remove action: set to open the confirmation dialog, null to close.
 let pendingRemove = $state<'point' | 'bbox' | 'track' | null>(null);
+// Whether the trim panel is open.
+let trimming = $state(false);
+// The time range of the track to keep; null keeps all of it.
+let trimRange = $state<TimeRange | null>(null);
+// Move the survey's date and duration along with the trim.
+let syncSurveyTime = $state(true);
+// Move the point and bbox to fit the kept part of the track.
+let syncTrackGeometry = $state(true);
+// The trim settings when the trim panel opened, restored by Cancel trim.
+let trimBeforeEdit: {
+  range: TimeRange | null;
+  syncSurveyTime: boolean;
+  syncTrackGeometry: boolean;
+} | null = null;
+// The point and bbox from before a trim started driving them, restored if the
+// trim is undone or stops syncing them.
+let geometryBeforeTrim: {
+  lat: string | null;
+  lng: string | null;
+  bbox: Bbox | null;
+} | null = null;
 
 const hasPoint = $derived(!!(lat && lng));
 const hasBbox = $derived(!!bboxVal);
 const showTrackSummary = $derived(
   trackAction === 'replace' || (trackAction === 'preserve' && trackPresent),
+);
+// Null when the track can't be trimmed by time (no timestamps, too short).
+const trackSpan = $derived(trackPoints ? trackTimeRange(trackPoints) : null);
+const keptPoints = $derived(
+  trackPoints && trimRange ? trimTrack(trackPoints, trimRange) : trackPoints,
+);
+const isTrimmed = $derived(
+  !!trackPoints && !!keptPoints && keptPoints.length < trackPoints.length,
 );
 
 let container: HTMLDivElement;
@@ -137,11 +182,27 @@ function validBboxRing(b: Bbox | null): [number, number][] | null {
 }
 
 function trackChange(): TrackChange {
-  if (trackAction === 'replace' && trackPoints?.length) {
-    return { action: 'replace', points: $state.snapshot(trackPoints) };
+  if (trackAction === 'replace' && keptPoints?.length) {
+    return { action: 'replace', points: $state.snapshot(keptPoints) };
   }
   if (trackAction === 'remove') return { action: 'remove' };
+  if (isTrimmed && keptPoints) {
+    // Trimming away every point leaves no track at all.
+    return keptPoints.length
+      ? { action: 'trim', points: $state.snapshot(keptPoints) }
+      : { action: 'remove' };
+  }
   return { action: 'preserve' };
+}
+
+function surveyTiming(): LocationEditPayload['surveyTiming'] {
+  if (!syncSurveyTime || !isTrimmed || !keptPoints?.length) return null;
+  // Use the kept points' own times rather than the slider's, which may sit in a
+  // gap between fixes.
+  return surveyTimingForRange({
+    start: keptPoints[0].timestamp,
+    end: keptPoints[keptPoints.length - 1].timestamp,
+  });
 }
 
 function emit() {
@@ -150,6 +211,7 @@ function emit() {
     longitude: lng,
     bbox: bboxVal,
     track: trackChange(),
+    surveyTiming: surveyTiming(),
   });
 }
 
@@ -214,6 +276,8 @@ function confirmRemovePoint() {
 }
 
 function onPointInput() {
+  lat = limitCoordDecimals(lat ?? '');
+  lng = limitCoordDecimals(lng ?? '');
   const coords = validLngLat(lat, lng);
   const id = featureIdByType('Point');
   if (coords && id != null) {
@@ -254,6 +318,12 @@ function confirmRemoveBbox() {
 }
 
 function onBboxInput() {
+  if (bboxVal) {
+    bboxVal.north = limitCoordDecimals(bboxVal.north);
+    bboxVal.south = limitCoordDecimals(bboxVal.south);
+    bboxVal.east = limitCoordDecimals(bboxVal.east);
+    bboxVal.west = limitCoordDecimals(bboxVal.west);
+  }
   const ring = validBboxRing(bboxVal);
   const id = featureIdByType('Polygon');
   if (ring && id != null) {
@@ -266,6 +336,20 @@ function doneEditing() {
   if (selectedId != null) draw?.deselectFeature(selectedId);
   selectedId = undefined;
   editing = null;
+}
+
+// Finishing with a coordinate left blank means there's no point any more, so
+// drop the marker too rather than leave it on the map with no values behind it.
+function donePoint() {
+  doneEditing();
+  if (!hasPoint) confirmRemovePoint();
+}
+
+// Likewise a box with a blank edge is no box; saving one would be rejected.
+function doneBbox() {
+  doneEditing();
+  const b = bboxVal;
+  if (!b || !b.north || !b.south || !b.east || !b.west) confirmRemoveBbox();
 }
 
 // ─── track ────────────────────────────────────────────────────────────────────
@@ -282,7 +366,117 @@ async function onGpxFile(e: Event & { currentTarget: HTMLInputElement }) {
   trackPoints = points;
   trackFileName = file.name;
   trackAction = 'replace';
+  resetTrim();
   emit();
+}
+
+function startTrim() {
+  if (!trackSpan) return;
+  trimBeforeEdit = {
+    range: trimRange,
+    syncSurveyTime,
+    syncTrackGeometry,
+  };
+  trimRange ??= trackSpan;
+  trimming = true;
+}
+
+// Undo whatever changed since the trim panel opened, keeping any trim applied
+// before that.
+function cancelTrim() {
+  if (trimBeforeEdit) {
+    trimRange = trimBeforeEdit.range;
+    syncSurveyTime = trimBeforeEdit.syncSurveyTime;
+    syncTrackGeometry = trimBeforeEdit.syncTrackGeometry;
+    trimBeforeEdit = null;
+  }
+  trimming = false;
+  applyTrimGeometry();
+  emit();
+}
+
+function onTrimChange(range: TimeRange) {
+  trimRange = range;
+  applyTrimGeometry();
+  emit();
+}
+
+function onSyncSurveyTimeChange(checked: boolean) {
+  syncSurveyTime = checked;
+  emit();
+}
+
+function onSyncTrackGeometryChange(checked: boolean) {
+  syncTrackGeometry = checked;
+  applyTrimGeometry();
+  emit();
+}
+
+function resetTrim() {
+  trimRange = null;
+  trimming = false;
+  trimBeforeEdit = null;
+  applyTrimGeometry();
+}
+
+// A track is the best record of where a survey happened, so while it's trimmed
+// the point and bbox come from the kept points, whatever they were before.
+function applyTrimGeometry() {
+  if (syncTrackGeometry && isTrimmed && keptPoints?.length) {
+    geometryBeforeTrim ??= {
+      lat,
+      lng,
+      bbox: bboxVal ? { ...bboxVal } : null,
+    };
+    const g = surveyGeometryForTrack(keptPoints);
+    setGeometry(g.latitude, g.longitude, g.bbox);
+  } else if (geometryBeforeTrim) {
+    const g = geometryBeforeTrim;
+    geometryBeforeTrim = null;
+    setGeometry(g.lat, g.lng, g.bbox);
+  }
+}
+
+// Set the point and bbox, keeping the terra-draw features in step.
+function setGeometry(
+  newLat: string | null,
+  newLng: string | null,
+  newBbox: Bbox | null,
+) {
+  lat = newLat;
+  lng = newLng;
+  bboxVal = newBbox;
+  if (!draw) return;
+
+  // Build features with the shared helpers, which round away float noise
+  // terra-draw would reject.
+  const pointId = featureIdByType('Point');
+  const point =
+    newLat && newLng && validLngLat(newLat, newLng)
+      ? latLngToPointFeature(newLat, newLng, POINT)
+      : null;
+  if (point && pointId != null) {
+    draw.updateFeatureGeometry(pointId, point.geometry);
+  } else if (point) {
+    draw.addFeatures([point]);
+  } else if (pointId != null) {
+    draw.removeFeatures([pointId]);
+    if (editing === 'point') doneEditing();
+  }
+
+  const bboxId = featureIdByType('Polygon');
+  const rect =
+    newBbox && validBboxRing(newBbox)
+      ? bboxToRectangleFeature(newBbox, RECTANGLE)
+      : null;
+  if (rect && bboxId != null) {
+    draw.updateFeatureGeometry(bboxId, rect.geometry);
+  } else if (rect) {
+    draw.addFeatures([rect]);
+  } else if (bboxId != null) {
+    draw.removeFeatures([bboxId]);
+    if (editing === 'bbox') doneEditing();
+  }
 }
 
 function removeTrack() {
@@ -294,6 +488,7 @@ function confirmRemoveTrack() {
   trackFileName = null;
   trackAction = 'remove';
   gpxError = null;
+  resetTrim();
   emit();
 }
 
@@ -383,12 +578,15 @@ $effect(() => {
   if (mapReady && editing) selectForEditing();
 });
 
-// Render the track read-only (terra-draw doesn't edit it).
+// Render the track read-only (terra-draw doesn't edit it). While trimmed, the
+// kept part draws solid over a faded copy of the whole track.
 $effect(() => {
   mapReady; // re-run after the style loads
-  const pts = trackPoints; // track for reactivity
+  const pts = keptPoints; // track for reactivity
+  const full = isTrimmed ? trackPoints : null;
   if (!map || !mapReady) return;
   renderTrack(map, pts);
+  setTrimmedTrackLayer(map, full);
 });
 </script>
 
@@ -399,7 +597,7 @@ $effect(() => {
     <div class="flex flex-col sm:flex-row items-top gap-2">
       <span class="w-28 font-medium">Point</span>
       <div class="flex flex-col flex-1 gap-2">
-        {#if hasPoint && editing === 'point'}
+        {#if editing === 'point'}
           <div class="flex flex-wrap gap-2 text-xs">
             <label class="flex flex-col gap-1">
               <span>Latitude</span>
@@ -427,7 +625,7 @@ $effect(() => {
             </label>
           </div>
           <div class="flex flex-nowrap">
-            <Button type="button" class="bg-primary" size="xs" data-testid="loc-done-point" onclick={doneEditing}>
+            <Button type="button" class="bg-primary" size="xs" data-testid="loc-done-point" onclick={donePoint}>
               Done
             </Button>
             <Button type="button" variant="ghost" size="xs" data-testid="loc-remove-point" onclick={removePoint}>
@@ -477,7 +675,7 @@ $effect(() => {
             </label>
           </div>
           <div class="flex flex-nowrap gap-2">
-            <Button type="button" class="bg-primary" size="xs" data-testid="loc-done-bbox" onclick={doneEditing}>
+            <Button type="button" class="bg-primary" size="xs" data-testid="loc-done-bbox" onclick={doneBbox}>
               Done
             </Button>
             <Button type="button" variant="ghost" size="xs" data-testid="loc-remove-bbox" onclick={removeBbox}>
@@ -509,14 +707,25 @@ $effect(() => {
       <span class="w-28 font-medium">Track</span>
       <div class="flex flex-col flex-1 gap-2">
         {#if showTrackSummary}
-          <span class="text-muted-foreground text-xs">
+          <span class="text-muted-foreground text-xs" data-testid="loc-track-summary">
             {trackFileName ?? 'GPX track'}
-            {#if trackPoints?.length}
+            {#if isTrimmed && trackPoints && keptPoints}
+              (trimmed to {keptPoints.length} of {trackPoints.length} points)
+            {:else if trackPoints?.length}
               ({trackPoints.length}
               {trackPoints.length === 1 ? 'point' : 'points'})
             {/if}
           </span>
           <div class="flex flex-nowrap gap-2">
+            {#if trimming}
+              <Button type="button" variant="outline" size="xs" data-testid="loc-cancel-trim" onclick={cancelTrim}>
+                Cancel trim
+              </Button>
+            {:else if trackSpan}
+              <Button type="button" variant="outline" size="xs" data-testid="loc-trim-track" onclick={startTrim}>
+                Trim
+              </Button>
+            {/if}
             <label class={cn(buttonVariants({ variant: 'outline', size: 'xs' }), 'w-fit')}>
               Replace
               <input type="file" accept=".gpx,application/gpx+xml" onchange={onGpxFile} class="sr-only" />
@@ -564,6 +773,54 @@ $effect(() => {
       </AlertDialog.Footer>
     </AlertDialog.Content>
   </AlertDialog.Root>
+
+  {#if trimming && trackPoints && trackSpan && trimRange}
+    <div class="flex flex-col gap-3 rounded border p-3">
+      <p class="text-muted-foreground text-xs mb-0">
+        Drag the ends to cut off points recorded before or after the survey. Bars
+        show how far you moved.
+      </p>
+      <TrackTrimSlider
+        points={trackPoints}
+        span={trackSpan}
+        range={trimRange}
+        onchange={onTrimChange}
+      />
+      <label class="flex items-center gap-2 text-sm">
+        <Checkbox
+          checked={syncSurveyTime}
+          onCheckedChange={onSyncSurveyTimeChange}
+          data-testid="loc-trim-sync-time"
+        />
+        Set survey date &amp; duration to match
+      </label>
+      <label class="flex items-center gap-2 text-sm">
+        <Checkbox
+          checked={syncTrackGeometry}
+          onCheckedChange={onSyncTrackGeometryChange}
+          data-testid="loc-trim-sync-geometry"
+        />
+        Set point &amp; bounding box to match
+      </label>
+      <div class="flex flex-nowrap gap-2">
+        <Button type="button" class="bg-primary" size="xs" data-testid="loc-done-trim" onclick={() => {
+          trimming = false;
+          trimBeforeEdit = null;
+        }}>
+          Trim
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          data-testid="loc-panel-cancel-trim"
+          onclick={cancelTrim}
+        >
+          Cancel trim
+        </Button>
+      </div>
+    </div>
+  {/if}
 
   <div bind:this={container} data-testid="location-editor-map" class="h-56 w-full rounded"></div>
   {#if drawing === 'point'}

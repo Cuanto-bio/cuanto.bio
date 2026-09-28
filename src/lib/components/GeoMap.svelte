@@ -8,6 +8,7 @@ import {
   DEFAULT_ZOOM_WITH_COORDS,
   osmStyle,
 } from '$lib/map/osmStyle';
+import { setTrackLayer } from '$lib/map/terraDrawSetup';
 
 type BboxProp = { north: string; south: string; east: string; west: string };
 type TrackPoint = { lat: number; lng: number };
@@ -119,7 +120,7 @@ $effect(() => {
     if (marker) {
       marker.setLngLat(coords);
     } else {
-      // #3b82f6 = tailwind blue-500 (point), #ef4444 = tailwind red-500 (track)
+      // #3b82f6 = tailwind blue-500 (point); setTrackLayer colors the track
       const m = new MarkerCls({ draggable: !!oncoordinate, color: '#3b82f6' })
         .setLngLat(coords)
         .addTo(map);
@@ -187,57 +188,8 @@ $effect(() => {
   }
 
   // Track line and dots
+  setTrackLayer(map, track);
   if (track && track.length > 0) {
-    const trackCoords = track.map((p) => [p.lng, p.lat] as [number, number]);
-
-    const lineData: GeoJSON.Feature<GeoJSON.LineString> = {
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates: trackCoords },
-      properties: {},
-    };
-    const pointsData: GeoJSON.FeatureCollection<GeoJSON.Point> = {
-      type: 'FeatureCollection',
-      features: trackCoords.map((c) => ({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: c },
-        properties: {},
-      })),
-    };
-
-    const lineSrc = map.getSource('track-line') as GeoJSONSource | undefined;
-    if (lineSrc) {
-      lineSrc.setData(lineData);
-    } else {
-      map.addSource('track-line', { type: 'geojson', data: lineData });
-      map.addLayer({
-        id: 'track-line',
-        type: 'line',
-        source: 'track-line',
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#ef4444', 'line-width': 2 },
-      });
-    }
-
-    const pointsSrc = map.getSource('track-points') as
-      | GeoJSONSource
-      | undefined;
-    if (pointsSrc) {
-      pointsSrc.setData(pointsData);
-    } else {
-      map.addSource('track-points', { type: 'geojson', data: pointsData });
-      map.addLayer({
-        id: 'track-points',
-        type: 'circle',
-        source: 'track-points',
-        paint: {
-          'circle-radius': 3,
-          'circle-color': '#ef4444',
-          'circle-stroke-width': 1,
-          'circle-stroke-color': '#ffffff',
-        },
-      });
-    }
-
     // Fit to track extent only when there is no bbox or coords to anchor the view
     if (!bounds && !coords) {
       // Use trackToBbox (a reduce) rather than Math.min(...lngs) — spread will
@@ -252,15 +204,6 @@ $effect(() => {
           { padding: 40 },
         );
       }
-    }
-  } else {
-    if (map.getSource('track-points')) {
-      if (map.getLayer('track-points')) map.removeLayer('track-points');
-      map.removeSource('track-points');
-    }
-    if (map.getSource('track-line')) {
-      if (map.getLayer('track-line')) map.removeLayer('track-line');
-      map.removeSource('track-line');
     }
   }
 });

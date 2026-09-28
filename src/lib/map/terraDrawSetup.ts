@@ -12,9 +12,17 @@ export const SELECT = 'select';
 
 // theme colors (match GeoMap.svelte)
 export const BLUE = '#3b82f6'; // tailwind blue-500
-export const RED = '#ef4444'; // tailwind red-500
+// Tailwind fuchsia-600, the light-mode --highlight in src/routes/layout.css.
+// MapLibre paint needs a literal color, not a CSS variable. OSM draws motorways
+// in pink, so a softer pink would vanish on highways.
+export const HIGHLIGHT = '#c026d3';
+// What the trim chart's fill-muted-foreground/30 looks like on white: stone-500
+// (--muted-foreground in src/routes/layout.css) at 30%, made opaque so trimmed
+// points don't blend into the track they overlap.
+export const MUTED = '#d7d4d3';
 
 const TRACK_SOURCE = 'picker-track';
+const TRIMMED_TRACK_SOURCE = 'picker-track-trimmed';
 
 // Construct and start a TerraDraw configured for picking/editing a point and/or
 // a bounding box: blue features with white outlines, and a select mode that keeps
@@ -79,38 +87,102 @@ export function createLocationDraw(
   return draw;
 }
 
-// Add/update/remove the read-only track line layer. terra-draw doesn't edit
+// Only position matters for drawing; GeoMap's tracks carry no timestamps.
+type LatLng = { lat: number; lng: number };
+
+// Add/update/remove a track drawn as a line with a dot on each point, under
+// the source/layer ids `${id}` (line) and `${id}-points` (dots). Seeing each
+// point makes it clear which fixes a trim keeps or drops.
+function drawTrack(
+  map: MaplibreMap,
+  id: string,
+  points: LatLng[] | null | undefined,
+  style: { color: string; beforeId?: string },
+): void {
+  const pointsId = `${id}-points`;
+  if (!points || points.length === 0) {
+    for (const layer of [pointsId, id]) {
+      if (map.getLayer(layer)) map.removeLayer(layer);
+    }
+    if (map.getSource(id)) map.removeSource(id);
+    return;
+  }
+  const coords = points.map((p) => [p.lng, p.lat] as [number, number]);
+  const data: GeoJSON.FeatureCollection = {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: coords },
+        properties: {},
+      },
+      ...coords.map(
+        (c): GeoJSON.Feature => ({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: c },
+          properties: {},
+        }),
+      ),
+    ],
+  };
+  const src = map.getSource(id) as GeoJSONSource | undefined;
+  if (src) {
+    src.setData(data);
+    return;
+  }
+  const beforeId =
+    style.beforeId && map.getLayer(style.beforeId) ? style.beforeId : undefined;
+  map.addSource(id, { type: 'geojson', data });
+  map.addLayer(
+    {
+      id,
+      type: 'line',
+      source: id,
+      filter: ['==', ['geometry-type'], 'LineString'],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': style.color,
+        'line-width': 2,
+      },
+    },
+    beforeId,
+  );
+  map.addLayer(
+    {
+      id: pointsId,
+      type: 'circle',
+      source: id,
+      filter: ['==', ['geometry-type'], 'Point'],
+      paint: {
+        'circle-radius': 3,
+        'circle-color': style.color,
+        'circle-stroke-width': 1,
+        'circle-stroke-color': '#ffffff',
+      },
+    },
+    beforeId,
+  );
+}
+
+// Add/update/remove the read-only track layers. terra-draw doesn't edit
 // tracks, so they are rendered directly on the map.
 export function setTrackLayer(
   map: MaplibreMap,
-  points: GpsTrackPoint[] | null | undefined,
+  points: LatLng[] | null | undefined,
 ): void {
-  if (points && points.length > 0) {
-    const lineData: GeoJSON.Feature<GeoJSON.LineString> = {
-      type: 'Feature',
-      geometry: {
-        type: 'LineString',
-        coordinates: points.map((p) => [p.lng, p.lat] as [number, number]),
-      },
-      properties: {},
-    };
-    const src = map.getSource(TRACK_SOURCE) as GeoJSONSource | undefined;
-    if (src) {
-      src.setData(lineData);
-    } else {
-      map.addSource(TRACK_SOURCE, { type: 'geojson', data: lineData });
-      map.addLayer({
-        id: TRACK_SOURCE,
-        type: 'line',
-        source: TRACK_SOURCE,
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': RED, 'line-width': 2 },
-      });
-    }
-  } else if (map.getSource(TRACK_SOURCE)) {
-    if (map.getLayer(TRACK_SOURCE)) map.removeLayer(TRACK_SOURCE);
-    map.removeSource(TRACK_SOURCE);
-  }
+  drawTrack(map, TRACK_SOURCE, points, { color: HIGHLIGHT });
+}
+
+// Add/update/remove a gray copy of the whole untrimmed track, drawn
+// beneath the track layers so a trim preview shows what will be cut off.
+export function setTrimmedTrackLayer(
+  map: MaplibreMap,
+  points: LatLng[] | null | undefined,
+): void {
+  drawTrack(map, TRIMMED_TRACK_SOURCE, points, {
+    color: MUTED,
+    beforeId: TRACK_SOURCE,
+  });
 }
 
 // Fit the map viewport to a bounding box with the standard picker padding.
