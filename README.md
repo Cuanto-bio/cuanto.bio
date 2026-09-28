@@ -139,6 +139,18 @@ railway redeploy --service <tap-service-name>
 
 TAP will replay all known records through the webhook on startup. Set `TAP_NO_REPLAY=true` again afterward to prevent re-replaying on future restarts.
 
+To re-ingest a single repo's surveys, occurrences, identifications, and remarks straight
+from its PDS, e.g. records TAP missed or skipped because the app didn't handle them yet:
+
+```sh
+pnpm railway:backfill-surveys did:plc:abc123  # just that repo
+pnpm railway:backfill-surveys                 # every DID in the users table
+```
+
+Like the migrations, this runs `scripts/backfill-surveys.ts` inside the app container over
+`railway ssh`. Existing rows are updated in place, so re-running it is safe. Don't put
+`--` before the DID: pnpm passes it through to the script, which will treat it as the DID.
+
 ## Native apps (iOS & Android)
 
 The iOS and Android apps are thin [Capacitor](https://capacitorjs.com) wrappers

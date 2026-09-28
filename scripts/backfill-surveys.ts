@@ -6,6 +6,11 @@
 //   pnpm backfill-surveys                 # every DID in the users table
 //   pnpm backfill-surveys did:plc:abc123  # just that repo
 //
+// Against production (the database is only reachable from Railway's private
+// network, so this runs inside the app container):
+//
+//   pnpm railway:backfill-surveys did:plc:abc123
+//
 // Records are written in FK order: surveys and surveyTargets, then occurrences,
 // then identifications, then remarks (which have no FK of their own).
 // surveys.protocol_uri references survey_protocols, so a survey whose protocol

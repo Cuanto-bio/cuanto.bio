@@ -23,6 +23,7 @@ COPY patches ./patches
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 COPY --from=builder /app/build ./build
 COPY scripts/migrate.ts ./scripts/migrate.ts
+COPY scripts/backfill-surveys.ts ./scripts/backfill-surveys.ts
 COPY migrations ./migrations
 ENV NODE_ENV=production
 CMD ["node", "build/index.js"]

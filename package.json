@@ -36,7 +36,8 @@
     "railway:deploy": "sha=$(git rev-parse HEAD) && railway variable set APP_COMMIT_SHA=\"$sha\" --service app --skip-deploys && railway deployment up --ci --service app --message \"Last commit: $sha\" && railway deployment list --service app --json --limit 1 | jq '.[0] | {id, status, createdAt}'",
     "railway:deploy-info": "railway deployment list --service app --json --limit 1 | jq .[0].meta.cliMessage",
     "railway:migrate:up": "railway ssh --service app -- node --experimental-strip-types scripts/migrate.ts up",
-    "railway:migrate:down": "railway ssh --service app -- node --experimental-strip-types scripts/migrate.ts down"
+    "railway:migrate:down": "railway ssh --service app -- node --experimental-strip-types scripts/migrate.ts down",
+    "railway:backfill-surveys": "railway ssh --service app -- node --experimental-strip-types scripts/backfill-surveys.ts"
   },
   "devDependencies": {
     "@atproto/jwk-jose": "^0.1.11",
