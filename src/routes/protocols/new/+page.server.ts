@@ -10,6 +10,7 @@ import {
   insertProtocolTarget,
 } from '$lib/server/db/survey-protocols';
 import { followProtocol } from '$lib/server/follow-protocol';
+import { classifyTargets } from '$lib/server/inat-taxa';
 import { parseLocationOptions } from '$lib/server/locationOptions';
 import logger from '$lib/server/logger';
 import { createRecord } from '$lib/server/pds';
@@ -50,6 +51,14 @@ export const actions: Actions = {
     } catch {
       return fail(422, { error: 'Invalid targets' });
     }
+    // Valid JSON of the wrong shape (e.g. from a stale or hand-built form) would
+    // otherwise throw once the targets are used
+    if (
+      !Array.isArray(targets) ||
+      !targets.every((t) => Array.isArray((t as { scope?: unknown })?.scope))
+    ) {
+      return fail(422, { error: 'Invalid targets' });
+    }
 
     let locationOptions: ReturnType<typeof parseLocationOptions>;
     try {
@@ -57,6 +66,10 @@ export const actions: Actions = {
     } catch {
       return fail(422, { error: 'Invalid location options' });
     }
+
+    // Fill in each iNat taxon's classification for the taxonomic sort, before
+    // anything is written (issue https://tangled.org/cuanto.bio/cuanto.bio/issues/81)
+    targets = await classifyTargets(targets);
 
     const protocolRecord = SurveyProtocol.$build({
       title,

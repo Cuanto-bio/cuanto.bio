@@ -10,6 +10,7 @@ import { onMount } from 'svelte';
 import { parseAtUri } from '$lib/atUri';
 import GeoMap from '$lib/components/GeoMap.svelte';
 import TargetFilterControls from '$lib/components/TargetFilterControls.svelte';
+import TargetGroupHeading from '$lib/components/TargetGroupHeading.svelte';
 import type { TaxonProp } from '$lib/components/Taxon.svelte';
 import Taxon from '$lib/components/Taxon.svelte';
 import TrackDistance from '$lib/components/TrackDistance.svelte';
@@ -447,18 +448,23 @@ const externalLinkProps =
       {/if}
     </p>
   {:else}
-    <ul class="flex flex-col gap-0">
-      {#each targetFilter.filtered as target (target.atUri)}
-        {@const taxonScope = target.record.scope.find(s => s.$type.endsWith('#taxonScope')) as TaxonScope}
-        {@const verbatimScope = target.record.scope.find(s => s.$type.endsWith('#verbatimScope')) as VerbatimScope}
-        {@const occurrence = survey.occurrences.find(o => o.protocolTargetUri === target.atUri)}
-        {#if taxonScope}
-          {@render surveyTargetRow({ occurrence, taxon: taxonScope })}
-        {:else if verbatimScope}
-          {@render surveyTargetRow({ occurrence, verbatimTargetScope: verbatimScope.verbatimTargetScope })}
-        {/if}
-      {/each}
-    </ul>
+    {#each targetFilter.groups as group (group.key)}
+      {#if group.header}
+        <TargetGroupHeading header={group.header} class="mb-1 mt-3" />
+      {/if}
+      <ul class="flex flex-col gap-0">
+        {#each group.targets as target (target.atUri)}
+          {@const taxonScope = target.record.scope.find(s => s.$type.endsWith('#taxonScope')) as TaxonScope}
+          {@const verbatimScope = target.record.scope.find(s => s.$type.endsWith('#verbatimScope')) as VerbatimScope}
+          {@const occurrence = survey.occurrences.find(o => o.protocolTargetUri === target.atUri)}
+          {#if taxonScope}
+            {@render surveyTargetRow({ occurrence, taxon: taxonScope })}
+          {:else if verbatimScope}
+            {@render surveyTargetRow({ occurrence, verbatimTargetScope: verbatimScope.verbatimTargetScope })}
+          {/if}
+        {/each}
+      </ul>
+    {/each}
   {/if}
 
   {#if incidentalOccs.length > 0}

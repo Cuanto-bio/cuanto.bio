@@ -12,6 +12,8 @@ export default defineConfig({
     env: {
       DATABASE_URL: 'postgresql://cuanto:cuanto@localhost:5432/cuanto_test',
       PDS_MOCK: 'true',
+      // Answers the server's iNat taxa requests from src/lib/server/inat-mock.ts
+      INAT_MOCK: 'true',
       // Pinned here rather than read from .env so tests that post tap events to
       // /api/tap/webhook don't depend on a developer's local password.
       TAP_ADMIN_PASSWORD: 'devpassword',

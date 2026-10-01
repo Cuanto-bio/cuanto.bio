@@ -1,6 +1,10 @@
 import { devices } from '@playwright/test';
 import { expect, test } from '../fixtures.js';
-import { cacheAndOpenNewSurvey, seedExtraTargets } from './helpers.js';
+import {
+  cacheAndOpenNewSurvey,
+  seedExtraTargets,
+  seedTaxonTargets,
+} from './helpers.js';
 
 // ── Target search filter ──────────────────────────────────────────────────────
 
@@ -155,6 +159,139 @@ test.describe('target sort and filter dropdown', () => {
     await expect(targetList(page).locator('li').first()).toContainText(
       'All birds',
     );
+  });
+
+  // Adds four classified butterfly targets to the fixture protocol
+  async function seedButterflies(
+    sql: import('postgres').Sql,
+    protocolRkey: string,
+  ) {
+    const lepidoptera = {
+      kingdom: 'Animalia',
+      phylum: 'Arthropoda',
+      class: 'Insecta',
+      order: 'Lepidoptera',
+    };
+    const papilionoidea =
+      'Animalia | Arthropoda | Hexapoda | Insecta | Pterygota | Lepidoptera | Papilionoidea';
+    await seedTaxonTargets(sql, 'did:test:survey-spec', protocolRkey, [
+      {
+        scientificName: 'Papilio glaucus',
+        taxonRank: 'species',
+        ...lepidoptera,
+        family: 'Papilionidae',
+        higherClassification: `${papilionoidea} | Papilionidae | Papilioninae | Papilionini | Papilio`,
+      },
+      {
+        scientificName: 'Vanessa cardui',
+        taxonRank: 'species',
+        ...lepidoptera,
+        family: 'Nymphalidae',
+        higherClassification: `${papilionoidea} | Nymphalidae | Nymphalinae | Nymphalini | Vanessa`,
+      },
+      {
+        scientificName: 'Danaus plexippus',
+        taxonRank: 'species',
+        ...lepidoptera,
+        family: 'Nymphalidae',
+        higherClassification: `${papilionoidea} | Nymphalidae | Danainae | Danaini | Danaina | Danaus`,
+      },
+      {
+        scientificName: 'Vanessa',
+        taxonRank: 'genus',
+        ...lepidoptera,
+        family: 'Nymphalidae',
+        higherClassification: `${papilionoidea} | Nymphalidae | Nymphalinae | Nymphalini`,
+      },
+    ]);
+  }
+
+  test('sorting taxonomically groups targets by classification', async ({
+    page,
+    sql,
+    protocolRkey,
+  }) => {
+    await seedButterflies(sql, protocolRkey);
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await openDropdown(page);
+    await page.getByRole('menuitemradio', { name: 'Taxonomic' }).click();
+    await expect(targetList(page).locator('li')).toHaveText([
+      // Classified: Danainae before Nymphalinae, a genus above its species,
+      // Nymphalidae before Papilionidae
+      /Danaus plexippus/,
+      // The genus alone; each row ends with its count
+      /^Vanessa \d/,
+      /Vanessa cardui/,
+      /Papilio glaucus/,
+      // The fixture's unclassified taxa, by scientific name
+      /Orienthella piunca/,
+      /Quercus agrifolia/,
+      // Verbatim targets last
+      /All birds/,
+    ]);
+    // Families, without an order prefix since every classified target is a
+    // lepidopteran
+    await expect(page.getByRole('heading', { level: 3 })).toHaveText([
+      'Nymphalidae',
+      'Papilionidae',
+      'No taxonomy',
+      'Other',
+    ]);
+  });
+
+  test('tapping a group heading shows its full lineage', async ({
+    page,
+    sql,
+    protocolRkey,
+  }) => {
+    await seedButterflies(sql, protocolRkey);
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await openDropdown(page);
+    await page.getByRole('menuitemradio', { name: 'Taxonomic' }).click();
+    await page.keyboard.press('Escape');
+
+    const lineage = page.getByText(
+      'Animalia › Arthropoda › Hexapoda › Insecta › Pterygota › Lepidoptera › Papilionoidea › Nymphalidae',
+    );
+    const heading = page.getByRole('button', { name: 'Nymphalidae' });
+    await expect(lineage).not.toBeVisible();
+    await expect(heading).toHaveAttribute('aria-expanded', 'false');
+
+    await heading.click();
+    await expect(lineage).toBeVisible();
+    await expect(heading).toHaveAttribute('aria-expanded', 'true');
+
+    await heading.click();
+    await expect(lineage).not.toBeVisible();
+  });
+
+  test('an expanded lineage stays with its heading when a search changes the groups', async ({
+    page,
+    sql,
+    protocolRkey,
+  }) => {
+    await seedButterflies(sql, protocolRkey);
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await openDropdown(page);
+    await page.getByRole('menuitemradio', { name: 'Taxonomic' }).click();
+    await page.keyboard.press('Escape');
+
+    await page.getByRole('button', { name: 'Nymphalidae' }).click();
+    // Leaves only Papilio glaucus, so Papilionidae becomes the first heading
+    await page.getByPlaceholder('Search targets…').fill('glaucus');
+    await expect(
+      page.getByRole('button', { name: 'Papilionidae' }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByText(/› Papilionidae$/)).not.toBeVisible();
+  });
+
+  test('default sort shows no group headings', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await expect(targetList(page).locator('li')).toHaveCount(3);
+    await expect(page.getByRole('heading', { name: 'Other' })).toHaveCount(0);
   });
 
   test('"Only counted" hides targets with zero count', async ({

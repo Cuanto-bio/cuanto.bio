@@ -30,7 +30,15 @@ import type { Main as AtAddress } from '$lib/lexicons/community/lexicon/location
 import type { Main as AtGeo } from '$lib/lexicons/community/lexicon/location/geo.defs';
 import type { Protocol } from '$lib/offline/db';
 import type { InatPlace, PlaceResult } from '$lib/places';
-import { partitionNewTaxa, targetTaxonID } from '$lib/targets.svelte';
+import {
+  applyClassifications,
+  inatIdsNeedingClassification,
+  inatTaxonNumber,
+  needsClassification,
+  partitionNewTaxa,
+  targetTaxonID,
+} from '$lib/targets.svelte';
+import { fetchClassifications } from '$lib/taxon-classifications';
 
 interface Props {
   protocol?: Protocol;
@@ -329,6 +337,72 @@ let inatImportButtonRef = $state<HTMLElement | null>(null);
 let inatImporting = $state(false);
 let inatImportResult = $state<{ added: number; skipped: number } | null>(null);
 let inatImportError = $state<string | null>(null);
+
+// iNat ids the button has already asked about this session. A target iNat has
+// no (more) taxonomy for would otherwise be offered again on every click.
+let taxonomyAsked = $state(new Set<number>());
+
+function targetInatId(target: Target): number | undefined {
+  return inatTaxonNumber(targetTaxonID(target.scope));
+}
+
+// Backfills classification on existing targets so surveyors can sort them
+// taxonomically (issue https://tangled.org/cuanto.bio/cuanto.bio/issues/81).
+// New targets (no atUri yet) are left out: the server classifies those on
+// save. Existing ones are only classified when the author asks, since each is
+// another record to write.
+const targetsNeedingTaxonomy = $derived(
+  targets.filter((t) => {
+    const id = targetInatId(t);
+    return (
+      !!t.atUri &&
+      needsClassification(t.scope) &&
+      id !== undefined &&
+      !taxonomyAsked.has(id)
+    );
+  }),
+);
+let addingTaxonomy = $state(false);
+let taxonomyResult = $state<{ added: number; missing: number } | null>(null);
+let taxonomyError = $state<string | null>(null);
+
+async function addTaxonomy() {
+  const offeredKeys = new Set(targetsNeedingTaxonomy.map((t) => t.key));
+  const ids = inatIdsNeedingClassification(targetsNeedingTaxonomy);
+  addingTaxonomy = true;
+  taxonomyResult = null;
+  taxonomyError = null;
+  try {
+    const { classifications, error } = await fetchClassifications(ids);
+    targets = applyClassifications(targets, classifications);
+    // After a failure, ids with no result may just not have been asked yet
+    const answered = error ? [...classifications.keys()] : ids;
+    taxonomyAsked = new Set([...taxonomyAsked, ...answered]);
+    // Counted from the targets still in the form, so one removed while the
+    // lookup was running isn't reported either way
+    const offered = targets.filter((t) => offeredKeys.has(t.key));
+    const added = offered.filter((t) => !needsClassification(t.scope)).length;
+    const missing = offered.filter((t) => {
+      const id = targetInatId(t);
+      return (
+        needsClassification(t.scope) &&
+        id !== undefined &&
+        taxonomyAsked.has(id)
+      );
+    }).length;
+    if (added > 0 || (!error && missing > 0)) {
+      taxonomyResult = { added, missing };
+    }
+    if (error === 'signedOut') {
+      taxonomyError =
+        'Your session has expired. Sign in again to add taxonomy.';
+    } else if (error) {
+      taxonomyError = 'Could not fetch taxonomy from iNaturalist.';
+    }
+  } finally {
+    addingTaxonomy = false;
+  }
+}
 
 // The button is disabled until both a place and a taxon are chosen, so wait a
 // tick for that DOM update to land before focusing it (it may have just
@@ -743,6 +817,45 @@ function removeAddress(i: number, j: number) {
         <div class="text-muted-foreground text-xs mb-4">
           Choose what surveyors will be looking for, either taxa or something custom.
         </div>
+
+        {#if protocol && (targetsNeedingTaxonomy.length > 0 || taxonomyResult || taxonomyError)}
+          <div class="flex flex-col gap-2 mb-4">
+            {#if targetsNeedingTaxonomy.length > 0}
+              <p class="text-xs text-muted-foreground">
+                Some targets are missing the taxonomy surveyors need to sort them taxonomically.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                class="w-fit text-xs"
+                disabled={addingTaxonomy}
+                onclick={addTaxonomy}
+              >
+                {addingTaxonomy
+                  ? 'Adding taxonomy…'
+                  : `Add taxonomy to ${targetsNeedingTaxonomy.length} ${
+                      targetsNeedingTaxonomy.length === 1 ? 'target' : 'targets'
+                    }`}
+              </Button>
+            {/if}
+            {#if taxonomyResult && taxonomyResult.added > 0}
+              <p class="text-xs text-muted-foreground">
+                Added taxonomy to {taxonomyResult.added}
+                {taxonomyResult.added === 1 ? 'target' : 'targets'}.{taxonomyResult.missing > 0
+                  ? ` Could not find taxonomy for ${taxonomyResult.missing}.`
+                  : ''} Save to keep it.
+              </p>
+            {:else if taxonomyResult}
+              <p class="text-xs text-muted-foreground">
+                Could not find taxonomy for {taxonomyResult.missing}
+                {taxonomyResult.missing === 1 ? 'target' : 'targets'}.
+              </p>
+            {/if}
+            {#if taxonomyError}
+              <p class="text-xs text-destructive">{taxonomyError}</p>
+            {/if}
+          </div>
+        {/if}
 
         {#if targets.length > 0}
           <ul class="flex flex-col gap-4">

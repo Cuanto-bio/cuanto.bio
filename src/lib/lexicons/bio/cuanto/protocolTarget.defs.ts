@@ -68,7 +68,7 @@ export const $safeParse = /*#__PURE__*/ main.safeParse.bind(main)
 export const $validate = /*#__PURE__*/ main.validate.bind(main)
 export const $safeValidate = /*#__PURE__*/ main.safeValidate.bind(main)
 
-/** A taxonomic criterion for a survey target. */
+/** A taxonomic criterion for a survey target. The optional kingdom through family fields and higherClassification follow the Darwin Core terms of the same names and are used to sort and group targets taxonomically. */
 type TaxonScope = {
   $type?: 'bio.cuanto.protocolTarget#taxonScope'
 
@@ -96,11 +96,36 @@ type TaxonScope = {
    * Taxonomic kingdom. Combined with scientificName and taxonRank, provides disambiguation for most homonyms.
    */
   kingdom?: string
+
+  /**
+   * Full scientific name of the phylum in which the taxon is classified, following dwc:phylum.
+   */
+  phylum?: string
+
+  /**
+   * Full scientific name of the class in which the taxon is classified, following dwc:class.
+   */
+  class?: string
+
+  /**
+   * Full scientific name of the order in which the taxon is classified, following dwc:order.
+   */
+  order?: string
+
+  /**
+   * Full scientific name of the family in which the taxon is classified, following dwc:family.
+   */
+  family?: string
+
+  /**
+   * Names of the taxon's higher taxa, from highest to the one immediately above the taxon, separated by ' | ', following dwc:higherClassification, e.g. 'Animalia | Chordata | Mammalia | Artiodactyla | Whippomorpha | Cetacea | Mysticeti | Balaenopteridae | Megaptera'. Includes ranks that have no field of their own, so targets can be sorted by their full lineage.
+   */
+  higherClassification?: string
 }
 
 export type { TaxonScope }
 
-/** A taxonomic criterion for a survey target. */
+/** A taxonomic criterion for a survey target. The optional kingdom through family fields and higherClassification follow the Darwin Core terms of the same names and are used to sort and group targets taxonomically. */
 const taxonScope = /*#__PURE__*/ l.typedObject<TaxonScope>(
   $nsid,
   'taxonScope',
@@ -112,6 +137,11 @@ const taxonScope = /*#__PURE__*/ l.typedObject<TaxonScope>(
     vernacularName: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
     taxonRank: /*#__PURE__*/ l.string(),
     kingdom: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    phylum: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    class: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    order: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    family: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    higherClassification: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
   }),
 )
 

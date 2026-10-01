@@ -23,11 +23,16 @@ vi.mock('$lib/server/db', () => ({
   default: vi.fn().mockResolvedValue([{ handle: 'user-test' }]),
 }));
 
+vi.mock('$lib/server/inat-taxa', () => ({
+  classifyTargets: vi.fn(async (targets: unknown[]) => targets),
+}));
+
 vi.mock('$lib/server/follow-protocol', () => ({
   followProtocol: vi.fn(),
 }));
 
 import { followProtocol } from '$lib/server/follow-protocol';
+import { classifyTargets } from '$lib/server/inat-taxa';
 import {
   createRecord,
   PdsScopeInsufficientError,
@@ -350,5 +355,80 @@ describe('POST /protocols/new — PDS session expiry', () => {
     expect(
       (result?.data as { permissionRequired?: boolean }).permissionRequired,
     ).toBe(true);
+  });
+});
+
+// Stands in for iNat: adds a family to every target it's asked to classify.
+function classifyWithFamily() {
+  vi.mocked(classifyTargets).mockImplementation(async (targets) =>
+    targets.map((t) => ({
+      ...t,
+      scope: [{ ...(t.scope[0] as object), family: 'Classifidae' }],
+    })),
+  );
+}
+
+// vi.clearAllMocks keeps implementations, so undo classifyWithFamily each time.
+beforeEach(() => {
+  vi.mocked(classifyTargets).mockImplementation(async (targets) => targets);
+});
+
+describe('POST /protocols/new — targets validation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test.each([
+    ['null', 'null'],
+    ['an object', '{}'],
+    ['a target without a scope', '[{}]'],
+    ['a target whose scope is not a list', '[{"scope":"x"}]'],
+  ])('returns fail(422) when targets is %s', async (_, targets) => {
+    const result = await submitProtocol({
+      title: 'Test Protocol',
+      description: 'A test',
+      targets,
+      locationOptions: '[]',
+    });
+    expect(result?.status).toBe(422);
+    expect((result?.data as { error: string }).error).toContain(
+      'Invalid targets',
+    );
+    expect(createRecord).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /protocols/new — target classification', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(createRecord).mockResolvedValue({
+      uri: `at://${DID}/bio.cuanto.surveyProtocol/test1`,
+      cid: FAKE_CID,
+    });
+    classifyWithFamily();
+  });
+
+  test('creates targets with their classification', async () => {
+    const scope = [
+      {
+        $type: 'bio.cuanto.protocolTarget#taxonScope',
+        taxonID: 'https://www.inaturalist.org/taxa/48548',
+        scientificName: 'Vanessa cardui',
+        taxonRank: 'species',
+      },
+    ];
+    await submitProtocol({
+      title: 'Test Protocol',
+      description: 'A test',
+      targets: JSON.stringify([{ scope }]),
+      locationOptions: '[]',
+    });
+    expect(createRecord).toHaveBeenCalledWith(
+      DID,
+      'bio.cuanto.protocolTarget',
+      expect.objectContaining({
+        scope: [{ ...scope[0], family: 'Classifidae' }],
+      }),
+    );
   });
 });

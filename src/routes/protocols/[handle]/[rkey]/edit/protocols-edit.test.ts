@@ -24,6 +24,10 @@ vi.mock('$lib/server/db/survey-protocols', () => ({
   tombstoneProtocolByUri: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('$lib/server/inat-taxa', () => ({
+  classifyTargets: vi.fn(async (targets: unknown[]) => targets),
+}));
+
 vi.mock('$lib/server/db/protocol-follows', () => ({
   getFollowByDidAndProtocol: vi.fn().mockResolvedValue(null),
   deleteFollow: vi.fn().mockResolvedValue(undefined),
@@ -52,6 +56,7 @@ import {
   tombstoneProtocolByUri,
   tombstoneProtocolTargetsByUris,
 } from '$lib/server/db/survey-protocols';
+import { classifyTargets } from '$lib/server/inat-taxa';
 import {
   createRecord,
   deleteRecord,
@@ -115,6 +120,21 @@ async function submitDelete() {
   }
 }
 
+// Stands in for iNat: adds a family to every target it's asked to classify.
+function classifyWithFamily() {
+  vi.mocked(classifyTargets).mockImplementation(async (targets) =>
+    targets.map((t) => ({
+      ...t,
+      scope: [{ ...(t.scope[0] as object), family: 'Classifidae' }],
+    })),
+  );
+}
+
+// vi.clearAllMocks keeps implementations, so undo classifyWithFamily each time.
+beforeEach(() => {
+  vi.mocked(classifyTargets).mockImplementation(async (targets) => targets);
+});
+
 describe('POST /protocols/[handle]/[rkey]/edit — validation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -158,6 +178,24 @@ describe('POST /protocols/[handle]/[rkey]/edit — validation', () => {
       title: 'A title',
       description: 'A description',
       targets: 'not json',
+      locationOptions: '[]',
+    });
+    expect(result?.status).toBe(422);
+    expect((result?.data as { error: string }).error).toContain(
+      'Invalid targets',
+    );
+  });
+
+  test.each([
+    ['null', 'null'],
+    ['an object', '{}'],
+    ['a target without a scope', '[{}]'],
+    ['a target whose scope is not a list', '[{"scope":"x"}]'],
+  ])('returns fail(422) when targets is %s', async (_, targets) => {
+    const result = await submitEdit({
+      title: 'A title',
+      description: 'A description',
+      targets,
       locationOptions: '[]',
     });
     expect(result?.status).toBe(422);
@@ -330,6 +368,42 @@ describe('POST /protocols/[handle]/[rkey]/edit — target management', () => {
       locationOptions: '[]',
     });
   }
+
+  test('creates new targets with their classification', async () => {
+    classifyWithFamily();
+    await submitWithAandC();
+    expect(createRecord).toHaveBeenCalledWith(
+      DID,
+      'bio.cuanto.protocolTarget',
+      expect.objectContaining({
+        scope: [{ ...SCOPE_C[0], family: 'Classifidae' }],
+      }),
+    );
+  });
+
+  test('classifies new targets before writing anything', async () => {
+    await submitWithAandC();
+    const [classifyOrder] = vi.mocked(classifyTargets).mock.invocationCallOrder;
+    const writes = [
+      ...vi.mocked(putRecord).mock.invocationCallOrder,
+      ...vi.mocked(createRecord).mock.invocationCallOrder,
+      ...vi.mocked(deleteRecord).mock.invocationCallOrder,
+    ];
+    expect(writes.length).toBeGreaterThan(0);
+    expect(classifyOrder).toBeLessThan(Math.min(...writes));
+  });
+
+  test('does not classify existing targets, so a save never rewrites them', async () => {
+    classifyWithFamily();
+    await submitWithAandC();
+    expect(classifyTargets).toHaveBeenCalledWith([{ scope: SCOPE_C }]);
+    expect(putRecord).not.toHaveBeenCalledWith(
+      DID,
+      'bio.cuanto.protocolTarget',
+      expect.anything(),
+      expect.anything(),
+    );
+  });
 
   test('does not delete a target submitted with its URI', async () => {
     await submitWithAandC();

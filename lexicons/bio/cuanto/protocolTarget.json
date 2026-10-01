@@ -29,7 +29,7 @@
     },
     "taxonScope": {
       "type": "object",
-      "description": "A taxonomic criterion for a survey target.",
+      "description": "A taxonomic criterion for a survey target. The optional kingdom through family fields and higherClassification follow the Darwin Core terms of the same names and are used to sort and group targets taxonomically.",
       "required": ["scientificName", "taxonRank"],
       "properties": {
         "taxonID": {
@@ -52,6 +52,26 @@
         "kingdom": {
           "type": "string",
           "description": "Taxonomic kingdom. Combined with scientificName and taxonRank, provides disambiguation for most homonyms."
+        },
+        "phylum": {
+          "type": "string",
+          "description": "Full scientific name of the phylum in which the taxon is classified, following dwc:phylum."
+        },
+        "class": {
+          "type": "string",
+          "description": "Full scientific name of the class in which the taxon is classified, following dwc:class."
+        },
+        "order": {
+          "type": "string",
+          "description": "Full scientific name of the order in which the taxon is classified, following dwc:order."
+        },
+        "family": {
+          "type": "string",
+          "description": "Full scientific name of the family in which the taxon is classified, following dwc:family."
+        },
+        "higherClassification": {
+          "type": "string",
+          "description": "Names of the taxon's higher taxa, from highest to the one immediately above the taxon, separated by ' | ', following dwc:higherClassification, e.g. 'Animalia | Chordata | Mammalia | Artiodactyla | Whippomorpha | Cetacea | Mysticeti | Balaenopteridae | Megaptera'. Includes ranks that have no field of their own, so targets can be sorted by their full lineage."
         }
       }
     },

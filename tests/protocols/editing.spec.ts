@@ -1,4 +1,5 @@
 import { expect, seedProtocol, teardownDid, test } from '../fixtures.js';
+import { seedTaxonTargets } from '../survey/helpers.js';
 
 const EDIT_DID = 'did:test:edit-spec';
 const EDIT_HANDLE = 'user-edit-spec';
@@ -155,5 +156,301 @@ test.describe('protocol editing', () => {
       targets[0].record.scope as { verbatimTargetScope: string }[]
     )[0];
     expect(scope.verbatimTargetScope).toBe('Freshwater fish');
+  });
+});
+
+// ── Target classification (issue #81) ────────────────────────────────────────
+// The server's iNat requests are answered by INAT_MOCK (playwright.config.ts),
+// with canned ancestries in src/lib/server/inat-mock.ts.
+
+test.describe('target classification', () => {
+  test.afterEach(async ({ sql }) => {
+    await teardownDid(sql, EDIT_DID);
+  });
+
+  async function liveTargetScope(
+    sql: import('postgres').Sql,
+    protocolRkey: string,
+    scientificName: string,
+  ) {
+    const protocolUri = `at://${EDIT_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+    const rows = await sql<{ record: { scope: Record<string, string>[] } }[]>`
+      SELECT record FROM protocol_targets
+      WHERE protocol_uri = ${protocolUri} AND deleted_at IS NULL
+    `;
+    return rows
+      .map((r) => r.record.scope[0])
+      .find((s) => s.scientificName === scientificName);
+  }
+
+  test('saving a new taxon target stores its classification', async ({
+    page,
+    sql,
+    context,
+  }) => {
+    await context.addCookies([authCookie(EDIT_DID)]);
+    const { protocolRkey } = await seedProtocol(sql, EDIT_DID);
+    // Only the search endpoint, not /api/taxa/classifications
+    await page.route(
+      (url) => url.pathname === '/api/taxa',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            results: [
+              {
+                inatId: 48548,
+                scientificName: 'Vanessa cardui',
+                taxonRank: 'species',
+                commonName: 'Painted Lady',
+                kingdom: 'Animalia',
+                taxonID: 'https://www.inaturalist.org/taxa/48548',
+              },
+            ],
+          }),
+        }),
+    );
+    await page.goto(`/protocols/${EDIT_HANDLE}/${protocolRkey}/edit`);
+    await page.fill(
+      '[placeholder="Search iNaturalist taxa (e.g. Quercus)"]',
+      'Vanessa',
+    );
+    await page.getByText('Vanessa cardui').click();
+
+    await page.click('text=Save changes');
+    await expect(page).toHaveURL(
+      `/app/protocols/${EDIT_HANDLE}/${protocolRkey}`,
+    );
+
+    const scope = await liveTargetScope(sql, protocolRkey, 'Vanessa cardui');
+    expect(scope).toMatchObject({
+      kingdom: 'Animalia',
+      order: 'Lepidoptera',
+      family: 'Nymphalidae',
+      higherClassification:
+        'Animalia | Arthropoda | Hexapoda | Insecta | Pterygota | Lepidoptera | Papilionoidea | Nymphalidae | Nymphalinae | Nymphalini | Vanessa',
+    });
+    // An existing target the author didn't ask to classify is left alone
+    const existing = await liveTargetScope(
+      sql,
+      protocolRkey,
+      'Orienthella piunca',
+    );
+    expect(existing).not.toHaveProperty('family');
+  });
+
+  test('the backfill button classifies existing targets once saved', async ({
+    page,
+    sql,
+    context,
+  }) => {
+    await context.addCookies([authCookie(EDIT_DID)]);
+    // Of the seeded targets only Orienthella piunca is an iNat taxon; Quercus
+    // agrifolia is a GBIF taxon and the third is verbatim.
+    const { protocolRkey } = await seedProtocol(sql, EDIT_DID);
+    await page.goto(`/protocols/${EDIT_HANDLE}/${protocolRkey}/edit`);
+    // The button is server-rendered; wait for hydration so the click lands
+    await page.waitForLoadState('networkidle');
+
+    const button = page.getByRole('button', {
+      name: 'Add taxonomy to 1 target',
+    });
+    await button.click();
+    await expect(
+      page.getByText('Added taxonomy to 1 target. Save to keep it.'),
+    ).toBeVisible();
+    await expect(button).not.toBeVisible();
+
+    await page.click('text=Save changes');
+    await expect(page).toHaveURL(
+      `/app/protocols/${EDIT_HANDLE}/${protocolRkey}`,
+    );
+    const scope = await liveTargetScope(
+      sql,
+      protocolRkey,
+      'Orienthella piunca',
+    );
+    expect(scope).toMatchObject({
+      phylum: 'Mollusca',
+      order: 'Nudibranchia',
+      family: 'Coryphellidae',
+      higherClassification:
+        'Animalia | Mollusca | Gastropoda | Heterobranchia | Euthyneura | Ringipleura | Nudipleura | Nudibranchia | Aeolidina | Fionoidea | Coryphellidae | Orienthella',
+    });
+  });
+
+  test('the backfill button stops offering targets iNat has no taxonomy for', async ({
+    page,
+    sql,
+    context,
+  }) => {
+    await context.addCookies([authCookie(EDIT_DID)]);
+    const { protocolRkey } = await seedProtocol(sql, EDIT_DID);
+    // Not in INAT_MOCK's canned data, so iNat "has no taxonomy" for it
+    await seedTaxonTargets(sql, EDIT_DID, protocolRkey, [
+      {
+        scientificName: 'Unknownia mysteriosa',
+        taxonRank: 'species',
+        taxonID: 'https://www.inaturalist.org/taxa/999999999',
+      },
+    ]);
+    await page.goto(`/protocols/${EDIT_HANDLE}/${protocolRkey}/edit`);
+    await page.waitForLoadState('networkidle');
+
+    await page
+      .getByRole('button', { name: 'Add taxonomy to 2 targets' })
+      .click();
+    await expect(
+      page.getByText(
+        'Added taxonomy to 1 target. Could not find taxonomy for 1. Save to keep it.',
+      ),
+    ).toBeVisible();
+    // Asking again wouldn't find anything new
+    await expect(
+      page.getByRole('button', { name: /Add taxonomy/ }),
+    ).not.toBeVisible();
+  });
+
+  test('the backfill button leaves new targets to be classified on save', async ({
+    page,
+    sql,
+    context,
+  }) => {
+    await context.addCookies([authCookie(EDIT_DID)]);
+    const { protocolRkey } = await seedProtocol(sql, EDIT_DID);
+    await page.route(
+      (url) => url.pathname === '/api/taxa',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            results: [
+              {
+                inatId: 48548,
+                scientificName: 'Vanessa cardui',
+                taxonRank: 'species',
+                commonName: 'Painted Lady',
+                kingdom: 'Animalia',
+                taxonID: 'https://www.inaturalist.org/taxa/48548',
+              },
+            ],
+          }),
+        }),
+    );
+    await page.goto(`/protocols/${EDIT_HANDLE}/${protocolRkey}/edit`);
+    await page.waitForLoadState('networkidle');
+    await page.fill(
+      '[placeholder="Search iNaturalist taxa (e.g. Quercus)"]',
+      'Vanessa',
+    );
+    await page.getByText('Vanessa cardui').click();
+    // Only the seeded Orienthella piunca, not the unsaved Vanessa cardui
+    await expect(
+      page.getByRole('button', { name: 'Add taxonomy to 1 target' }),
+    ).toBeVisible();
+  });
+
+  test('the backfill button does not count a target removed while it was working', async ({
+    page,
+    sql,
+    context,
+  }) => {
+    await context.addCookies([authCookie(EDIT_DID)]);
+    const { protocolRkey } = await seedProtocol(sql, EDIT_DID);
+    const unknownTaxonID = 'https://www.inaturalist.org/taxa/999999999';
+    await seedTaxonTargets(sql, EDIT_DID, protocolRkey, [
+      {
+        scientificName: 'Unknownia mysteriosa',
+        taxonRank: 'species',
+        taxonID: unknownTaxonID,
+      },
+    ]);
+    // Hold the lookup until the target has been removed; iNat finds nothing
+    let respond = () => {};
+    const removed = new Promise<void>((resolve) => {
+      respond = resolve;
+    });
+    await page.route('**/api/taxa/classifications**', async (route) => {
+      await removed;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ results: {} }),
+      });
+    });
+    await page.goto(`/protocols/${EDIT_HANDLE}/${protocolRkey}/edit`);
+    await page.waitForLoadState('networkidle');
+
+    await page
+      .getByRole('button', { name: 'Add taxonomy to 2 targets' })
+      .click();
+    await page
+      .locator('li')
+      .filter({ has: page.locator(`a[href="${unknownTaxonID}"]`) })
+      .getByRole('button', { name: 'Remove' })
+      .click();
+    respond();
+
+    await expect(
+      page.getByText('Could not find taxonomy for 1 target.'),
+    ).toBeVisible();
+    await expect(page.getByText(/Added taxonomy/)).not.toBeVisible();
+  });
+
+  test('the backfill button asks the author to sign in again when their session has expired', async ({
+    page,
+    sql,
+    context,
+  }) => {
+    await context.addCookies([authCookie(EDIT_DID)]);
+    const { protocolRkey } = await seedProtocol(sql, EDIT_DID);
+    await page.route('**/api/taxa/classifications**', (route) =>
+      route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Unauthorized' }),
+      }),
+    );
+    await page.goto(`/protocols/${EDIT_HANDLE}/${protocolRkey}/edit`);
+    await page.waitForLoadState('networkidle');
+
+    await page
+      .getByRole('button', { name: 'Add taxonomy to 1 target' })
+      .click();
+    await expect(
+      page.getByText(
+        'Your session has expired. Sign in again to add taxonomy.',
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Could not fetch taxonomy from iNaturalist.'),
+    ).not.toBeVisible();
+  });
+
+  test('the backfill button is absent when no target needs classification', async ({
+    page,
+    sql,
+    context,
+  }) => {
+    await context.addCookies([authCookie(EDIT_DID)]);
+    const { protocolRkey } = await seedProtocol(sql, EDIT_DID);
+    const protocolUri = `at://${EDIT_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+    await sql`
+      UPDATE protocol_targets
+      SET record = jsonb_set(
+        jsonb_set(record, '{scope,0,family}', '"Coryphellidae"'),
+        '{scope,0,higherClassification}',
+        '"Animalia | Mollusca | Gastropoda | Nudibranchia | Coryphellidae | Orienthella"'
+      )
+      WHERE protocol_uri = ${protocolUri}
+        AND record->'scope'->0->>'scientificName' = 'Orienthella piunca'
+    `;
+    await page.goto(`/protocols/${EDIT_HANDLE}/${protocolRkey}/edit`);
+    await expect(page.getByLabel('Title')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /Add taxonomy/ }),
+    ).not.toBeVisible();
   });
 });

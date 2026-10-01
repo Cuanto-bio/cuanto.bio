@@ -18,6 +18,7 @@ import {
   tombstoneProtocolTargetsByUris,
 } from '$lib/server/db/survey-protocols';
 import { countSurveysByProtocolUri } from '$lib/server/db/surveys';
+import { classifyTargets } from '$lib/server/inat-taxa';
 import { parseLocationOptions } from '$lib/server/locationOptions';
 import { createRecord, deleteRecord, putRecord } from '$lib/server/pds';
 import { pdsAuthErrorFail } from '$lib/server/pds-error-response';
@@ -88,6 +89,14 @@ export const actions: Actions = {
     } catch {
       return fail(422, { error: 'Invalid targets' });
     }
+    // Valid JSON of the wrong shape (e.g. from a stale or hand-built form) would
+    // otherwise throw once the targets are used
+    if (
+      !Array.isArray(targets) ||
+      !targets.every((t) => Array.isArray((t as { scope?: unknown })?.scope))
+    ) {
+      return fail(422, { error: 'Invalid targets' });
+    }
 
     let locationOptions: ReturnType<typeof parseLocationOptions>;
     try {
@@ -110,6 +119,13 @@ export const actions: Actions = {
     // Deliberately error() (a hard stop), not fail(): there's no valid page
     // left to return to, since the next load of this route 410s too.
     if (existing.deletedAt) error(410, 'This protocol has been deleted');
+
+    // Only new targets are classified (issue
+    // https://tangled.org/cuanto.bio/cuanto.bio/issues/81): they're being written
+    // anyway, while classifying existing ones would rewrite every target on any
+    // save. The edit form backfills those when the author asks. This happens
+    // before any write, so a slow iNat can't leave the protocol half-saved.
+    const toAdd = await classifyTargets(targets.filter((t) => !t.atUri));
 
     const protocolRecord = SurveyProtocol.$build({
       title,
@@ -150,7 +166,6 @@ export const actions: Actions = {
     const toDelete = existing.targets.filter(
       (t) => !submittedUris.has(t.atUri),
     );
-    const toAdd = targets.filter((t) => !t.atUri);
     const toUpdate = targets.filter((t) => {
       if (!t.atUri) return false;
       const existingTarget = existingByUri.get(t.atUri);

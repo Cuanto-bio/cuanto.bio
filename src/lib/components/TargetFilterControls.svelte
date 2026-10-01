@@ -143,6 +143,7 @@ function pinFilterBarToTop() {
         <DropdownMenu.RadioItem value="default">Default</DropdownMenu.RadioItem>
         <DropdownMenu.RadioItem value="scientific">Scientific name</DropdownMenu.RadioItem>
         <DropdownMenu.RadioItem value="common">Common name</DropdownMenu.RadioItem>
+        <DropdownMenu.RadioItem value="taxonomic">Taxonomic</DropdownMenu.RadioItem>
       </DropdownMenu.RadioGroup>
     </DropdownMenu.Content>
   </DropdownMenu.Root>

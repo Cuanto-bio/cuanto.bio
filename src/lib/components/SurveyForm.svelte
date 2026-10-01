@@ -12,6 +12,7 @@ import SurveyLocationEditor, {
   type TrackChange,
 } from '$lib/components/SurveyLocationEditor.svelte';
 import TargetFilterControls from '$lib/components/TargetFilterControls.svelte';
+import TargetGroupHeading from '$lib/components/TargetGroupHeading.svelte';
 import Taxon from '$lib/components/Taxon.svelte';
 import TaxonAutocomplete, {
   type TaxonResult,
@@ -1555,39 +1556,47 @@ function displayCount(qty: undefined | string | number) {
       {#if targetFilter.filtered.length === 0}
         <p class="text-muted-foreground mb-6 mt-2 text-sm">No targets match "{targetFilter.filterQuery}".</p>
       {:else}
-        <ul class="-mx-4 mb-6 divide-y border-y sm:mx-0 sm:rounded-lg sm:border">
-          {#each targetFilter.filtered as target (target.atUri)}
-            {@const qty = organismQuantities[target.atUri]}
-            {@const hasCount = qty !== undefined && qty !== '' && qty !== '0'}
-            {@const first = target.record.scope[0]}
-            <li use:liFlash={flashingTargets[target.atUri] ?? 0} class="flex items-center p-2">
-              <button
-                type="button"
-                class="flex flex-1 items-center gap-2 px-4 py-3 text-left"
-                onclick={() => openTargetSheet(target)}
-              >
-                <span class="flex-1 text-sm font-medium">
-                  {#if first?.$type?.endsWith('#taxonScope')}
-                    <Taxon taxon={first as TaxonScope} />
-                  {:else if first?.$type?.endsWith('#verbatimScope')}
-                    {(first as VerbatimScope).verbatimTargetScope ?? 'Unknown'}
-                  {/if}
-                </span>
-              </button>
-              <button
-                type="button"
-                class="mr-3 flex min-h-11 min-w-11 p-2 items-center justify-center rounded-full text-sm font-bold tabular-nums active:scale-120 transition-transform
-                  {hasCount
-                    ? 'bg-primary text-primary-foreground'
-                    : 'border-2 border-border text-muted-foreground hover:border-primary hover:text-foreground'}"
-                onclick={() => increment(target.atUri)}
-                aria-label="Increase count"
-              >
-                {displayCount(qty)}
-              </button>
-            </li>
-          {/each}
-        </ul>
+        {#each targetFilter.groups as group, groupIndex (group.key)}
+          {#if group.header}
+            <TargetGroupHeading header={group.header} class="mb-2 mt-4" />
+          {/if}
+          <ul
+            class="-mx-4 divide-y border-y sm:mx-0 sm:rounded-lg sm:border
+              {groupIndex === targetFilter.groups.length - 1 ? 'mb-6' : 'mb-2'}"
+          >
+            {#each group.targets as target (target.atUri)}
+              {@const qty = organismQuantities[target.atUri]}
+              {@const hasCount = qty !== undefined && qty !== '' && qty !== '0'}
+              {@const first = target.record.scope[0]}
+              <li use:liFlash={flashingTargets[target.atUri] ?? 0} class="flex items-center p-2">
+                <button
+                  type="button"
+                  class="flex flex-1 items-center gap-2 px-4 py-3 text-left"
+                  onclick={() => openTargetSheet(target)}
+                >
+                  <span class="flex-1 text-sm font-medium">
+                    {#if first?.$type?.endsWith('#taxonScope')}
+                      <Taxon taxon={first as TaxonScope} />
+                    {:else if first?.$type?.endsWith('#verbatimScope')}
+                      {(first as VerbatimScope).verbatimTargetScope ?? 'Unknown'}
+                    {/if}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  class="mr-3 flex min-h-11 min-w-11 p-2 items-center justify-center rounded-full text-sm font-bold tabular-nums active:scale-120 transition-transform
+                    {hasCount
+                      ? 'bg-primary text-primary-foreground'
+                      : 'border-2 border-border text-muted-foreground hover:border-primary hover:text-foreground'}"
+                  onclick={() => increment(target.atUri)}
+                  aria-label="Increase count"
+                >
+                  {displayCount(qty)}
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/each}
       {/if}
       {#if targetFilter.filterQuery.trim() || targetFilter.onlyCounted}
         <Button variant="ghost" class="w-full mb-4" onclick={() => targetFilter.reset()}>

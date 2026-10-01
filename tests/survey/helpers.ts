@@ -60,6 +60,31 @@ export async function seedExtraTargets(
   }
 }
 
+// Adds a taxon target for each of `scopes` (the taxonScope fields, without
+// $type) to an already-seeded protocol, after its existing targets.
+export async function seedTaxonTargets(
+  sql: Sql,
+  did: string,
+  protocolRkey: string,
+  scopes: Record<string, string>[],
+) {
+  const protocolUri = `at://${did}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+  for (let i = 0; i < scopes.length; i++) {
+    const rkey = `taxontarget${i}-${Date.now()}`;
+    const atUri = `at://${did}/bio.cuanto.protocolTarget/${rkey}`;
+    const record = {
+      $type: 'bio.cuanto.protocolTarget',
+      protocol: protocolUri,
+      scope: [{ $type: 'bio.cuanto.protocolTarget#taxonScope', ...scopes[i] }],
+    };
+    await sql`
+      INSERT INTO protocol_targets (at_uri, did, rkey, protocol_uri, record, indexed_at)
+      VALUES (${atUri}, ${did}, ${rkey}, ${protocolUri}, ${sql.json(record)},
+        ${new Date(Date.now() + 10_000 + i * 1_000).toISOString()})
+    `;
+  }
+}
+
 export async function cacheAndOpenNewSurvey(
   page: Page,
   handle: string,
