@@ -32,8 +32,8 @@ describe('remark licenses', () => {
   });
 
   it('rejects anything not in the list', () => {
-    // An SPDX identifier is the tempting wrong answer: media.license still uses
-    // them, but dcterms:license wants the URI of the license document.
+    // An SPDX identifier is the tempting wrong answer: media.license used them
+    // until #78, but dcterms:license wants the URI of the license document.
     expect(isKnownLicense('CC0-1.0')).toBe(false);
     expect(isKnownLicense('')).toBe(false);
     expect(isKnownLicense(null)).toBe(false);

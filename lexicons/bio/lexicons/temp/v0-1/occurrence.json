@@ -35,6 +35,25 @@
             },
             "maxLength": 10
           },
+          "organismQuantity": {
+            "type": "string",
+            "description": "The quantity of the organism present at the time of the Occurrence. Generally an integer or float but may be categorical, e.g. 'many' or '10-100' (Darwin Core dwc:organismQuantity)."
+          },
+          "organismQuantityType": {
+            "type": "string",
+            "description": "The type of quantification system used for the quantity of organisms (Darwin Core dwc:organismQuantityType).",
+            "knownValues": ["individuals", "percent-cover"]
+          },
+          "occurrenceRemarksID": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT-URI of a bio.lexicons.temp.v0-1.remark record whose body holds comments or notes about the occurrence. The remark body maps to Darwin Core dwc:occurrenceRemarks."
+          },
+          "eventRemarksID": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT-URI of a bio.lexicons.temp.v0-1.remark record whose body holds comments or notes about the event (the time and place) of this occurrence. The remark body maps to Darwin Core dwc:eventRemarks."
+          },
           "taxonID": {
             "type": "string",
             "format": "uri",
@@ -45,30 +64,44 @@
             "ref": "com.atproto.repo.strongRef",
             "description": "Identification accepted by the occurrence user as the source of taxonID. Must be accompanied by taxonID. Indirectly maps to Darwin Core dwc:isAcceptedIdentification."
           },
-          "surveyTargetID": {
-            "type": "string",
-            "format": "at-uri",
-            "description": "The surveyor's own SurveyTarget this Occurrence was intended to satisfy. A durable, same-repo copy of the targeted criteria. Expresses observer intent. The originating ProtocolTarget is reachable via the SurveyTarget's protocolTargetID."
+          "externalRecords": {
+            "type": "array",
+            "description": "Records of this same occurrence held outside this lexicon, whether in another AT Protocol lexicon (such as an app.gainforest.dwc.occurrence record) or on a service outside the network entirely (such as an iNaturalist observation). Intended for consumers cross-linking between platforms and for deduplicating observations across them. Has no DwC-DP equivalent; on Darwin Core export the entry URIs concatenate into dwc:otherCatalogNumbers.",
+            "items": {
+              "type": "ref",
+              "ref": "#externalRecord"
+            },
+            "maxLength": 10
           },
           "eventID": {
             "type": "string",
             "format": "at-uri",
             "description": "Event (e.g. a Survey) this Occurrence was a part of (sensu DarwinCore dwc:eventID)."
           },
-          "organismQuantity": {
-            "type": "string",
-            "description": "The quantity of the organism present at the time of the Occurrence. Generally an integer or float but may be categorical, e.g. 'many' or '10-100' (sensu DarwinCore dwc:organismQuantity)."
-          },
-          "organismQuantityType": {
-            "type": "string",
-            "description": "The type of quantification system used for the quantity of organisms (sensu DarwinCore dwc:organismQuantityType).",
-            "knownValues": ["individuals", "percent-cover"]
-          },
-          "occurrenceRemarksID": {
+          "surveyTargetID": {
             "type": "string",
             "format": "at-uri",
-            "description": "AT-URI of a bio.lexicons.temp.v0-1.remark record whose body holds comments or notes about the occurrence. The remark body maps to Darwin Core dwc:occurrenceRemarks."
+            "description": "The surveyor's own SurveyTarget this Occurrence was intended to satisfy. A durable, same-repo copy of the targeted criteria. Expresses observer intent. The originating ProtocolTarget is reachable via the SurveyTarget's protocolTargetID."
           }
+        }
+      }
+    },
+    "externalRecord": {
+      "type": "object",
+      "description": "A reference to a record of this occurrence kept outside this lexicon, which may still be within the AT Protocol network. The target is an occurrence record, not a photo or other media item depicting the organism; media belong on the occurrence's media field. For a record held in another AT Protocol lexicon, reference it by its at-uri, which is canonical and does not tie the reference to any one appview. For anything else, use the canonical web URL of the occurrence record on the holding service.",
+      "required": ["uri"],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "format": "uri",
+          "description": "Stable URI of the record, preferably its canonical permalink. Any URI scheme is permitted, including at:// for records held in another AT Protocol lexicon. Examples: \"https://www.inaturalist.org/observations/123456789\", \"at://did:plc:jt6xegjm6ba2lt34aztyi2mn/app.gainforest.dwc.occurrence/3mu252kzh4y2h\".",
+          "maxLength": 512
+        },
+        "service": {
+          "type": "string",
+          "description": "Short identifier for the service holding the record. For an AT Protocol-based app, use the app name (e.g. \"gainforest\"). Lets consumers group records by platform without parsing hostnames or at-uri collections, which is unreliable across localised network nodes (e.g. inaturalist.nz) and self-hosted instances. Known values are not exhaustive. No Darwin Core equivalent.",
+          "knownValues": ["inaturalist", "bugguide"],
+          "maxLength": 64
         }
       }
     }

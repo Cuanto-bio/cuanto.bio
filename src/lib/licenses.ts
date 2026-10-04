@@ -2,9 +2,9 @@ import type { Main as Remark } from '$lib/lexicons/bio/lexicons/temp/v0-1/remark
 
 // The licenses a Remark record can be published under. Kept in step with the
 // `license` knownValues in lexicons/bio/lexicons/temp/v0-1/remark.json, which
-// are license *document URIs* (Dublin Core dcterms:license), not the SPDX
-// identifiers media.license still uses. SPDX is primarily a software-license
-// vocabulary, so the two are deliberately not interchangeable.
+// are license *document URIs* (Dublin Core dcterms:license), not SPDX
+// identifiers. SPDX is primarily a software-license vocabulary. media.license
+// takes the same URIs.
 
 export type RemarkLicense = NonNullable<Remark['license']>;
 

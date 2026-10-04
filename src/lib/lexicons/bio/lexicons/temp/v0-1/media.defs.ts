@@ -26,14 +26,14 @@ type Main = {
   aspectRatio?: AspectRatio
 
   /**
-   * SPDX license identifier for this media (maps to Dublin Core dcterms:license).
+   * URI of the license under which this media is published (Dublin Core dcterms:license). Creative Commons license URIs are the recommended values.
    */
   license?:
-    | 'CC0-1.0'
-    | 'CC-BY-4.0'
-    | 'CC-BY-NC-4.0'
-    | 'CC-BY-SA-4.0'
-    | 'CC-BY-NC-SA-4.0'
+    | 'https://creativecommons.org/publicdomain/zero/1.0/'
+    | 'https://creativecommons.org/licenses/by/4.0/'
+    | 'https://creativecommons.org/licenses/by-nc/4.0/'
+    | 'https://creativecommons.org/licenses/by-sa/4.0/'
+    | 'https://creativecommons.org/licenses/by-nc-sa/4.0/'
     | l.UnknownString
 }
 
@@ -55,14 +55,14 @@ const main = /*#__PURE__*/ l.record<'tid', Main>(
     license: /*#__PURE__*/ l.optional(
       /*#__PURE__*/ l.string<{
         knownValues: [
-          'CC0-1.0',
-          'CC-BY-4.0',
-          'CC-BY-NC-4.0',
-          'CC-BY-SA-4.0',
-          'CC-BY-NC-SA-4.0',
+          'https://creativecommons.org/publicdomain/zero/1.0/',
+          'https://creativecommons.org/licenses/by/4.0/',
+          'https://creativecommons.org/licenses/by-nc/4.0/',
+          'https://creativecommons.org/licenses/by-sa/4.0/',
+          'https://creativecommons.org/licenses/by-nc-sa/4.0/',
         ]
-        maxLength: 32
-      }>({ maxLength: 32 }),
+        maxLength: 128
+      }>({ maxLength: 128 }),
     ),
   }),
 )

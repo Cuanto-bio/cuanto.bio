@@ -69,9 +69,8 @@ and `bio.lexicons.*` collections are granted as plain `repo:` scopes.
 ## Licensing
 
 The remark lexicon's `license` takes a license *document URI*
-(`https://creativecommons.org/licenses/by/4.0/`), not an SPDX identifier. Note
-that the vendored `media.json` still uses SPDX ids; upstream has since changed
-that and we have not resynced (#78). The two are not interchangeable.
+(`https://creativecommons.org/licenses/by/4.0/`), not an SPDX identifier.
+`media.json` used SPDX ids until the #78 resync; it now takes the same URIs.
 
 The surveyor picks one default on `/app/account`
 (`users.default_remark_license`), and the **server** stamps it onto the record

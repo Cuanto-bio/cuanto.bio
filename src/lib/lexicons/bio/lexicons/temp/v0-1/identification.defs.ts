@@ -52,9 +52,14 @@ type Main = {
   taxonID?: l.UriString
 
   /**
-   * Explanation or reasoning for this identification (Darwin Core dwc:identificationRemarks).
+   * @deprecated use identificationRemarksID instead. Explanation or reasoning for this identification (Darwin Core dwc:identificationRemarks). Ignored when identificationRemarksID is also set.
    */
   identificationRemarks?: string
+
+  /**
+   * AT-URI of a bio.lexicons.temp.v0-1.remark record whose body explains the reasoning for this identification. The remark body maps to Darwin Core dwc:identificationRemarks.
+   */
+  identificationRemarksID?: l.AtUriString
 
   /**
    * Common name at time of identification.
@@ -101,6 +106,9 @@ const main = /*#__PURE__*/ l.record<'tid', Main>(
     ),
     identificationRemarks: /*#__PURE__*/ l.optional(
       /*#__PURE__*/ l.string({ maxLength: 3000 }),
+    ),
+    identificationRemarksID: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string({ format: 'at-uri' }),
     ),
     vernacularName: /*#__PURE__*/ l.optional(
       /*#__PURE__*/ l.string({ maxLength: 256 }),

@@ -41,6 +41,26 @@ type Main = {
   media?: RepoStrongRef.Main[]
 
   /**
+   * The quantity of the organism present at the time of the Occurrence. Generally an integer or float but may be categorical, e.g. 'many' or '10-100' (Darwin Core dwc:organismQuantity).
+   */
+  organismQuantity?: string
+
+  /**
+   * The type of quantification system used for the quantity of organisms (Darwin Core dwc:organismQuantityType).
+   */
+  organismQuantityType?: 'individuals' | 'percent-cover' | l.UnknownString
+
+  /**
+   * AT-URI of a bio.lexicons.temp.v0-1.remark record whose body holds comments or notes about the occurrence. The remark body maps to Darwin Core dwc:occurrenceRemarks.
+   */
+  occurrenceRemarksID?: l.AtUriString
+
+  /**
+   * AT-URI of a bio.lexicons.temp.v0-1.remark record whose body holds comments or notes about the event (the time and place) of this occurrence. The remark body maps to Darwin Core dwc:eventRemarks.
+   */
+  eventRemarksID?: l.AtUriString
+
+  /**
    * Identified taxon the occurrence user has accepted, preferably a stable URI (e.g. a GBIF species URI). Derived from identification specified by acceptedIdentificationID. Must be accompanied by acceptedIdentificationID. Represents a more specific version of the DarwinCore equivalent (Darwin Core dwc:taxonID).
    */
   taxonID?: l.UriString
@@ -51,9 +71,9 @@ type Main = {
   acceptedIdentificationID?: RepoStrongRef.Main
 
   /**
-   * The surveyor's own SurveyTarget this Occurrence was intended to satisfy. A durable, same-repo copy of the targeted criteria. Expresses observer intent. The originating ProtocolTarget is reachable via the SurveyTarget's protocolTargetID.
+   * Records of this same occurrence held outside this lexicon, whether in another AT Protocol lexicon (such as an app.gainforest.dwc.occurrence record) or on a service outside the network entirely (such as an iNaturalist observation). Intended for consumers cross-linking between platforms and for deduplicating observations across them. Has no DwC-DP equivalent; on Darwin Core export the entry URIs concatenate into dwc:otherCatalogNumbers.
    */
-  surveyTargetID?: l.AtUriString
+  externalRecords?: ExternalRecord[]
 
   /**
    * Event (e.g. a Survey) this Occurrence was a part of (sensu DarwinCore dwc:eventID).
@@ -61,19 +81,9 @@ type Main = {
   eventID?: l.AtUriString
 
   /**
-   * The quantity of the organism present at the time of the Occurrence. Generally an integer or float but may be categorical, e.g. 'many' or '10-100' (sensu DarwinCore dwc:organismQuantity).
+   * The surveyor's own SurveyTarget this Occurrence was intended to satisfy. A durable, same-repo copy of the targeted criteria. Expresses observer intent. The originating ProtocolTarget is reachable via the SurveyTarget's protocolTargetID.
    */
-  organismQuantity?: string
-
-  /**
-   * The type of quantification system used for the quantity of organisms (sensu DarwinCore dwc:organismQuantityType).
-   */
-  organismQuantityType?: 'individuals' | 'percent-cover' | l.UnknownString
-
-  /**
-   * AT-URI of a bio.lexicons.temp.v0-1.remark record whose body holds comments or notes about the occurrence. The remark body maps to Darwin Core dwc:occurrenceRemarks.
-   */
-  occurrenceRemarksID?: l.AtUriString
+  surveyTargetID?: l.AtUriString
 }
 
 export type { Main }
@@ -97,6 +107,18 @@ const main = /*#__PURE__*/ l.record<'tid', Main>(
         { maxLength: 10 },
       ),
     ),
+    organismQuantity: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
+    organismQuantityType: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string<{
+        knownValues: ['individuals', 'percent-cover']
+      }>(),
+    ),
+    occurrenceRemarksID: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string({ format: 'at-uri' }),
+    ),
+    eventRemarksID: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string({ format: 'at-uri' }),
+    ),
     taxonID: /*#__PURE__*/ l.optional(
       /*#__PURE__*/ l.string({ format: 'uri' }),
     ),
@@ -105,19 +127,16 @@ const main = /*#__PURE__*/ l.record<'tid', Main>(
         (() => RepoStrongRef.main) as any,
       ),
     ),
-    surveyTargetID: /*#__PURE__*/ l.optional(
-      /*#__PURE__*/ l.string({ format: 'at-uri' }),
+    externalRecords: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.array(
+        /*#__PURE__*/ l.ref<ExternalRecord>((() => externalRecord) as any),
+        { maxLength: 10 },
+      ),
     ),
     eventID: /*#__PURE__*/ l.optional(
       /*#__PURE__*/ l.string({ format: 'at-uri' }),
     ),
-    organismQuantity: /*#__PURE__*/ l.optional(/*#__PURE__*/ l.string()),
-    organismQuantityType: /*#__PURE__*/ l.optional(
-      /*#__PURE__*/ l.string<{
-        knownValues: ['individuals', 'percent-cover']
-      }>(),
-    ),
-    occurrenceRemarksID: /*#__PURE__*/ l.optional(
+    surveyTargetID: /*#__PURE__*/ l.optional(
       /*#__PURE__*/ l.string({ format: 'at-uri' }),
     ),
   }),
@@ -142,3 +161,37 @@ export const $parse = /*#__PURE__*/ main.parse.bind(main)
 export const $safeParse = /*#__PURE__*/ main.safeParse.bind(main)
 export const $validate = /*#__PURE__*/ main.validate.bind(main)
 export const $safeValidate = /*#__PURE__*/ main.safeValidate.bind(main)
+
+/** A reference to a record of this occurrence kept outside this lexicon, which may still be within the AT Protocol network. The target is an occurrence record, not a photo or other media item depicting the organism; media belong on the occurrence's media field. For a record held in another AT Protocol lexicon, reference it by its at-uri, which is canonical and does not tie the reference to any one appview. For anything else, use the canonical web URL of the occurrence record on the holding service. */
+type ExternalRecord = {
+  $type?: 'bio.lexicons.temp.v0-1.occurrence#externalRecord'
+
+  /**
+   * Stable URI of the record, preferably its canonical permalink. Any URI scheme is permitted, including at:// for records held in another AT Protocol lexicon. Examples: "https://www.inaturalist.org/observations/123456789", "at://did:plc:jt6xegjm6ba2lt34aztyi2mn/app.gainforest.dwc.occurrence/3mu252kzh4y2h".
+   */
+  uri: l.UriString
+
+  /**
+   * Short identifier for the service holding the record. For an AT Protocol-based app, use the app name (e.g. "gainforest"). Lets consumers group records by platform without parsing hostnames or at-uri collections, which is unreliable across localised network nodes (e.g. inaturalist.nz) and self-hosted instances. Known values are not exhaustive. No Darwin Core equivalent.
+   */
+  service?: 'inaturalist' | 'bugguide' | l.UnknownString
+}
+
+export type { ExternalRecord }
+
+/** A reference to a record of this occurrence kept outside this lexicon, which may still be within the AT Protocol network. The target is an occurrence record, not a photo or other media item depicting the organism; media belong on the occurrence's media field. For a record held in another AT Protocol lexicon, reference it by its at-uri, which is canonical and does not tie the reference to any one appview. For anything else, use the canonical web URL of the occurrence record on the holding service. */
+const externalRecord = /*#__PURE__*/ l.typedObject<ExternalRecord>(
+  $nsid,
+  'externalRecord',
+  /*#__PURE__*/ l.object({
+    uri: /*#__PURE__*/ l.string({ format: 'uri', maxLength: 512 }),
+    service: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string<{
+        knownValues: ['inaturalist', 'bugguide']
+        maxLength: 64
+      }>({ maxLength: 64 }),
+    ),
+  }),
+)
+
+export { externalRecord }
