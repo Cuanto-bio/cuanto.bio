@@ -5,7 +5,7 @@ vi.mock('$lib/server/db/surveys', () => ({
   getOccurrencesForSurveys: vi.fn(),
   groupOccurrencesBySurvey: vi.fn(),
   toSurveyResponse: vi.fn(),
-  attachEventRemarks: vi.fn(),
+  attachRemarks: vi.fn(),
 }));
 
 vi.mock('$lib/server/db/identifications', () => ({
@@ -19,7 +19,7 @@ vi.mock('$lib/server/db/survey-protocols', () => ({
 import { getIdentificationsForOccurrences } from '$lib/server/db/identifications';
 import { getFollowedProtocolsByDid } from '$lib/server/db/survey-protocols';
 import {
-  attachEventRemarks,
+  attachRemarks,
   getOccurrencesForSurveys,
   getSurveysByDid,
   groupOccurrencesBySurvey,
@@ -129,15 +129,15 @@ describe('GET /api/sync — event remarks', () => {
     vi.mocked(toSurveyResponse).mockReturnValue(
       [] as unknown as ReturnType<typeof toSurveyResponse>,
     );
-    vi.mocked(attachEventRemarks).mockResolvedValue(
-      withRemark as unknown as Awaited<ReturnType<typeof attachEventRemarks>>,
+    vi.mocked(attachRemarks).mockResolvedValue(
+      withRemark as unknown as Awaited<ReturnType<typeof attachRemarks>>,
     );
 
     const resp = await GET({ locals: { did: DID } } as unknown as Parameters<
       typeof GET
     >[0]);
 
-    expect(attachEventRemarks).toHaveBeenCalled();
+    expect(attachRemarks).toHaveBeenCalled();
     const body = (await resp.json()) as {
       surveys: { eventRemark?: { body: string } }[];
     };

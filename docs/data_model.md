@@ -120,10 +120,12 @@ its own record so authored prose, a potential creative work, can be attributed
 and licensed separately from the facts in the record it describes.
 
 `bio.cuanto.survey.eventRemarksID` names the Remark holding a survey's
-`dwc:eventRemarks`. That forward reference is authoritative: a Remark nothing
-points at fills no term, even though it carries a `subject` naming what it
-describes. The `subject` exists so the Remark can be understood on its own and
-so a reference pointing at the wrong Remark can be detected.
+`dwc:eventRemarks`, and `occurrence.occurrenceRemarksID` names the one holding
+an occurrence's `dwc:occurrenceRemarks`. Each forward reference is
+authoritative: a Remark nothing points at fills no term, even though it carries
+a `subject` naming what it describes. The `subject` exists so the Remark can be
+understood on its own and so a reference pointing at the wrong Remark can be
+detected.
 
 |Attribute|Type|Required|Description|
 |---------|----|--------|-----------|
@@ -132,7 +134,8 @@ so a reference pointing at the wrong Remark can be detected.
 |`body`|string|required|The text, max 3000 characters. Becomes the value of `dwcTerm` on Darwin Core export.|
 |`license`|string|optional|URI of the license this text is published under (sensu [DCMI](http://purl.org/dc/terms/license)). Note this is a license *document URI*, not an SPDX identifier.|
 
-See [`docs/2026-09-21-survey-event-remarks.md`](./2026-09-21-survey-event-remarks.md).
+See [`docs/2026-09-21-survey-event-remarks.md`](./2026-09-21-survey-event-remarks.md)
+and [`docs/2026-09-30-issue-74-occurrence-remarks.md`](./2026-09-30-issue-74-occurrence-remarks.md).
 
 ## Updates to lexicons.bio
 

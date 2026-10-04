@@ -50,8 +50,9 @@ import {
 } from '$lib/server/pds';
 import {
   attachIdentificationToOccurrence,
-  deleteEventRemark,
-  writeEventRemark,
+  deleteRemark,
+  remarkLicenseResolver,
+  writeRemark,
 } from './survey-records';
 
 const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
@@ -157,14 +158,21 @@ describe('attachIdentificationToOccurrence', () => {
   });
 });
 
-describe('writeEventRemark', () => {
+describe('writeRemark', () => {
   test('writes the remark at the survey rkey, pointing back at the survey', async () => {
     vi.mocked(putRecord).mockResolvedValue({
       uri: REMARK_URI,
       cid: FAKE_CID,
     });
 
-    const uri = await writeEventRemark(DID, SURVEY_RKEY, SURVEY_URI, 'Foggy.');
+    const uri = await writeRemark(
+      DID,
+      'eventRemarks',
+      SURVEY_RKEY,
+      SURVEY_URI,
+      'Foggy.',
+      CC0,
+    );
 
     expect(uri).toBe(REMARK_URI);
     // Same rkey as the survey, different collection, so a retried POST
@@ -187,14 +195,49 @@ describe('writeEventRemark', () => {
     );
   });
 
-  test('stamps the account default license onto the record', async () => {
-    vi.mocked(getDefaultRemarkLicense).mockResolvedValue(CC_BY);
+  test('writes an occurrence remark at the occurrence rkey, pointing back at the occurrence', async () => {
+    const occRemarkUri = `at://${DID}/bio.lexicons.temp.v0-1.remark/${OCC_RKEY}`;
+    vi.mocked(putRecord).mockResolvedValue({
+      uri: occRemarkUri,
+      cid: FAKE_CID,
+    });
+
+    const uri = await writeRemark(
+      DID,
+      'occurrenceRemarks',
+      OCC_RKEY,
+      OCC_URI,
+      'Calling from the creek.',
+      CC0,
+    );
+
+    expect(uri).toBe(occRemarkUri);
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      'bio.lexicons.temp.v0-1.remark',
+      OCC_RKEY,
+      expect.objectContaining({
+        subject: OCC_URI,
+        dwcTerm: 'occurrenceRemarks',
+        body: 'Calling from the creek.',
+      }),
+    );
+  });
+
+  test('writes the license it is given onto the record', async () => {
     vi.mocked(putRecord).mockResolvedValue({
       uri: REMARK_URI,
       cid: FAKE_CID,
     });
 
-    await writeEventRemark(DID, SURVEY_RKEY, SURVEY_URI, 'Foggy.');
+    await writeRemark(
+      DID,
+      'eventRemarks',
+      SURVEY_RKEY,
+      SURVEY_URI,
+      'Foggy.',
+      CC_BY,
+    );
 
     expect(putRecord).toHaveBeenCalledWith(
       DID,
@@ -204,46 +247,17 @@ describe('writeEventRemark', () => {
     );
   });
 
-  test('falls back to CC0 when the user has never chosen a license', async () => {
-    vi.mocked(getDefaultRemarkLicense).mockResolvedValue(null);
-    vi.mocked(putRecord).mockResolvedValue({
-      uri: REMARK_URI,
-      cid: FAKE_CID,
-    });
-
-    await writeEventRemark(DID, SURVEY_RKEY, SURVEY_URI, 'Foggy.');
-
-    expect(putRecord).toHaveBeenCalledWith(
-      DID,
-      'bio.lexicons.temp.v0-1.remark',
-      SURVEY_RKEY,
-      expect.objectContaining({ license: CC0 }),
-    );
-  });
-
-  test('ignores a stored license that is no longer one we offer', async () => {
-    // Guards against a value written by an older build, or hand-edited in the
-    // database, reaching the PDS unchecked.
-    vi.mocked(getDefaultRemarkLicense).mockResolvedValue('CC-BY-4.0');
-    vi.mocked(putRecord).mockResolvedValue({
-      uri: REMARK_URI,
-      cid: FAKE_CID,
-    });
-
-    await writeEventRemark(DID, SURVEY_RKEY, SURVEY_URI, 'Foggy.');
-
-    expect(putRecord).toHaveBeenCalledWith(
-      DID,
-      'bio.lexicons.temp.v0-1.remark',
-      SURVEY_RKEY,
-      expect.objectContaining({ license: CC0 }),
-    );
-  });
-
   test('returns null when the write fails, so the survey is still saved', async () => {
     vi.mocked(putRecord).mockRejectedValueOnce(new Error('PDS unavailable'));
 
-    const uri = await writeEventRemark(DID, SURVEY_RKEY, SURVEY_URI, 'Foggy.');
+    const uri = await writeRemark(
+      DID,
+      'eventRemarks',
+      SURVEY_RKEY,
+      SURVEY_URI,
+      'Foggy.',
+      CC0,
+    );
 
     expect(uri).toBeNull();
     expect(insertRemark).not.toHaveBeenCalled();
@@ -256,14 +270,49 @@ describe('writeEventRemark', () => {
     vi.mocked(putRecord).mockRejectedValueOnce(new PdsScopeInsufficientError());
 
     await expect(
-      writeEventRemark(DID, SURVEY_RKEY, SURVEY_URI, 'Foggy.'),
+      writeRemark(DID, 'eventRemarks', SURVEY_RKEY, SURVEY_URI, 'Foggy.', CC0),
     ).rejects.toBeInstanceOf(PdsSessionExpiredError);
   });
 });
 
-describe('deleteEventRemark', () => {
+describe('remarkLicenseResolver', () => {
+  test('uses the license the surveyor picked', async () => {
+    const licenseFor = remarkLicenseResolver(DID);
+    expect(await licenseFor(CC_BY)).toBe(CC_BY);
+    expect(getDefaultRemarkLicense).not.toHaveBeenCalled();
+  });
+
+  test('falls back to the account default', async () => {
+    vi.mocked(getDefaultRemarkLicense).mockResolvedValue(CC_BY);
+    expect(await remarkLicenseResolver(DID)()).toBe(CC_BY);
+  });
+
+  test('falls back to CC0 when the user has never chosen a license', async () => {
+    vi.mocked(getDefaultRemarkLicense).mockResolvedValue(null);
+    expect(await remarkLicenseResolver(DID)()).toBe(CC0);
+  });
+
+  test('ignores a stored license that is no longer one we offer', async () => {
+    // Guards against a value written by an older build, or hand-edited in the
+    // database, reaching the PDS unchecked.
+    vi.mocked(getDefaultRemarkLicense).mockResolvedValue('CC-BY-4.0');
+    expect(await remarkLicenseResolver(DID)()).toBe(CC0);
+  });
+
+  test('looks the account default up at most once', async () => {
+    // A survey can carry a remark per target; each one without a picked
+    // license would otherwise repeat the same query.
+    vi.mocked(getDefaultRemarkLicense).mockResolvedValue(CC_BY);
+    const licenseFor = remarkLicenseResolver(DID);
+    await Promise.all([licenseFor(), licenseFor(), licenseFor()]);
+    await licenseFor();
+    expect(getDefaultRemarkLicense).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('deleteRemark', () => {
   test('deletes the PDS record and the mirror row', async () => {
-    await deleteEventRemark(REMARK_URI);
+    await deleteRemark(REMARK_URI);
 
     expect(deleteRecord).toHaveBeenCalledWith(REMARK_URI);
     expect(deleteRemarkByAtUri).toHaveBeenCalledWith(REMARK_URI);
@@ -272,7 +321,7 @@ describe('deleteEventRemark', () => {
   test('still clears the mirror row when the PDS record is already gone', async () => {
     vi.mocked(deleteRecord).mockRejectedValueOnce(new Error('RecordNotFound'));
 
-    await deleteEventRemark(REMARK_URI);
+    await deleteRemark(REMARK_URI);
 
     expect(deleteRemarkByAtUri).toHaveBeenCalledWith(REMARK_URI);
   });
@@ -280,7 +329,7 @@ describe('deleteEventRemark', () => {
   test('rethrows an auth failure', async () => {
     vi.mocked(deleteRecord).mockRejectedValueOnce(new PdsSessionExpiredError());
 
-    await expect(deleteEventRemark(REMARK_URI)).rejects.toBeInstanceOf(
+    await expect(deleteRemark(REMARK_URI)).rejects.toBeInstanceOf(
       PdsSessionExpiredError,
     );
   });

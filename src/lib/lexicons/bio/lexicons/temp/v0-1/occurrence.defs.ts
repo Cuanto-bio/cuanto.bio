@@ -69,6 +69,11 @@ type Main = {
    * The type of quantification system used for the quantity of organisms (sensu DarwinCore dwc:organismQuantityType).
    */
   organismQuantityType?: 'individuals' | 'percent-cover' | l.UnknownString
+
+  /**
+   * AT-URI of a bio.lexicons.temp.v0-1.remark record whose body holds comments or notes about the occurrence. The remark body maps to Darwin Core dwc:occurrenceRemarks.
+   */
+  occurrenceRemarksID?: l.AtUriString
 }
 
 export type { Main }
@@ -111,6 +116,9 @@ const main = /*#__PURE__*/ l.record<'tid', Main>(
       /*#__PURE__*/ l.string<{
         knownValues: ['individuals', 'percent-cover']
       }>(),
+    ),
+    occurrenceRemarksID: /*#__PURE__*/ l.optional(
+      /*#__PURE__*/ l.string({ format: 'at-uri' }),
     ),
   }),
 )

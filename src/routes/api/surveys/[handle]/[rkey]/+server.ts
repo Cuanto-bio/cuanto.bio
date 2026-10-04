@@ -10,12 +10,11 @@ import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
 import { bbox, geo } from '$lib/lexicons/community/lexicon/location';
 import * as Place from '$lib/lexicons/org/atgeo/place';
 import type { Main as AtgeoPlace } from '$lib/lexicons/org/atgeo/place.defs';
-import type { RemarkLicense } from '$lib/licenses';
 import {
   mergeOccurrenceMetadata,
   occurrenceMetadataFromSurveyInput,
 } from '$lib/occurrenceMetadata';
-import { validateEventRemark } from '$lib/remarks';
+import { type RemarkInput, validateRemark } from '$lib/remarks';
 import { deleteIdentificationsByOccurrenceUris } from '$lib/server/db/identifications';
 import {
   deleteOccurrenceByAtUri,
@@ -37,24 +36,72 @@ import { createRecord, deleteRecord, putRecord } from '$lib/server/pds';
 import { pdsAuthErrorResponse } from '$lib/server/pds-error-response';
 import {
   attachIdentificationToOccurrence,
-  deleteEventRemark,
-  writeEventRemark,
+  deleteRemark,
+  remarkLicenseResolver,
+  writeRemark,
 } from '$lib/server/survey-records';
 import { eventDateIsInFuture } from '$lib/server/survey-validation';
 import { surveyTargetUriFor } from '$lib/surveyTargets';
+import { generateTid } from '$lib/tid';
 import type { RequestHandler } from './$types';
 
 const log = logger.child({ component: 'api-surveys-detail' });
 
-// The survey's eventRemarksID, but only if it is in the surveyor's own repo.
-// Another client can put any AT-URI there, and deleteRecord signs in as the DID
-// in the URI, so following a foreign one would touch another user's records.
-function ownRemarkUri(
-  did: string,
-  survey: { record: { eventRemarksID?: string } },
-) {
-  const uri = survey.record.eventRemarksID;
+// A remark reference (eventRemarksID, occurrenceRemarksID), but only if it is
+// in the surveyor's own repo. Another client can put any AT-URI there, and
+// deleteRecord signs in as the DID in the URI, so following a foreign one would
+// touch another user's records.
+function ownRemarkUri(did: string, uri: string | undefined) {
   return uri && didFromAtUri(uri) === did ? uri : undefined;
+}
+
+/**
+ * Applies an edit to the remark a survey or occurrence references, and returns
+ * the reference to write on that subject plus, when the remark was cleared, the
+ * remark to delete once the subject no longer names it.
+ *
+ * `input` is a tri-state: undefined preserves the existing remark, null (or a
+ * blank body) removes it, a body replaces it. The remark is written here,
+ * before the subject, and deleted by the caller after it, because the forward
+ * reference is authoritative: the subject must never name a record that does
+ * not exist.
+ *
+ * A reference into another user's repo is never ours to rewrite or delete: an
+ * edit that sets or clears the remark replaces or drops the reference without
+ * touching the record it names.
+ *
+ * `licenseFor` is the request's remarkLicenseResolver.
+ */
+async function resolveRemarkEdit(
+  did: string,
+  dwcTerm: 'eventRemarks' | 'occurrenceRemarks',
+  subjectRkey: string,
+  subjectUri: string,
+  existingID: string | undefined,
+  input: RemarkInput | null | undefined,
+  licenseFor: (picked?: string) => Promise<string>,
+): Promise<{ remarksID?: string; remarkUriToDelete?: string }> {
+  if (input === undefined) return { remarksID: existingID };
+  const existingOwnUri = ownRemarkUri(did, existingID);
+  const body = input?.body.trim() ?? '';
+  if (!body) return { remarkUriToDelete: existingOwnUri };
+  // Follow the rkey the remark already has: another client may have written
+  // it at a key of its own choosing, and overwriting our derived key instead
+  // would leave that record orphaned.
+  const remarkRkey = existingOwnUri
+    ? parseAtUri(existingOwnUri).rkey
+    : subjectRkey;
+  // On failure keep the old reference: the previous record is still there
+  // untouched, so dropping the link would orphan it.
+  const written = await writeRemark(
+    did,
+    dwcTerm,
+    remarkRkey,
+    subjectUri,
+    body,
+    await licenseFor(input?.license),
+  );
+  return { remarksID: written ?? existingID };
 }
 
 // Surveys are publicly readable. Auth is required only to prevent anonymous
@@ -84,22 +131,22 @@ export const DELETE: RequestHandler = async ({ params, locals, url }) => {
   const ownerDid = await getSurveyOwnerDid(survey.atUri);
   if (ownerDid !== did) error(403, 'Forbidden');
 
-  // The survey's remark goes with it, and goes first: deleteEventRemark
+  const deleteOccurrences =
+    url.searchParams.get('deleteOccurrences') !== 'false';
+
+  // The survey's remark goes with it, and goes first: deleteRemark
   // rethrows auth failures, and on one we stop before touching anything so the
   // surveyor can sign in and retry with the survey and index still intact.
-  const remarkUri = ownRemarkUri(did, survey);
+  const remarkUri = ownRemarkUri(did, survey.record.eventRemarksID);
   if (remarkUri) {
     try {
-      await deleteEventRemark(remarkUri);
+      await deleteRemark(remarkUri);
     } catch (err) {
       const authResp = pdsAuthErrorResponse(err);
       if (authResp) return authResp;
       throw err;
     }
   }
-
-  const deleteOccurrences =
-    url.searchParams.get('deleteOccurrences') !== 'false';
 
   const occurrences = await getOccurrencesForSurveys([survey.atUri]);
   const occurrenceUris = occurrences.map((o) => o.at_uri);
@@ -119,11 +166,30 @@ export const DELETE: RequestHandler = async ({ params, locals, url }) => {
         log.error({ err, at_uri }, 'Failed to delete identification from PDS');
       }
     }
+    // Occurrence remarks go only with their occurrences (an occurrence kept on
+    // the PDS still references its remark), and only after them, so a failed
+    // occurrence delete never leaves it naming a deleted remark.
+    const remarkUriByOccurrence = new Map(
+      survey.occurrences.map((o) => [
+        o.atUri,
+        ownRemarkUri(did, o.record.occurrenceRemarksID),
+      ]),
+    );
     for (const { at_uri } of deletedOccs) {
       try {
         await deleteRecord(at_uri);
       } catch (err) {
         log.error({ err, at_uri }, 'Failed to delete occurrence from PDS');
+        continue;
+      }
+      const occRemarkUri = remarkUriByOccurrence.get(at_uri);
+      if (!occRemarkUri) continue;
+      try {
+        await deleteRemark(occRemarkUri);
+      } catch (err) {
+        // Past the point of stopping: the occurrence is already gone, so an
+        // auth failure here can only orphan the remark.
+        log.error({ err, occRemarkUri }, 'Failed to delete occurrence remark');
       }
     }
   }
@@ -147,6 +213,8 @@ type OccurrenceEditInput = {
   surveyTargetUri: string;
   taxonID?: string;
   organismQuantity: string;
+  // Same tri-state as eventRemark, for this occurrence's remark.
+  remark?: RemarkInput | null;
 };
 
 type IncidentalEditInput = {
@@ -175,7 +243,7 @@ type SurveyEditInput = {
   // blank is a removal too, so clearing the textarea deletes the record rather
   // than publishing an empty one. `license` works as on create: omitted means
   // the account default.
-  eventRemark?: { body: string; license?: string } | null;
+  eventRemark?: RemarkInput | null;
   occurrences: OccurrenceEditInput[];
   incidentals: IncidentalEditInput[];
   // Explicit deletions (#24). Only occurrences/incidentals whose at-uri appears
@@ -190,8 +258,14 @@ type SurveyEditInput = {
 // PDS. Identifications go first, or the occurrence delete can trip the
 // identifications_occurrence_uri_fkey constraint. PDS delete failures are logged
 // but non-fatal (the local record is already gone).
+//
+// The occurrence's own remark goes too, after the occurrence: a remark nothing
+// references fills no term, so keeping it would only leave an orphan. If the
+// occurrence could not be deleted from the PDS it still names the remark, so
+// the remark is kept rather than left as a dangling reference.
 async function deleteOccurrenceAndIdentifications(
   atUri: string,
+  remarkUri: string | undefined,
 ): Promise<void> {
   const identRows = await deleteIdentificationsByOccurrenceUris([atUri]);
   for (const { at_uri } of identRows) {
@@ -206,7 +280,12 @@ async function deleteOccurrenceAndIdentifications(
     await deleteRecord(atUri);
   } catch (err) {
     log.error({ err, atUri }, 'Failed to delete occurrence from PDS');
+    return;
   }
+  // An auth failure here propagates after the occurrence is already gone, and
+  // a retried PUT no longer finds it in the survey, so the remark is orphaned.
+  // The session would have to expire between these two calls; accepted.
+  if (remarkUri) await deleteRemark(remarkUri);
 }
 
 export const PUT: RequestHandler = async (event) => {
@@ -217,7 +296,7 @@ export const PUT: RequestHandler = async (event) => {
   try {
     return await putSurvey(event, event.locals.did);
   } catch (err) {
-    // writeEventRemark and deleteEventRemark rethrow auth failures so the
+    // writeRemark and deleteRemark rethrow auth failures so the
     // client can prompt for sign-in or the missing scope rather than show a
     // generic error.
     const authResp = pdsAuthErrorResponse(err);
@@ -251,8 +330,24 @@ async function putSurvey(
     error(422, 'eventDate must not be in the future');
   }
 
+  // A license we do not offer passes only if the remark already has it.
   if (body.eventRemark != null) {
-    const remarkError = validateEventRemark(body.eventRemark);
+    const remarkError = validateRemark(
+      body.eventRemark,
+      'eventRemark',
+      survey.eventRemark?.license,
+    );
+    if (remarkError) error(422, remarkError);
+  }
+
+  for (const [i, occ] of body.occurrences.entries()) {
+    if (occ.remark == null) continue;
+    const existing = survey.occurrences.find((o) => o.atUri === occ.atUri);
+    const remarkError = validateRemark(
+      occ.remark,
+      `occurrences[${i}].remark`,
+      existing?.remark?.license,
+    );
     if (remarkError) error(422, remarkError);
   }
 
@@ -319,45 +414,19 @@ async function putSurvey(
             source: body.track.source as 'device' | 'uploaded',
           };
 
-  // eventRemark: undefined preserves the existing remark, null (or a blank
-  // body) removes it, a body replaces it. Written before the survey record, and
-  // deleted after it, for the same reason as on create: the forward reference
-  // is authoritative, so the survey must never name a record that does not
-  // exist.
-  // A reference into another user's repo is never ours to rewrite or delete:
-  // an edit that sets or clears the remark replaces or drops the reference
-  // without touching the record it names.
-  const existingRemarkUri = ownRemarkUri(did, survey);
-  const newRemarkBody =
-    body.eventRemark === undefined
-      ? undefined
-      : (body.eventRemark?.body.trim() ?? '');
-
-  let eventRemarksID: string | undefined = survey.record.eventRemarksID;
-  let remarkUriToDelete: string | undefined;
-  if (newRemarkBody !== undefined) {
-    if (newRemarkBody) {
-      // Follow the rkey the remark already has: another client may have
-      // written it at a key of its own choosing, and overwriting our derived
-      // key instead would leave that record orphaned.
-      const remarkRkey = existingRemarkUri
-        ? parseAtUri(existingRemarkUri).rkey
-        : survey.rkey;
-      // On failure keep the old reference: the previous record is still there
-      // untouched, so dropping the link would orphan it.
-      eventRemarksID =
-        (await writeEventRemark(
-          did,
-          remarkRkey,
-          survey.atUri,
-          newRemarkBody,
-          body.eventRemark?.license as RemarkLicense | undefined,
-        )) ?? eventRemarksID;
-    } else {
-      remarkUriToDelete = existingRemarkUri;
-      eventRemarksID = undefined;
-    }
-  }
+  // eventRemark: see resolveRemarkEdit. Written before the survey record, and
+  // deleted after it, for the same reason as on create.
+  const licenseFor = remarkLicenseResolver(did);
+  const { remarksID: eventRemarksID, remarkUriToDelete } =
+    await resolveRemarkEdit(
+      did,
+      'eventRemarks',
+      survey.rkey,
+      survey.atUri,
+      survey.record.eventRemarksID,
+      body.eventRemark,
+      licenseFor,
+    );
 
   // Update the survey record (preserve original createdAt and protocol ref)
   const surveyRecord = Survey.$build({
@@ -380,7 +449,7 @@ async function putSurvey(
   const surveyRkey = survey.rkey;
   await putRecord(did, Survey.$type, surveyRkey, surveyRecord);
   await insertSurvey(did, surveyRkey, surveyRecord, survey.atUri);
-  if (remarkUriToDelete) await deleteEventRemark(remarkUriToDelete);
+  if (remarkUriToDelete) await deleteRemark(remarkUriToDelete);
 
   // Survey-derived metadata for occurrences. On edit we fill gaps but never
   // clobber metadata already on an occurrence (see mergeOccurrenceMetadata).
@@ -426,6 +495,15 @@ async function putSurvey(
     if (occ.atUri && deletedOccurrenceUris.has(occ.atUri)) continue;
 
     if (occ.atUri) {
+      // The record key, and the remark's subject, both come from atUri, so it
+      // has to be one of this survey's own occurrences.
+      if (!ownOccurrenceUris.has(occ.atUri)) {
+        log.warn(
+          { atUri: occ.atUri },
+          'update requested for an occurrence not in this survey; skipping',
+        );
+        continue;
+      }
       // Existing occurrence. A zero count no longer deletes it — omitting it
       // from deletedOccurrenceUris preserves it.
       if (hasCount) {
@@ -446,19 +524,48 @@ async function putSurvey(
           organismQuantity: occ.organismQuantity,
           organismQuantityType: 'individuals',
         });
-        const withIdent = existingOcc?.record.acceptedIdentificationID
-          ? {
-              ...occRecord,
-              acceptedIdentificationID:
-                existingOcc.record.acceptedIdentificationID,
-            }
-          : occRecord;
+        const { remarksID: occurrenceRemarksID, remarkUriToDelete } =
+          await resolveRemarkEdit(
+            did,
+            'occurrenceRemarks',
+            occRkey,
+            occ.atUri,
+            existingOcc?.record.occurrenceRemarksID,
+            occ.remark,
+            licenseFor,
+          );
+        const withIdent = {
+          ...occRecord,
+          ...(existingOcc?.record.acceptedIdentificationID
+            ? {
+                acceptedIdentificationID:
+                  existingOcc.record.acceptedIdentificationID,
+              }
+            : {}),
+          ...(occurrenceRemarksID
+            ? { occurrenceRemarksID: occurrenceRemarksID as l.AtUriString }
+            : {}),
+        };
         await putRecord(did, Occurrence.$type, occRkey, withIdent);
         await insertOccurrence(did, occRkey, withIdent, occ.atUri);
+        if (remarkUriToDelete) await deleteRemark(remarkUriToDelete);
       }
       // else: zero count and not explicitly deleted — preserve as-is.
     } else if (hasCount) {
-      // New occurrence
+      // New occurrence. putRecord at a fresh rkey rather than createRecord, so
+      // the occurrence's AT-URI is known before the write and its remark can be
+      // written first.
+      const occRkey = generateTid();
+      const occUri = `at://${did}/${Occurrence.$nsid}/${occRkey}`;
+      const { remarksID: occurrenceRemarksID } = await resolveRemarkEdit(
+        did,
+        'occurrenceRemarks',
+        occRkey,
+        occUri,
+        undefined,
+        occ.remark,
+        licenseFor,
+      );
       const occRecord = Occurrence.$build({
         ...occMeta,
         eventID: survey.atUri as l.AtUriString,
@@ -469,13 +576,16 @@ async function putSurvey(
         ...(occ.taxonID ? { taxonID: occ.taxonID as l.UriString } : {}),
         organismQuantity: occ.organismQuantity,
         organismQuantityType: 'individuals',
+        ...(occurrenceRemarksID
+          ? { occurrenceRemarksID: occurrenceRemarksID as l.AtUriString }
+          : {}),
       });
-      const { uri: occUri, cid: occCid } = await createRecord(
+      const { cid: occCid } = await putRecord(
         did,
         Occurrence.$nsid,
+        occRkey,
         occRecord,
       );
-      const occRkey = occUri.split('/').at(-1) ?? '';
       await insertOccurrence(did, occRkey, occRecord, occUri);
 
       const taxonScope = taxonScopeMap.get(occ.surveyTargetUri);
@@ -500,6 +610,13 @@ async function putSurvey(
     if (inc.atUri && deletedIncidentalUris.has(inc.atUri)) continue;
 
     if (inc.atUri) {
+      if (!ownOccurrenceUris.has(inc.atUri)) {
+        log.warn(
+          { atUri: inc.atUri },
+          'update requested for an incidental not in this survey; skipping',
+        );
+        continue;
+      }
       // Existing incidental. Omitting it from the payload no longer deletes it.
       if (hasCount) {
         const occRkey = inc.atUri.split('/').at(-1) ?? '';
@@ -513,13 +630,20 @@ async function putSurvey(
           organismQuantity: inc.organismQuantity,
           organismQuantityType: 'individuals',
         });
-        const withIdent = existingOcc?.record.acceptedIdentificationID
-          ? {
-              ...occRecord,
-              acceptedIdentificationID:
-                existingOcc.record.acceptedIdentificationID,
-            }
-          : occRecord;
+        // The form has no remark field for incidentals, but one converted from
+        // a target occurrence keeps the remark it had, so carry the reference.
+        const withIdent = {
+          ...occRecord,
+          ...(existingOcc?.record.acceptedIdentificationID
+            ? {
+                acceptedIdentificationID:
+                  existingOcc.record.acceptedIdentificationID,
+              }
+            : {}),
+          ...(existingOcc?.record.occurrenceRemarksID
+            ? { occurrenceRemarksID: existingOcc.record.occurrenceRemarksID }
+            : {}),
+        };
         await putRecord(did, Occurrence.$type, occRkey, withIdent);
         await insertOccurrence(did, occRkey, withIdent, inc.atUri);
       }
@@ -573,7 +697,11 @@ async function putSurvey(
       );
       continue;
     }
-    await deleteOccurrenceAndIdentifications(atUri);
+    const existing = survey.occurrences.find((o) => o.atUri === atUri);
+    await deleteOccurrenceAndIdentifications(
+      atUri,
+      ownRemarkUri(did, existing?.record.occurrenceRemarksID),
+    );
   }
 
   const updated = await getSurveyDetailByHandleAndRkey(

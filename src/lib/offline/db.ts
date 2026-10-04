@@ -6,6 +6,7 @@ import type { Main as AtSurvey } from '$lib/lexicons/bio/cuanto/survey.defs.js';
 import type { Main as AtSurveyProtocol } from '$lib/lexicons/bio/cuanto/surveyProtocol.defs.js';
 import type { Main as AtOccurrence } from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence.defs.js';
 import logger from '$lib/logger';
+import type { RemarkInput } from '$lib/remarks';
 import type { IncidentalOccurrence } from '$lib/surveys';
 import type { TargetFilterState } from '$lib/targets.svelte';
 import { generateTid } from '$lib/tid';
@@ -54,6 +55,13 @@ export interface Occurrence {
     scientificName: string;
     vernacularName?: string;
     taxonRank?: string;
+  };
+  // The remark record named by record.occurrenceRemarksID, hydrated
+  // server-side like Survey.eventRemark.
+  remark?: {
+    atUri: string;
+    body: string;
+    license?: string;
   };
 }
 
@@ -104,6 +112,8 @@ export interface PendingSurvey {
     surveyTargetUri: string;
     taxonID?: string;
     organismQuantity?: string;
+    // The surveyor's remark about this occurrence, uploaded like eventRemark.
+    remark?: RemarkInput;
   }[];
   incidentals?: IncidentalOccurrence[];
   gpsTrack?: GpsTrackPoint[];
@@ -126,7 +136,7 @@ export interface PendingSurvey {
   // `license` is set only when the surveyor picked one for this remark. Without
   // it the server applies the account default at upload, so a draft queued for
   // days publishes under whatever default is in force when it lands.
-  eventRemark?: { body: string; license?: string };
+  eventRemark?: RemarkInput;
   createdAt: number;
   complete: boolean;
 }

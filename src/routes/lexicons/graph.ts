@@ -154,6 +154,16 @@ export const relationships: Rel[] = [
   },
   {
     from: 'Occurrence',
+    to: 'Remark',
+    toShared: true,
+    label: 'is described by',
+    compactLabel: 'described by',
+    field: 'occurrence.occurrenceRemarksID',
+    card: '1 : 1',
+    note: "The surveyor's remark about one counted target, kept as its own record like the survey's remark.",
+  },
+  {
+    from: 'Occurrence',
     to: 'Survey',
     toShared: true,
     label: 'happens during',

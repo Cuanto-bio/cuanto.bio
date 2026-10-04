@@ -53,6 +53,7 @@ import {
   insertSurvey,
 } from '$lib/server/db/surveys';
 import {
+  createRecord,
   deleteRecord,
   PdsScopeInsufficientError,
   putRecord,
@@ -487,4 +488,446 @@ test('DELETE tolerates a malformed eventRemarksID', async () => {
 
   expect(resp.status).toBe(204);
   expect(deleteRemarkByAtUri).not.toHaveBeenCalled();
+});
+
+describe('occurrence remarks', () => {
+  const OCC_NSID = 'bio.lexicons.temp.v0-1.occurrence';
+  const OCC_RKEY = 'bbbbbbbbbbbbb';
+  const OCC_URI = `at://${DID}/${OCC_NSID}/${OCC_RKEY}`;
+  const OCC_REMARK_URI = `at://${DID}/${REMARK_NSID}/${OCC_RKEY}`;
+  const TARGET_URI = `at://${DID}/bio.cuanto.protocolTarget/t1`;
+
+  function surveyWithOccurrence(occRecord: Record<string, unknown> = {}) {
+    return {
+      ...makeSurvey(),
+      occurrences: [
+        {
+          atUri: OCC_URI,
+          protocolTargetUri: TARGET_URI,
+          record: {
+            $type: OCC_NSID,
+            organismQuantity: '2',
+            organismQuantityType: 'individuals',
+            ...occRecord,
+          },
+        },
+      ],
+    } as unknown as Awaited<ReturnType<typeof getSurveyDetailByHandleAndRkey>>;
+  }
+
+  function editBody(occ: Record<string, unknown>, rest = {}) {
+    return {
+      ...baseEditBody,
+      occurrences: [
+        { surveyTargetUri: TARGET_URI, organismQuantity: '2', ...occ },
+      ],
+      ...rest,
+    };
+  }
+
+  function callDelete(query = '') {
+    return DELETE({
+      params: { handle: 'alice', rkey: RKEY },
+      locals: { did: DID },
+      url: new URL(`http://localhost/api/surveys/alice/${RKEY}${query}`),
+    } as unknown as Parameters<typeof DELETE>[0]);
+  }
+
+  test('PUT writes a new occurrence at a known rkey, after its remark', async () => {
+    const resp = await callPut(editBody({ remark: { body: 'Pair.' } }));
+    expect(resp.status).toBe(200);
+
+    // createRecord would let the PDS pick the rkey, so the remark could not
+    // be written first.
+    expect(createRecord).not.toHaveBeenCalled();
+    const calls = vi.mocked(putRecord).mock.calls;
+    const occIdx = calls.findIndex((c) => c[1] === OCC_NSID);
+    expect(occIdx).toBeGreaterThanOrEqual(0);
+    const occRkey = calls[occIdx][2];
+    const remarkIdx = calls.findIndex(
+      (c) => c[1] === REMARK_NSID && c[2] === occRkey,
+    );
+    expect(remarkIdx).toBeGreaterThanOrEqual(0);
+    expect(remarkIdx).toBeLessThan(occIdx);
+    expect(calls[remarkIdx][3]).toEqual(
+      expect.objectContaining({
+        subject: `at://${DID}/${OCC_NSID}/${occRkey}`,
+        dwcTerm: 'occurrenceRemarks',
+        body: 'Pair.',
+      }),
+    );
+    expect(calls[occIdx][3]).toEqual(
+      expect.objectContaining({
+        occurrenceRemarksID: `at://${DID}/${REMARK_NSID}/${occRkey}`,
+      }),
+    );
+  });
+
+  test('PUT adds a remark to an existing occurrence at its rkey', async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      surveyWithOccurrence(),
+    );
+
+    await callPut(editBody({ atUri: OCC_URI, remark: { body: 'Pair.' } }));
+
+    const calls = vi.mocked(putRecord).mock.calls;
+    const remarkIdx = calls.findIndex(
+      (c) => c[1] === REMARK_NSID && c[2] === OCC_RKEY,
+    );
+    const occIdx = calls.findIndex((c) => c[1] === OCC_NSID);
+    expect(remarkIdx).toBeGreaterThanOrEqual(0);
+    expect(remarkIdx).toBeLessThan(occIdx);
+    expect(calls[remarkIdx][3]).toEqual(
+      expect.objectContaining({
+        subject: OCC_URI,
+        dwcTerm: 'occurrenceRemarks',
+      }),
+    );
+    expect(calls[occIdx][3]).toEqual(
+      expect.objectContaining({ occurrenceRemarksID: OCC_REMARK_URI }),
+    );
+  });
+
+  test('PUT keeps an existing remark reference when remark is omitted', async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      surveyWithOccurrence({ occurrenceRemarksID: OCC_REMARK_URI }),
+    );
+
+    await callPut(editBody({ atUri: OCC_URI, organismQuantity: '3' }));
+
+    const calls = vi.mocked(putRecord).mock.calls;
+    expect(calls.map((c) => c[1])).not.toContain(REMARK_NSID);
+    expect(deleteRecord).not.toHaveBeenCalled();
+    const occCall = calls.find((c) => c[1] === OCC_NSID);
+    expect(occCall?.[3]).toEqual(
+      expect.objectContaining({
+        organismQuantity: '3',
+        occurrenceRemarksID: OCC_REMARK_URI,
+      }),
+    );
+  });
+
+  test('PUT rewrites a remark at the rkey it already has', async () => {
+    const otherKeyUri = `at://${DID}/${REMARK_NSID}/zzzzzzzzzzzzz`;
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      surveyWithOccurrence({ occurrenceRemarksID: otherKeyUri }),
+    );
+
+    await callPut(editBody({ atUri: OCC_URI, remark: { body: 'Three.' } }));
+
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      REMARK_NSID,
+      'zzzzzzzzzzzzz',
+      expect.objectContaining({ body: 'Three.' }),
+    );
+    const occCall = vi
+      .mocked(putRecord)
+      .mock.calls.find((c) => c[1] === OCC_NSID);
+    expect(occCall?.[3]).toEqual(
+      expect.objectContaining({ occurrenceRemarksID: otherKeyUri }),
+    );
+  });
+
+  test('PUT with a null remark drops the reference, then deletes the remark', async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      surveyWithOccurrence({ occurrenceRemarksID: OCC_REMARK_URI }),
+    );
+
+    const resp = await callPut(editBody({ atUri: OCC_URI, remark: null }));
+    expect(resp.status).toBe(200);
+
+    const occCall = vi
+      .mocked(putRecord)
+      .mock.calls.find((c) => c[1] === OCC_NSID);
+    expect(occCall?.[3]).not.toHaveProperty('occurrenceRemarksID');
+    expect(deleteRecord).toHaveBeenCalledWith(OCC_REMARK_URI);
+    expect(deleteRemarkByAtUri).toHaveBeenCalledWith(OCC_REMARK_URI);
+    // Never a dangling reference: the occurrence is rewritten first.
+    const occOrder = vi.mocked(putRecord).mock.invocationCallOrder.at(-1) ?? 0;
+    expect(vi.mocked(deleteRecord).mock.invocationCallOrder[0]).toBeGreaterThan(
+      occOrder,
+    );
+  });
+
+  test('PUT deleting an occurrence deletes its remark too', async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      surveyWithOccurrence({ occurrenceRemarksID: OCC_REMARK_URI }),
+    );
+
+    const resp = await callPut(
+      editBody(
+        { atUri: OCC_URI, organismQuantity: '0' },
+        { deletedOccurrenceUris: [OCC_URI] },
+      ),
+    );
+    expect(resp.status).toBe(200);
+
+    expect(deleteRecord).toHaveBeenCalledWith(OCC_URI);
+    expect(deleteRecord).toHaveBeenCalledWith(OCC_REMARK_URI);
+    expect(deleteRemarkByAtUri).toHaveBeenCalledWith(OCC_REMARK_URI);
+  });
+
+  test("PUT deleting an occurrence leaves a remark in another user's repo alone", async () => {
+    const otherUri = `at://did:test:someone-else/${REMARK_NSID}/xyz`;
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      surveyWithOccurrence({ occurrenceRemarksID: otherUri }),
+    );
+
+    await callPut(
+      editBody(
+        { atUri: OCC_URI, organismQuantity: '0' },
+        { deletedOccurrenceUris: [OCC_URI] },
+      ),
+    );
+
+    expect(deleteRecord).toHaveBeenCalledWith(OCC_URI);
+    expect(deleteRecord).not.toHaveBeenCalledWith(otherUri);
+    expect(deleteRemarkByAtUri).not.toHaveBeenCalled();
+  });
+
+  test('PUT returns 422 for an invalid remark before writing anything', async () => {
+    const resp = await callPut(editBody({ remark: { body: 3 } }));
+    expect(resp.status).toBe(422);
+    expect(putRecord).not.toHaveBeenCalled();
+  });
+
+  test('DELETE deletes occurrence remarks along with the occurrences', async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      surveyWithOccurrence({ occurrenceRemarksID: OCC_REMARK_URI }),
+    );
+    vi.mocked(deleteOccurrencesBySurveyUri).mockResolvedValueOnce([
+      { at_uri: OCC_URI },
+    ] as never);
+
+    const resp = await callDelete();
+    expect(resp.status).toBe(204);
+    expect(deleteRecord).toHaveBeenCalledWith(OCC_REMARK_URI);
+    expect(deleteRemarkByAtUri).toHaveBeenCalledWith(OCC_REMARK_URI);
+  });
+
+  test('DELETE keeps occurrence remarks when the occurrences are kept', async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      surveyWithOccurrence({ occurrenceRemarksID: OCC_REMARK_URI }),
+    );
+
+    const resp = await callDelete('?deleteOccurrences=false');
+    expect(resp.status).toBe(204);
+    expect(deleteRecord).not.toHaveBeenCalledWith(OCC_REMARK_URI);
+    expect(deleteRemarkByAtUri).not.toHaveBeenCalled();
+  });
+});
+
+describe('occurrence remarks: review fixes', () => {
+  const OCC_NSID = 'bio.lexicons.temp.v0-1.occurrence';
+  const OCC_RKEY = 'bbbbbbbbbbbbb';
+  const OCC_URI = `at://${DID}/${OCC_NSID}/${OCC_RKEY}`;
+  const OCC_REMARK_URI = `at://${DID}/${REMARK_NSID}/${OCC_RKEY}`;
+  const TARGET_URI = `at://${DID}/bio.cuanto.protocolTarget/t1`;
+  const CUSTOM_LICENSE = 'https://example.org/licenses/custom';
+  type Detail = Awaited<ReturnType<typeof getSurveyDetailByHandleAndRkey>>;
+
+  function surveyWith(
+    occ: Record<string, unknown>,
+    survey: Record<string, unknown> = {},
+  ) {
+    return {
+      ...makeSurvey(),
+      ...survey,
+      occurrences: [
+        {
+          atUri: OCC_URI,
+          ...occ,
+          record: {
+            $type: OCC_NSID,
+            organismQuantity: '2',
+            organismQuantityType: 'individuals',
+            ...(occ.record as Record<string, unknown>),
+          },
+        },
+      ],
+    } as unknown as Detail;
+  }
+
+  test('PUT keeps the remark reference on an existing incidental', async () => {
+    // "Convert to incidental" keeps occurrenceRemarksID, so an incidental can
+    // carry one even though the form offers no remark field for it.
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      surveyWith({
+        record: {
+          taxonID: 'https://www.inaturalist.org/taxa/47126',
+          occurrenceRemarksID: OCC_REMARK_URI,
+        },
+      }),
+    );
+
+    const resp = await callPut({
+      ...baseEditBody,
+      incidentals: [
+        {
+          atUri: OCC_URI,
+          taxonID: 'https://www.inaturalist.org/taxa/47126',
+          scientificName: 'Quercus agrifolia',
+          organismQuantity: '3',
+        },
+      ],
+    });
+    expect(resp.status).toBe(200);
+
+    const occCall = vi
+      .mocked(putRecord)
+      .mock.calls.find((c) => c[1] === OCC_NSID);
+    expect(occCall?.[3]).toEqual(
+      expect.objectContaining({
+        organismQuantity: '3',
+        occurrenceRemarksID: OCC_REMARK_URI,
+      }),
+    );
+  });
+
+  test('PUT ignores an occurrence atUri that is not in this survey', async () => {
+    // The remark's subject and the occurrence's key both come from atUri, so
+    // a foreign one would write records that do not agree with each other.
+    const foreignUri = `at://did:test:someone-else/${OCC_NSID}/${OCC_RKEY}`;
+
+    const resp = await callPut({
+      ...baseEditBody,
+      occurrences: [
+        {
+          atUri: foreignUri,
+          surveyTargetUri: TARGET_URI,
+          organismQuantity: '2',
+          remark: { body: 'Pair.' },
+        },
+      ],
+    });
+    expect(resp.status).toBe(200);
+
+    const collections = vi.mocked(putRecord).mock.calls.map((c) => c[1]);
+    expect(collections).not.toContain(OCC_NSID);
+    expect(collections).not.toContain(REMARK_NSID);
+  });
+
+  test('PUT keeps a license we do not offer when the remark already had it', async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      surveyWith({
+        protocolTargetUri: TARGET_URI,
+        record: { occurrenceRemarksID: OCC_REMARK_URI },
+        remark: {
+          atUri: OCC_REMARK_URI,
+          body: 'Old.',
+          license: CUSTOM_LICENSE,
+        },
+      }),
+    );
+
+    const resp = await callPut({
+      ...baseEditBody,
+      occurrences: [
+        {
+          atUri: OCC_URI,
+          surveyTargetUri: TARGET_URI,
+          organismQuantity: '2',
+          remark: { body: 'New.', license: CUSTOM_LICENSE },
+        },
+      ],
+    });
+    expect(resp.status).toBe(200);
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      REMARK_NSID,
+      OCC_RKEY,
+      expect.objectContaining({ body: 'New.', license: CUSTOM_LICENSE }),
+    );
+  });
+
+  test('PUT still rejects a license we do not offer that the remark did not have', async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      surveyWith({
+        protocolTargetUri: TARGET_URI,
+        record: { occurrenceRemarksID: OCC_REMARK_URI },
+        remark: {
+          atUri: OCC_REMARK_URI,
+          body: 'Old.',
+          license: CUSTOM_LICENSE,
+        },
+      }),
+    );
+
+    const resp = await callPut({
+      ...baseEditBody,
+      occurrences: [
+        {
+          atUri: OCC_URI,
+          surveyTargetUri: TARGET_URI,
+          organismQuantity: '2',
+          remark: { body: 'New.', license: 'https://example.org/other' },
+        },
+      ],
+    });
+    expect(resp.status).toBe(422);
+  });
+
+  test("PUT keeps a survey remark's license we do not offer", async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue({
+      ...makeSurvey({ eventRemarksID: REMARK_URI }),
+      eventRemark: { atUri: REMARK_URI, body: 'Old.', license: CUSTOM_LICENSE },
+    } as unknown as Detail);
+
+    const resp = await callPut({
+      ...baseEditBody,
+      eventRemark: { body: 'New.', license: CUSTOM_LICENSE },
+    });
+    expect(resp.status).toBe(200);
+    expect(putRecord).toHaveBeenCalledWith(
+      DID,
+      REMARK_NSID,
+      RKEY,
+      expect.objectContaining({ license: CUSTOM_LICENSE }),
+    );
+  });
+
+  test('DELETE removes an occurrence remark only after its occurrence', async () => {
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      surveyWith({ record: { occurrenceRemarksID: OCC_REMARK_URI } }),
+    );
+    vi.mocked(deleteOccurrencesBySurveyUri).mockResolvedValueOnce([
+      { at_uri: OCC_URI },
+    ] as never);
+
+    const resp = await DELETE({
+      params: { handle: 'alice', rkey: RKEY },
+      locals: { did: DID },
+      url: new URL(`http://localhost/api/surveys/alice/${RKEY}`),
+    } as unknown as Parameters<typeof DELETE>[0]);
+    expect(resp.status).toBe(204);
+
+    const deleted = vi.mocked(deleteRecord).mock.calls.map((c) => c[0]);
+    expect(deleted.indexOf(OCC_URI)).toBeGreaterThanOrEqual(0);
+    expect(deleted.indexOf(OCC_REMARK_URI)).toBeGreaterThan(
+      deleted.indexOf(OCC_URI),
+    );
+  });
+
+  test('DELETE keeps an occurrence remark when its occurrence could not be deleted', async () => {
+    // The occurrence is still on the PDS naming its remark; deleting the
+    // remark would leave that reference dangling.
+    vi.mocked(getSurveyDetailByHandleAndRkey).mockResolvedValue(
+      surveyWith({ record: { occurrenceRemarksID: OCC_REMARK_URI } }),
+    );
+    vi.mocked(deleteOccurrencesBySurveyUri).mockResolvedValueOnce([
+      { at_uri: OCC_URI },
+    ] as never);
+    // The occurrence is the first record this DELETE removes from the PDS.
+    vi.mocked(deleteRecord).mockRejectedValueOnce(new Error('PDS unavailable'));
+
+    const resp = await DELETE({
+      params: { handle: 'alice', rkey: RKEY },
+      locals: { did: DID },
+      url: new URL(`http://localhost/api/surveys/alice/${RKEY}`),
+    } as unknown as Parameters<typeof DELETE>[0]);
+    expect(resp.status).toBe(204);
+    expect(deleteRecord).not.toHaveBeenCalledWith(OCC_REMARK_URI);
+    expect(deleteRemarkByAtUri).not.toHaveBeenCalledWith(OCC_REMARK_URI);
+  });
 });

@@ -18,7 +18,7 @@ import type { Survey } from '$lib/offline/db';
 import sql from '$lib/server/db';
 import { getRemarksByUris } from './remarks';
 import {
-  attachEventRemarks,
+  attachRemarks,
   getLastSurveyByTargetUris,
   insertOccurrence,
   insertSurvey,
@@ -267,9 +267,9 @@ describe('toLastSurveyMap', () => {
   });
 });
 
-// ── attachEventRemarks ───────────────────────────────────────────────────────
+// ── attachRemarks ───────────────────────────────────────────────────────
 
-describe('attachEventRemarks', () => {
+describe('attachRemarks', () => {
   const DID = 'did:test:alice';
   const SURVEY_URI = `at://${DID}/bio.cuanto.survey/s1`;
   const REMARK_URI = `at://${DID}/bio.lexicons.temp.v0-1.remark/s1`;
@@ -279,6 +279,7 @@ describe('attachEventRemarks', () => {
       atUri: SURVEY_URI,
       did: DID,
       record: { eventRemarksID },
+      occurrences: [],
     } as unknown as Survey;
   }
 
@@ -303,7 +304,7 @@ describe('attachEventRemarks', () => {
 
   test('attaches only the displayed fields of a matching remark', async () => {
     mockRemarks(remark());
-    const [s] = await attachEventRemarks([survey(REMARK_URI)]);
+    const [s] = await attachRemarks([survey(REMARK_URI)]);
     expect(s.eventRemark).toEqual({
       atUri: REMARK_URI,
       body: 'Windy.',
@@ -316,19 +317,72 @@ describe('attachEventRemarks', () => {
     // misattributed.
     const otherUri = 'at://did:test:bob/bio.lexicons.temp.v0-1.remark/s1';
     mockRemarks(remark({ atUri: otherUri }));
-    const [s] = await attachEventRemarks([survey(otherUri)]);
+    const [s] = await attachRemarks([survey(otherUri)]);
     expect(s.eventRemark).toBeUndefined();
   });
 
   test('skips a remark about some other record', async () => {
     mockRemarks(remark({ subject: `at://${DID}/bio.cuanto.survey/other` }));
-    const [s] = await attachEventRemarks([survey(REMARK_URI)]);
+    const [s] = await attachRemarks([survey(REMARK_URI)]);
     expect(s.eventRemark).toBeUndefined();
   });
 
   test('skips a remark filling some other term', async () => {
     mockRemarks(remark({ dwcTerm: 'occurrenceRemarks' }));
-    const [s] = await attachEventRemarks([survey(REMARK_URI)]);
+    const [s] = await attachRemarks([survey(REMARK_URI)]);
     expect(s.eventRemark).toBeUndefined();
+  });
+
+  describe('occurrence remarks', () => {
+    const OCC_URI = `at://${DID}/bio.lexicons.temp.v0-1.occurrence/o1`;
+    const OCC_REMARK_URI = `at://${DID}/bio.lexicons.temp.v0-1.remark/o1`;
+
+    function surveyWithOccurrence(occurrenceRemarksID: string): Survey {
+      return {
+        atUri: SURVEY_URI,
+        did: DID,
+        record: {},
+        occurrences: [{ atUri: OCC_URI, record: { occurrenceRemarksID } }],
+      } as unknown as Survey;
+    }
+
+    function occRemark(overrides: Record<string, unknown> = {}) {
+      return remark({
+        atUri: OCC_REMARK_URI,
+        body: 'Pair at the creek.',
+        subject: OCC_URI,
+        dwcTerm: 'occurrenceRemarks',
+        ...overrides,
+      });
+    }
+
+    test('attaches a matching remark to its occurrence', async () => {
+      mockRemarks(occRemark());
+      const [s] = await attachRemarks([surveyWithOccurrence(OCC_REMARK_URI)]);
+      expect(s.occurrences[0].remark).toEqual({
+        atUri: OCC_REMARK_URI,
+        body: 'Pair at the creek.',
+        license: 'https://creativecommons.org/publicdomain/zero/1.0/',
+      });
+    });
+
+    test("skips a remark in another user's repo", async () => {
+      const otherUri = 'at://did:test:bob/bio.lexicons.temp.v0-1.remark/o1';
+      mockRemarks(occRemark({ atUri: otherUri }));
+      const [s] = await attachRemarks([surveyWithOccurrence(otherUri)]);
+      expect(s.occurrences[0].remark).toBeUndefined();
+    });
+
+    test('skips a remark about some other record', async () => {
+      mockRemarks(occRemark({ subject: SURVEY_URI }));
+      const [s] = await attachRemarks([surveyWithOccurrence(OCC_REMARK_URI)]);
+      expect(s.occurrences[0].remark).toBeUndefined();
+    });
+
+    test('skips a remark filling some other term', async () => {
+      mockRemarks(occRemark({ dwcTerm: 'eventRemarks' }));
+      const [s] = await attachRemarks([surveyWithOccurrence(OCC_REMARK_URI)]);
+      expect(s.occurrences[0].remark).toBeUndefined();
+    });
   });
 });

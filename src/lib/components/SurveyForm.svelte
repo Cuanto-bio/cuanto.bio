@@ -1,5 +1,6 @@
 <script lang="ts">
 import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
+import MessageSquareText from '@lucide/svelte/icons/message-square-text';
 import { onMount, tick } from 'svelte';
 import { toast } from 'svelte-sonner';
 import { beforeNavigate, goto, replaceState } from '$app/navigation';
@@ -66,7 +67,11 @@ import {
   uploadPendingSurvey,
 } from '$lib/offline/upload';
 import { LOCATION_COMBOBOX_THRESHOLD } from '$lib/places';
-import { REMARK_MAX_BYTES, remarkByteLength } from '$lib/remarks';
+import {
+  REMARK_MAX_BYTES,
+  type RemarkInput,
+  remarkByteLength,
+} from '$lib/remarks';
 import {
   buildSurveyTiming,
   calcElapsed,
@@ -125,6 +130,23 @@ function buildQuantitiesFromSurvey(s: Survey): Record<string, string> {
   for (const occ of s.occurrences) {
     if (occ.protocolTargetUri && occ.record.organismQuantity) {
       map[occ.protocolTargetUri] = String(occ.record.organismQuantity);
+    }
+  }
+  return map;
+}
+
+// Build initial occurrence remarks from existing survey occurrences (edit),
+// keyed like buildQuantitiesFromSurvey. The license comes along, even one we
+// do not offer, so an edit that only touches the text keeps it rather than
+// restamping the default; the server accepts a license the remark already has.
+function buildRemarkInputsFromSurvey(s: Survey): Record<string, RemarkInput> {
+  const map: Record<string, RemarkInput> = {};
+  for (const occ of s.occurrences) {
+    if (occ.protocolTargetUri && occ.remark) {
+      map[occ.protocolTargetUri] = {
+        body: occ.remark.body,
+        ...(occ.remark.license ? { license: occ.remark.license } : {}),
+      };
     }
   }
   return map;
@@ -288,6 +310,22 @@ let organismQuantities = $state<Record<string, string>>(
       })(),
 );
 
+// Per-target remarks (dwc:occurrenceRemarks), keyed by protocolTargetUri like
+// organismQuantities. Each is published as its own remark record. No license
+// picker here: a new remark gets the account default at upload, and an
+// existing one keeps the license it already has.
+// svelte-ignore state_referenced_locally -- intentional: initialize from props
+const initialRemarkInputs: Record<string, RemarkInput> = isEdit
+  ? buildRemarkInputsFromSurvey(sv)
+  : Object.fromEntries(
+      (initialResumeState?.occurrences ?? [])
+        .filter((occ) => occ.remark)
+        .map((occ) => [occ.surveyTargetUri, occ.remark as RemarkInput]),
+    );
+let occurrenceRemarks = $state<Record<string, RemarkInput>>({
+  ...initialRemarkInputs,
+});
+
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
 let incidentals = $state<IncidentalOccurrence[]>(
   isEdit
@@ -324,16 +362,20 @@ const initialRemarkBody = sv
   : (initialResumeState?.eventRemark?.body ?? '');
 let eventRemarkBody = $state(initialRemarkBody);
 // Sends no license, so the server stamps the account default at upload (see
-// PendingSurvey.eventRemark). A remark whose license we do not offer starts
-// here too, since the Select has no option that could show it.
+// PendingSurvey.eventRemark).
 const ACCOUNT_DEFAULT_LICENSE = 'account-default';
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
-const initialRemarkLicense = (() => {
-  const license = sv
-    ? sv.eventRemark?.license
-    : initialResumeState?.eventRemark?.license;
-  return isKnownLicense(license) ? license : ACCOUNT_DEFAULT_LICENSE;
-})();
+const initialRemarkLicense =
+  (sv ? sv.eventRemark?.license : initialResumeState?.eventRemark?.license) ??
+  ACCOUNT_DEFAULT_LICENSE;
+// A license the remark already has but we do not offer, e.g. one another
+// client published it under. It gets its own option so editing the text keeps
+// it; the server accepts it only because the remark already has it.
+const existingOtherLicense =
+  initialRemarkLicense !== ACCOUNT_DEFAULT_LICENSE &&
+  !isKnownLicense(initialRemarkLicense)
+    ? initialRemarkLicense
+    : undefined;
 let eventRemarkLicense = $state<string>(initialRemarkLicense);
 // What the account default currently is, so the picker can name it instead of
 // just saying "Account default". Fetched in the background rather than in a
@@ -418,6 +460,12 @@ let locationPickerOpen = $state(false);
 let sheetOpen = $state(false);
 let selectedTarget = $state<Target | null>(null);
 let editingQuantity = $state('');
+let editingRemark = $state('');
+// A target without a count gets no occurrence, so there is nothing for a
+// remark to describe. The field is disabled rather than letting the surveyor
+// write text that would be silently dropped.
+const editingHasCount = $derived(Number(editingQuantity) > 0);
+let occurrenceRemarkError = $state<string | null>(null);
 let isWide = $state(false);
 let flashingTargets = $state<Record<string, number>>({});
 let flashingIncidentals = $state<Record<string, number>>({});
@@ -581,6 +629,9 @@ function buildNewSurveyPayload(complete: boolean): PendingSurvey {
       surveyTargetUri: t.atUri,
       taxonID: targetTaxonID(t.record.scope),
       organismQuantity: organismQuantities[t.atUri],
+      ...(occurrenceRemarks[t.atUri]
+        ? { remark: $state.snapshot(occurrenceRemarks[t.atUri]) }
+        : {}),
     }));
   const { eventDate, eventDurationValue } = complete
     ? buildSurveyTiming(
@@ -755,6 +806,18 @@ function eventRemarkEdit():
   return { eventRemark: next ? eventRemarkPayload(next) : null };
 }
 
+// The same tri-state as eventRemarkEdit, per target occurrence.
+function occurrenceRemarkEdit(
+  targetUri: string,
+): { remark: RemarkInput | null } | Record<string, never> {
+  const next = occurrenceRemarks[targetUri];
+  const initial = initialRemarkInputs[targetUri];
+  if (next?.body === initial?.body && next?.license === initial?.license) {
+    return {};
+  }
+  return { remark: next ? $state.snapshot(next) : null };
+}
+
 async function buildEditPayload() {
   const { eventDate, eventDurationValue } = buildSurveyTiming(
     'past',
@@ -824,6 +887,7 @@ async function buildEditPayload() {
       surveyTargetUri: t.atUri,
       taxonID: targetTaxonID(t.record.scope),
       organismQuantity: organismQuantities[t.atUri] || '0',
+      ...occurrenceRemarkEdit(t.atUri),
     })),
     incidentals: incidentals.map((inc) => ({
       ...inc,
@@ -1112,24 +1176,44 @@ function increment(uri: string) {
 function openTargetSheet(target: Target) {
   selectedTarget = target;
   editingQuantity = organismQuantities[target.atUri] ?? '';
+  editingRemark = occurrenceRemarks[target.atUri]?.body ?? '';
+  occurrenceRemarkError = null;
   sheetOpen = true;
 }
 
 function saveSheet() {
   if (!selectedTarget) return;
+  // Without a count the remark is dropped below, so its length is moot, and
+  // an error on the disabled field would be one the surveyor cannot fix.
+  if (editingHasCount && remarkByteLength(editingRemark) > REMARK_MAX_BYTES) {
+    occurrenceRemarkError = 'Remarks are too long. Please shorten them.';
+    return;
+  }
   const trimmed = editingQuantity.trim();
   if (trimmed) {
     organismQuantities[selectedTarget.atUri] = trimmed;
   } else {
     delete organismQuantities[selectedTarget.atUri];
   }
+  const remarkBody = editingHasCount ? editingRemark.trim() : '';
+  const existing = occurrenceRemarks[selectedTarget.atUri];
+  if (!remarkBody) {
+    delete occurrenceRemarks[selectedTarget.atUri];
+  } else if (remarkBody !== existing?.body) {
+    // Keep the license an existing remark already has.
+    occurrenceRemarks[selectedTarget.atUri] = { ...existing, body: remarkBody };
+  }
   sheetOpen = false;
 }
 
+// Reset removes the target's occurrence, and a remark has nothing to describe
+// without one, so it goes too.
 function resetTarget() {
   if (!selectedTarget) return;
   delete organismQuantities[selectedTarget.atUri];
+  delete occurrenceRemarks[selectedTarget.atUri];
   editingQuantity = '';
+  editingRemark = '';
   sheetOpen = false;
 }
 
@@ -1580,7 +1664,16 @@ function displayCount(qty: undefined | string | number) {
                     {:else if first?.$type?.endsWith('#verbatimScope')}
                       {(first as VerbatimScope).verbatimTargetScope ?? 'Unknown'}
                     {/if}
-                  </span>
+                  </span><!--
+                    No whitespace before the icon: it would end up in the row's
+                    text between the target name and its count.
+                  -->{#if hasCount && occurrenceRemarks[target.atUri]}
+                    <MessageSquareText
+                      class="text-muted-foreground size-4 shrink-0"
+                      role="img"
+                      aria-label="Has remarks"
+                    />
+                  {/if}
                 </button>
                 <button
                   type="button"
@@ -1717,6 +1810,16 @@ function displayCount(qty: undefined | string | number) {
               </span>
             </span>
           </Select.Item>
+          {#if existingOtherLicense}
+            <Select.Item value={existingOtherLicense} label={existingOtherLicense}>
+              <span class="flex flex-col items-start">
+                <span class="break-all">{existingOtherLicense}</span>
+                <span class="text-muted-foreground text-xs">
+                  The license this remark already has
+                </span>
+              </span>
+            </Select.Item>
+          {/if}
           {#each REMARK_LICENSES as option (option.value)}
             <Select.Item value={option.value} label={option.label}>
               <span class="flex flex-col items-start">
@@ -1776,6 +1879,31 @@ function displayCount(qty: undefined | string | number) {
           }
         }}
       />
+    </div>
+    <div class="flex flex-col gap-2">
+      <Label for="occurrence-remark">
+        Remarks
+        <span class="text-muted-foreground font-normal">(optional)</span>
+      </Label>
+      <Textarea
+        id="occurrence-remark"
+        rows={3}
+        class="max-h-40"
+        maxlength={REMARK_MAX_BYTES}
+        placeholder="Behavior, condition, anything the count doesn't capture"
+        bind:value={editingRemark}
+        disabled={!editingHasCount}
+        oninput={() => (occurrenceRemarkError = null)}
+        aria-invalid={occurrenceRemarkError ? 'true' : undefined}
+        aria-describedby={occurrenceRemarkError ? 'occurrence-remark-error' : undefined}
+      />
+      {#if occurrenceRemarkError}
+        <p id="occurrence-remark-error" class="text-destructive text-sm">
+          {occurrenceRemarkError}
+        </p>
+      {:else if !editingHasCount}
+        <p class="text-muted-foreground text-sm">Add a count to leave remarks.</p>
+      {/if}
     </div>
     <div class="flex gap-2">
       <Button variant="outline" class="flex-1" onclick={resetTarget}>Reset</Button>

@@ -238,46 +238,72 @@ export async function getSurveyDetailByHandleAndRkey(
     ...o,
     identification: identsByOccurrence.get(o.at_uri),
   }));
-  const [detail] = await attachEventRemarks(
+  const [detail] = await attachRemarks(
     toSurveyResponse([survey], groupOccurrencesBySurvey(occurrencesWithIdents)),
   );
   return detail;
 }
 
 /**
- * Hydrates each survey's remark from the remark record its eventRemarksID names.
+ * Hydrates each survey's remark from the remark record its eventRemarksID
+ * names, and each of its occurrences' remarks from their occurrenceRemarksID.
  *
  * Every endpoint whose surveys the client caches has to call this, not just the
  * detail route: syncOfflineData runs on each /app navigation and cacheSurvey
  * replaces the whole IndexedDB entry, so one payload missing the remark strips it
  * from a copy another route had already cached in full.
  *
- * Follows the survey's forward reference rather than looking remarks up by
- * subject, because the lexicon makes eventRemarksID authoritative: a remark that
- * names a survey but is not pointed at from it fills no Darwin Core term.
+ * Follows the forward references rather than looking remarks up by subject,
+ * because the lexicon makes them authoritative: a remark that names a survey
+ * or occurrence but is not pointed at from it fills no Darwin Core term.
  */
-export async function attachEventRemarks(surveys: Survey[]): Promise<Survey[]> {
+export async function attachRemarks(surveys: Survey[]): Promise<Survey[]> {
   const uris = surveys
-    .map((s) => s.record.eventRemarksID)
+    .flatMap((s) => [
+      s.record.eventRemarksID,
+      ...s.occurrences.map((o) => o.record.occurrenceRemarksID),
+    ])
     .filter((uri): uri is NonNullable<typeof uri> => !!uri);
   if (uris.length === 0) return surveys;
   const remarks = await getRemarksByUris(uris);
-  for (const survey of surveys) {
-    const uri = survey.record.eventRemarksID;
+  // Anyone can write any AT-URI into a remarks reference, so only accept a
+  // remark the surveyor wrote about this subject's term. Someone else's record
+  // would be shown, and licensed, under the surveyor's name.
+  const remarkFor = (
+    did: string,
+    subject: string,
+    dwcTerm: string,
+    uri: string | undefined,
+  ) => {
     const remark = uri ? remarks.get(uri) : undefined;
-    // Anyone can write any AT-URI into eventRemarksID, so only accept a remark
-    // the surveyor wrote about this survey's eventRemarks. Someone else's
-    // record would be shown, and licensed, under the surveyor's name.
     if (
       !remark ||
-      didFromAtUri(remark.atUri) !== survey.did ||
-      remark.subject !== survey.atUri ||
-      remark.dwcTerm !== 'eventRemarks'
+      didFromAtUri(remark.atUri) !== did ||
+      remark.subject !== subject ||
+      remark.dwcTerm !== dwcTerm
     ) {
-      continue;
+      return undefined;
     }
     const { atUri, body, license } = remark;
-    survey.eventRemark = { atUri, body, license };
+    return { atUri, body, license };
+  };
+  for (const survey of surveys) {
+    const eventRemark = remarkFor(
+      survey.did,
+      survey.atUri,
+      'eventRemarks',
+      survey.record.eventRemarksID,
+    );
+    if (eventRemark) survey.eventRemark = eventRemark;
+    for (const occ of survey.occurrences) {
+      const remark = remarkFor(
+        survey.did,
+        occ.atUri,
+        'occurrenceRemarks',
+        occ.record.occurrenceRemarksID,
+      );
+      if (remark) occ.remark = remark;
+    }
   }
   return surveys;
 }

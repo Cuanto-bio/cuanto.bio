@@ -96,7 +96,7 @@ export async function attachIdentificationToOccurrence(
 // client so a survey drafted offline days ago publishes under whatever default
 // is in force when it finally uploads. A stored value we no longer offer is
 // ignored rather than trusted onto the record.
-async function resolveRemarkLicense(did: string) {
+async function resolveRemarkLicense(did: string): Promise<RemarkLicense> {
   let stored: string | null = null;
   try {
     stored = await getDefaultRemarkLicense(did);
@@ -107,11 +107,33 @@ async function resolveRemarkLicense(did: string) {
 }
 
 /**
- * Writes the bio.lexicons.temp.v0-1.remark record holding a survey's
- * eventRemarks, and returns its AT-URI for the caller to set as the survey's
- * eventRemarksID. Call this *before* writing the survey so the survey never
- * points at a record that does not exist; the lexicon treats that forward
- * reference as authoritative.
+ * Returns a function giving the license for each remark in one request: the
+ * one picked for it if any, else the account default. The default is looked up
+ * at most once, however many remarks (one per counted target) need it.
+ */
+export function remarkLicenseResolver(
+  did: string,
+): (picked?: string) => Promise<string> {
+  let accountDefault: Promise<RemarkLicense> | undefined;
+  return async (picked) => {
+    if (picked) return picked;
+    accountDefault ??= resolveRemarkLicense(did);
+    return accountDefault;
+  };
+}
+
+/**
+ * Writes the bio.lexicons.temp.v0-1.remark record filling `dwcTerm` on
+ * `subjectUri` (a survey's eventRemarks or an occurrence's occurrenceRemarks),
+ * and returns its AT-URI for the caller to set as the subject's forward
+ * reference (eventRemarksID, occurrenceRemarksID). Call this *before* writing
+ * the subject so it never points at a record that does not exist; the lexicon
+ * treats that forward reference as authoritative.
+ *
+ * `rkey` is normally the subject's own rkey, as an identification reuses its
+ * occurrence's: a different collection, so no key collision, and putRecord at a
+ * stable key means a retried survey POST overwrites instead of creating a
+ * second remark (#13).
  *
  * Returns null when the write fails for an ordinary reason, so a lost remark
  * never costs the surveyor the survey (same bargain as an identification that
@@ -119,51 +141,47 @@ async function resolveRemarkLicense(did: string) {
  * propagate: the remark would otherwise vanish with no explanation on exactly the
  * sessions that predate the remark collection joining our OAuth scope.
  *
- * `license` is the one the surveyor picked for this remark; without it the
- * account default applies. Callers validate it with isKnownLicense.
+ * `license` comes from remarkLicenseResolver. Callers validate a picked one
+ * with validateRemark, which also admits a license the remark already had.
  */
-export async function writeEventRemark(
+export async function writeRemark(
   did: string,
-  surveyRkey: string,
-  surveyUri: string,
+  dwcTerm: 'eventRemarks' | 'occurrenceRemarks',
+  rkey: string,
+  subjectUri: string,
   body: string,
-  license?: RemarkLicense,
+  license: string,
 ): Promise<string | null> {
-  license ??= await resolveRemarkLicense(did);
   const record = Remark.$build({
-    subject: surveyUri as l.AtUriString,
-    dwcTerm: 'eventRemarks',
+    subject: subjectUri as l.AtUriString,
+    dwcTerm,
     body,
     license,
   });
   try {
-    // Reuse the survey's own rkey, as an identification reuses its
-    // occurrence's: a different collection, so no key collision, and putRecord
-    // at a stable key means a retried survey POST overwrites instead of
-    // creating a second remark (#13).
-    const { uri } = await putRecord(did, Remark.$nsid, surveyRkey, record);
-    await insertRemark(did, surveyRkey, record, uri);
+    const { uri } = await putRecord(did, Remark.$nsid, rkey, record);
+    await insertRemark(did, rkey, record, uri);
     return uri;
   } catch (err) {
     if (err instanceof PdsSessionExpiredError) throw err;
-    log.error({ err, surveyUri }, 'Failed to write event remark');
+    log.error({ err, subjectUri, dwcTerm }, 'Failed to write remark');
     return null;
   }
 }
 
 /**
- * Removes a survey's event remark. The caller is responsible for also clearing
- * eventRemarksID on the survey record; a remark nothing references fills no
- * term, but leaving a dangling reference would point at a deleted record.
+ * Removes a remark. The caller is responsible for also clearing the forward
+ * reference on its subject; a remark nothing references fills no term, but
+ * leaving a dangling reference would point at a deleted record.
  */
-export async function deleteEventRemark(remarkUri: string): Promise<void> {
+export async function deleteRemark(remarkUri: string): Promise<void> {
   try {
     await deleteRecord(remarkUri);
   } catch (err) {
     if (err instanceof PdsSessionExpiredError) throw err;
     // A record that is already gone from the PDS still has a mirror row to
     // clear, so this is logged rather than fatal.
-    log.error({ err, remarkUri }, 'Failed to delete event remark record');
+    log.error({ err, remarkUri }, 'Failed to delete remark record');
   }
   await deleteRemarkByAtUri(remarkUri);
 }

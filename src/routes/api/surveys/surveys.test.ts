@@ -23,7 +23,7 @@ vi.mock('$lib/server/db/surveys', () => ({
   getProtocolTargetsByUri: vi.fn().mockResolvedValue([]),
   groupOccurrencesBySurvey: vi.fn(),
   toSurveyResponse: vi.fn(),
-  attachEventRemarks: vi.fn((surveys) => Promise.resolve(surveys)),
+  attachRemarks: vi.fn((surveys) => Promise.resolve(surveys)),
 }));
 
 vi.mock('$lib/server/db/identifications', () => ({
@@ -800,4 +800,153 @@ describe('POST /api/surveys — event remarks', () => {
     expect(resp.status).toBe(403);
     expect(insertSurvey).not.toHaveBeenCalled();
   });
+});
+
+describe('POST /api/surveys — occurrence remarks', () => {
+  const REMARK_NSID = 'bio.lexicons.temp.v0-1.remark';
+  const OCC_NSID = 'bio.lexicons.temp.v0-1.occurrence';
+  const TARGET_URI = `at://${DID}/bio.cuanto.protocolTarget/t1`;
+
+  function bodyWithRemark(remark: unknown, organismQuantity = '2') {
+    return {
+      ...baseSurveyBody,
+      occurrences: [{ surveyTargetUri: TARGET_URI, organismQuantity, remark }],
+    };
+  }
+
+  test('writes the remark before its occurrence and links it from occurrenceRemarksID', async () => {
+    const resp = await callPost({
+      request: makeRequest(bodyWithRemark({ body: 'Calling from the creek.' })),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+
+    const calls = vi.mocked(putRecord).mock.calls;
+    const occIdx = calls.findIndex((c) => c[1] === OCC_NSID);
+    expect(occIdx).toBeGreaterThanOrEqual(0);
+    const occRkey = calls[occIdx][2];
+    const occUri = `at://${DID}/${OCC_NSID}/${occRkey}`;
+
+    // The remark reuses the occurrence's rkey and is written first, so the
+    // occurrence never points at a record that does not exist yet.
+    const remarkIdx = calls.findIndex(
+      (c) => c[1] === REMARK_NSID && c[2] === occRkey,
+    );
+    expect(remarkIdx).toBeGreaterThanOrEqual(0);
+    expect(remarkIdx).toBeLessThan(occIdx);
+    expect(calls[remarkIdx][3]).toEqual(
+      expect.objectContaining({
+        subject: occUri,
+        dwcTerm: 'occurrenceRemarks',
+        body: 'Calling from the creek.',
+      }),
+    );
+
+    expect(calls[occIdx][3]).toEqual(
+      expect.objectContaining({
+        occurrenceRemarksID: `at://${DID}/${REMARK_NSID}/${occRkey}`,
+      }),
+    );
+  });
+
+  test('writes no remark and no occurrenceRemarksID when none was given', async () => {
+    const resp = await callPost({
+      request: makeRequest(bodyWithRemark(undefined)),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+
+    const calls = vi.mocked(putRecord).mock.calls;
+    expect(calls.map((c) => c[1])).not.toContain(REMARK_NSID);
+    const occCall = calls.find((c) => c[1] === OCC_NSID);
+    expect(occCall?.[3]).not.toHaveProperty('occurrenceRemarksID');
+  });
+
+  test('treats a whitespace-only remark as no remark', async () => {
+    const resp = await callPost({
+      request: makeRequest(bodyWithRemark({ body: '  \n ' })),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    const collections = vi.mocked(putRecord).mock.calls.map((c) => c[1]);
+    expect(collections).not.toContain(REMARK_NSID);
+  });
+
+  test('writes no remark for a target with no count, since it gets no occurrence', async () => {
+    const resp = await callPost({
+      request: makeRequest(bodyWithRemark({ body: 'Looked hard.' }, '0')),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    const collections = vi.mocked(putRecord).mock.calls.map((c) => c[1]);
+    expect(collections).not.toContain(REMARK_NSID);
+  });
+
+  test('stamps the license the surveyor chose onto the remark', async () => {
+    const CC_BY = 'https://creativecommons.org/licenses/by/4.0/';
+    const resp = await callPost({
+      request: makeRequest(bodyWithRemark({ body: 'Pair.', license: CC_BY })),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(200);
+    const remarkCall = vi
+      .mocked(putRecord)
+      .mock.calls.find((c) => c[1] === REMARK_NSID);
+    expect(remarkCall?.[3]).toEqual(
+      expect.objectContaining({ license: CC_BY }),
+    );
+  });
+
+  test('returns 422 for an invalid remark before writing anything', async () => {
+    const resp = await callPost({
+      request: makeRequest(bodyWithRemark({ body: 'x'.repeat(3001) })),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+    expect(resp.status).toBe(422);
+    expect(putRecord).not.toHaveBeenCalled();
+  });
+
+  test('still saves the occurrence when the remark write fails', async () => {
+    const echo = vi.mocked(putRecord).getMockImplementation();
+    vi.mocked(putRecord).mockImplementation(async (...args) => {
+      if (args[1] === REMARK_NSID) throw new Error('PDS unavailable');
+      // biome-ignore lint/style/noNonNullAssertion: set in beforeEach
+      return echo!(...args);
+    });
+    const resp = await callPost({
+      request: makeRequest(bodyWithRemark({ body: 'Pair.' })),
+      locals: { did: DID },
+    } as unknown as Parameters<typeof POST>[0]);
+
+    expect(resp.status).toBe(200);
+    const occCall = vi
+      .mocked(putRecord)
+      .mock.calls.find((c) => c[1] === OCC_NSID);
+    expect(occCall).toBeDefined();
+    expect(occCall?.[3]).not.toHaveProperty('occurrenceRemarksID');
+  });
+});
+
+test('POST /api/surveys looks the default remark license up once per survey', async () => {
+  // Each remark without a picked license gets the same default; a survey with
+  // a remark on every target would otherwise repeat the query per target.
+  const resp = await callPost({
+    request: makeRequest({
+      ...baseSurveyBody,
+      eventRemark: { body: 'Windy.' },
+      occurrences: [1, 2, 3].map((n) => ({
+        surveyTargetUri: `at://${DID}/bio.cuanto.protocolTarget/t${n}`,
+        organismQuantity: '1',
+        remark: { body: `Remark ${n}.` },
+      })),
+    }),
+    locals: { did: DID },
+  } as unknown as Parameters<typeof POST>[0]);
+  expect(resp.status).toBe(200);
+
+  const remarkCalls = vi
+    .mocked(putRecord)
+    .mock.calls.filter((c) => c[1] === 'bio.lexicons.temp.v0-1.remark');
+  expect(remarkCalls).toHaveLength(4);
+  expect(getDefaultRemarkLicense).toHaveBeenCalledTimes(1);
 });

@@ -10,18 +10,17 @@ import * as Occurrence from '$lib/lexicons/bio/lexicons/temp/v0-1/occurrence';
 import { bbox, geo } from '$lib/lexicons/community/lexicon/location';
 import * as Place from '$lib/lexicons/org/atgeo/place';
 import type { Main as AtgeoPlace } from '$lib/lexicons/org/atgeo/place.defs';
-import type { RemarkLicense } from '$lib/licenses';
 import {
   type OccurrenceMetadata,
   occurrenceMetadataFromSurveyInput,
 } from '$lib/occurrenceMetadata';
-import { validateEventRemark } from '$lib/remarks';
+import { type RemarkInput, validateRemark } from '$lib/remarks';
 import sql from '$lib/server/db';
 import { getIdentificationsForOccurrences } from '$lib/server/db/identifications';
 import type { ProtocolRow } from '$lib/server/db/survey-protocols';
 import { getProtocolByUri } from '$lib/server/db/survey-protocols';
 import {
-  attachEventRemarks,
+  attachRemarks,
   getOccurrencesForSurveys,
   getProtocolTargetsByUri,
   getSurveysByDid,
@@ -36,7 +35,8 @@ import { PdsSessionExpiredError, putRecord } from '$lib/server/pds';
 import { pdsAuthErrorResponse } from '$lib/server/pds-error-response';
 import {
   attachIdentificationToOccurrence,
-  writeEventRemark,
+  remarkLicenseResolver,
+  writeRemark,
 } from '$lib/server/survey-records';
 import { eventDateIsInFuture } from '$lib/server/survey-validation';
 import type { IncidentalInput } from '$lib/surveys';
@@ -64,8 +64,8 @@ export const GET: RequestHandler = async ({ locals }) => {
   }));
   return json(
     // /app/surveys caches these, so they carry the remark for the same reason
-    // /api/sync does (see attachEventRemarks).
-    await attachEventRemarks(
+    // /api/sync does (see attachRemarks).
+    await attachRemarks(
       toSurveyResponse(
         surveys,
         groupOccurrencesBySurvey(occurrencesWithIdents),
@@ -78,6 +78,10 @@ type OccurrenceInput = {
   surveyTargetUri: string;
   taxonID?: string;
   organismQuantity?: string;
+  // The surveyor's remark about this occurrence, written as its own
+  // bio.lexicons.temp.v0-1.remark record and referenced from the occurrence's
+  // occurrenceRemarksID. `license` works as on eventRemark.
+  remark?: RemarkInput;
 };
 
 type TrackInput = {
@@ -103,7 +107,7 @@ type SurveyInput = {
   // bio.lexicons.temp.v0-1.remark record and referenced from the survey's
   // eventRemarksID. `license` is the one the surveyor picked for this remark;
   // when it is omitted the server stamps their account default at upload.
-  eventRemark?: { body: string; license?: string };
+  eventRemark?: RemarkInput;
 };
 
 async function fetchProtocolRecords(body: SurveyInput) {
@@ -192,7 +196,28 @@ async function createOccurrence(
   surveyRkey: string,
   did: string,
   occMeta: OccurrenceMetadata,
+  licenseFor: (picked?: string) => Promise<string>,
 ) {
+  // Deterministic rkey (stable per survey + target) so a retried POST reuses it
+  // and putRecord overwrites instead of duplicating the occurrence (#13). Each
+  // target appears at most once per survey, so the seed is unique.
+  const occRkey = deterministicTid(`${surveyRkey}/${inputOcc.surveyTargetUri}`);
+
+  // As with the survey's remark, write this first so the occurrence never
+  // points at a record that does not exist. Knowing the rkey up front means
+  // both AT-URIs are known before either write.
+  const remarkBody = inputOcc.remark?.body.trim();
+  const occurrenceRemarksID = remarkBody
+    ? await writeRemark(
+        did,
+        'occurrenceRemarks',
+        occRkey,
+        `at://${did}/${Occurrence.$nsid}/${occRkey}`,
+        remarkBody,
+        await licenseFor(inputOcc.remark?.license),
+      )
+    : null;
+
   const occurrenceRecord = Occurrence.$build({
     ...occMeta,
     eventID: surveyUri as l.AtUriString,
@@ -205,11 +230,10 @@ async function createOccurrence(
     ...(inputOcc.taxonID ? { taxonID: inputOcc.taxonID as l.UriString } : {}),
     organismQuantity: inputOcc.organismQuantity,
     organismQuantityType: 'individuals',
+    ...(occurrenceRemarksID
+      ? { occurrenceRemarksID: occurrenceRemarksID as l.AtUriString }
+      : {}),
   });
-  // Deterministic rkey (stable per survey + target) so a retried POST reuses it
-  // and putRecord overwrites instead of duplicating the occurrence (#13). Each
-  // target appears at most once per survey, so the seed is unique.
-  const occRkey = deterministicTid(`${surveyRkey}/${inputOcc.surveyTargetUri}`);
   const { uri: occUri, cid: occCid } = await putRecord(
     did,
     Occurrence.$nsid,
@@ -286,7 +310,13 @@ async function postSurvey(request: Request, did: string) {
   }
 
   if (body.eventRemark != null) {
-    const remarkError = validateEventRemark(body.eventRemark);
+    const remarkError = validateRemark(body.eventRemark, 'eventRemark');
+    if (remarkError) throw error(422, remarkError);
+  }
+
+  for (const [i, occ] of body.occurrences.entries()) {
+    if (occ.remark == null) continue;
+    const remarkError = validateRemark(occ.remark, `occurrences[${i}].remark`);
     if (remarkError) throw error(422, remarkError);
   }
 
@@ -351,14 +381,16 @@ async function postSurvey(request: Request, did: string) {
   // not exist: the lexicon treats the forward reference as authoritative. Both
   // AT-URIs are known up front because the rkey is client-chosen and the remark
   // reuses it, so this needs no follow-up write to link them.
+  const licenseFor = remarkLicenseResolver(did);
   const remarkBody = body.eventRemark?.body.trim();
   const eventRemarksID = remarkBody
-    ? await writeEventRemark(
+    ? await writeRemark(
         did,
+        'eventRemarks',
         body.surveyRkey,
         `at://${did}/${Survey.$nsid}/${body.surveyRkey}`,
         remarkBody,
-        body.eventRemark?.license as RemarkLicense | undefined,
+        await licenseFor(body.eventRemark?.license),
       )
     : null;
 
@@ -376,7 +408,14 @@ async function postSurvey(request: Request, did: string) {
       continue;
 
     const { occUri, occCid, occRkey, occurrenceRecord } =
-      await createOccurrence(input, surveyUri, body.surveyRkey, did, occMeta);
+      await createOccurrence(
+        input,
+        surveyUri,
+        body.surveyRkey,
+        did,
+        occMeta,
+        licenseFor,
+      );
 
     // If target has taxon scope, create an Identification and update the Occurrence
     // to indicate that this is the Occurrence user's accepted ident

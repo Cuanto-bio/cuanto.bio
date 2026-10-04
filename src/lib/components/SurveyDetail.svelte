@@ -123,6 +123,27 @@ const externalLinkProps =
     : {};
 </script>
 
+<!--
+  A remark is its own record with its own license, so it is credited rather
+  than presented as if it were another field of the survey or occurrence.
+-->
+{#snippet remarkCredit(license: string)}
+  {@const href = licenseHref(license)}
+  <div class="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
+    <span>Text &copy; @{survey.handle}</span>
+    {#if href}
+      <Badge variant="secondary" {href} rel="license noopener" target="_blank">
+        {licenseLabel(license)}
+        <ExternalLink />
+      </Badge>
+    {:else}
+      <Badge variant="secondary">
+        {licenseLabel(license)}
+      </Badge>
+    {/if}
+  </div>
+{/snippet}
+
 {#snippet surveyTargetRow(opts: {
   verbatimTargetScope?: string,
   taxon?: TaxonProp,
@@ -143,13 +164,23 @@ const externalLinkProps =
       gap-2
     "
   >
-    <span class="text-sm">
-      {#if opts.taxon}
-        <Taxon taxon={opts.taxon} />
-      {:else if opts.verbatimTargetScope}
-        {opts.verbatimTargetScope ?? 'Unknown'}
+    <div class="flex flex-col gap-1">
+      <span class="text-sm">
+        {#if opts.taxon}
+          <Taxon taxon={opts.taxon} />
+        {:else if opts.verbatimTargetScope}
+          {opts.verbatimTargetScope ?? 'Unknown'}
+        {/if}
+      </span>
+      {#if opts.occurrence?.remark}
+        <div class="text-muted-foreground space-y-1 text-sm">
+          <UserText text={opts.occurrence.remark.body} />
+          {#if opts.occurrence.remark.license}
+            {@render remarkCredit(opts.occurrence.remark.license)}
+          {/if}
+        </div>
       {/if}
-    </span>
+    </div>
     <div class="flex items-center gap-4">
       <span class="font-mono text-sm font-semibold">
         {opts.occurrence?.record.organismQuantity ?? 0}
@@ -333,20 +364,7 @@ const externalLinkProps =
               <h3 class="text-muted-foreground text-xs font-semibold uppercase">Remarks</h3>
               <UserText text={survey.eventRemark.body} />
               {#if survey.eventRemark.license}
-                {@const href = licenseHref(survey.eventRemark.license)}
-                <div class="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
-                  <span>Text &copy; @{survey.handle}</span>
-                  {#if href}
-                    <Badge variant="secondary" {href} rel="license noopener" target="_blank">
-                      {licenseLabel(survey.eventRemark.license)}
-                      <ExternalLink />
-                    </Badge>
-                  {:else}
-                    <Badge variant="secondary">
-                      {licenseLabel(survey.eventRemark.license)}
-                    </Badge>
-                  {/if}
-                </div>
+                {@render remarkCredit(survey.eventRemark.license)}
               {/if}
             </div>
           {/if}
