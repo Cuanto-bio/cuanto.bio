@@ -326,8 +326,14 @@ describe('uploadAllPending', () => {
   });
 
   test('skips incomplete and uploads complete when both present', async () => {
-    await savePendingSurvey({ ...baseSurvey, complete: false });
+    // Distinct surveyRkeys: saves sharing one land in the same row.
+    await savePendingSurvey({
+      ...baseSurvey,
+      surveyRkey: 'ccccccccccccc',
+      complete: false,
+    });
     await savePendingSurvey({ ...baseSurvey, complete: true });
+    expect(await getPendingSurveys()).toHaveLength(2);
     await uploadAllPending();
     expect(fetch).toHaveBeenCalledOnce();
   });

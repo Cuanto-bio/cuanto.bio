@@ -427,11 +427,59 @@ export async function getCachedProtocols(): Promise<CachedProtocol[]> {
   return db.getAll('cached-protocols');
 }
 
+/**
+ * Writes a survey to the pending-surveys row that already holds its
+ * surveyRkey, or adds a row if there is none, and returns that row's id.
+ *
+ * The lookup and the write share one readwrite transaction. Those are
+ * serialized per store, so two writers that each have no row id yet (the
+ * form's autosave, finish(), and flushDraftWal can all be in that state at
+ * once) land in the same row rather than each adding their own. A survey that
+ * got a second row was left behind under "In progress" as a stale copy of the
+ * one that went on to be finished.
+ *
+ * `stillWanted` is asked after the lookup, right before the write; returning
+ * false skips the write and resolves undefined.
+ */
+function putPendingSurveyByRkey(
+  db: IDBPDatabase<CuantoDB>,
+  survey: Omit<PendingSurvey, 'id'>,
+): Promise<number>;
+function putPendingSurveyByRkey(
+  db: IDBPDatabase<CuantoDB>,
+  survey: Omit<PendingSurvey, 'id'>,
+  stillWanted: () => boolean,
+): Promise<number | undefined>;
+async function putPendingSurveyByRkey(
+  db: IDBPDatabase<CuantoDB>,
+  survey: Omit<PendingSurvey, 'id'>,
+  stillWanted?: () => boolean,
+): Promise<number | undefined> {
+  const tx = db.transaction('pending-surveys', 'readwrite');
+  const write = async () => {
+    // Rows saved before idempotent uploads (#13) have no surveyRkey until
+    // getPendingSurveys migrates them; never match on a missing one.
+    const match = survey.surveyRkey
+      ? (await tx.store.getAll()).find(
+          (s) => s.surveyRkey === survey.surveyRkey,
+        )
+      : undefined;
+    if (stillWanted && !stillWanted()) return undefined;
+    return match?.id != null
+      ? tx.store.put({ ...survey, id: match.id })
+      : tx.store.add(survey as PendingSurvey);
+  };
+  // Awaited together with tx.done so a failed request doesn't leave the
+  // transaction's own rejection unhandled.
+  const [id] = await Promise.all([write(), tx.done]);
+  return id;
+}
+
 export async function savePendingSurvey(
   survey: Omit<PendingSurvey, 'id'>,
 ): Promise<number> {
   const db = await getDB();
-  return db.add('pending-surveys', survey as PendingSurvey);
+  return putPendingSurveyByRkey(db, survey);
 }
 
 export async function updatePendingSurvey(
@@ -501,17 +549,8 @@ export async function flushDraftWal(): Promise<number | undefined> {
         clearIfUnchanged();
         return entry.id;
       }
-      const match = (await db.getAll('pending-surveys')).find(
-        (s) => s.surveyRkey === payload.surveyRkey,
-      );
-      if (!stillOurs()) return undefined;
-      let id: number;
-      if (match?.id != null) {
-        id = match.id;
-        await db.put('pending-surveys', { ...payload, id });
-      } else {
-        id = await db.add('pending-surveys', payload);
-      }
+      const id = await putPendingSurveyByRkey(db, payload, stillOurs);
+      if (id == null) return undefined;
       clearIfUnchanged();
       return id;
     } catch (err) {

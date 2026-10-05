@@ -283,6 +283,27 @@ describe('pending-surveys store', () => {
     expect(typeof id).toBe('number');
   });
 
+  test('finishing while the first autosave is in flight keeps one row', async () => {
+    const draft = {
+      ...pendingSurvey1,
+      surveyRkey: 'savesave0001',
+      complete: false,
+    };
+
+    const [autosavedId, finishedId] = await Promise.all([
+      savePendingSurvey(draft),
+      savePendingSurvey({ ...draft, complete: true }),
+    ]);
+
+    expect(finishedId).toBe(autosavedId);
+    const matching = (await getPendingSurveys()).filter(
+      (s) => s.surveyRkey === 'savesave0001',
+    );
+    expect(matching).toHaveLength(1);
+    expect(matching[0].complete).toBe(true);
+    await deletePendingSurvey(autosavedId);
+  });
+
   test('getPendingSurveys returns saved surveys', async () => {
     const id = await savePendingSurvey(pendingSurvey1);
     const all = await getPendingSurveys();
@@ -535,6 +556,31 @@ describe('flushDraftWal', () => {
       (s) => s.surveyRkey === 'walrace00001',
     );
     expect(matching).toHaveLength(1);
+  });
+
+  test('an autosave racing the fold of a draft with no id shares its row', async () => {
+    // Backgrounded before the first IndexedDB autosave, so the stash carries
+    // no id. On the next foreground the form folds the WAL while its 10s
+    // autosave tick, which has no row id to update either, saves the same
+    // survey. Both used to add a row, stranding one under "In progress".
+    const draft = {
+      ...pendingSurvey1,
+      surveyRkey: 'walsave00001',
+      complete: false,
+    };
+    writeDraftWal({ payload: draft });
+
+    const [foldedId, savedId] = await Promise.all([
+      flushDraftWal(),
+      savePendingSurvey({ ...draft, locationName: 'Autosaved Field' }),
+    ]);
+
+    expect(savedId).toBe(foldedId);
+    const matching = (await getPendingSurveys()).filter(
+      (s) => s.surveyRkey === 'walsave00001',
+    );
+    expect(matching).toHaveLength(1);
+    expect(matching[0].locationName).toBe('Autosaved Field');
   });
 
   test('getPendingSurveys folds in a stashed draft', async () => {
