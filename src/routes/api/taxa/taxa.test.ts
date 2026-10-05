@@ -121,4 +121,35 @@ describe('GET /api/taxa', () => {
     } as Parameters<typeof GET>[0]);
     expect(resp.status).toBe(502);
   });
+
+  test('returns 502 on a 429 without retrying', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(new Response('rate limited', { status: 429 }));
+    vi.stubGlobal('fetch', mockFetch);
+    const resp = await GET({
+      url: new URL('http://localhost/api/taxa?q=quercus'),
+    } as Parameters<typeof GET>[0]);
+    expect(resp.status).toBe(502);
+    expect(mockFetch).toHaveBeenCalledOnce();
+  });
+
+  test('retries a 429 when asked to with retry=true', async () => {
+    vi.useFakeTimers();
+    try {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce(new Response('rate limited', { status: 429 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ results: [] })));
+      vi.stubGlobal('fetch', mockFetch);
+      const promise = GET({
+        url: new URL('http://localhost/api/taxa?q=quercus&retry=true'),
+      } as Parameters<typeof GET>[0]);
+      await vi.runAllTimersAsync();
+      expect((await promise).status).toBe(200);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

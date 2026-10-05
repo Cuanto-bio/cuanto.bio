@@ -8,6 +8,7 @@ import {
   getOccurrenceByRkeyAndDid,
   updateOccurrenceRecord,
 } from '$lib/server/db/occurrences';
+import { inatFetch } from '$lib/server/inat';
 import {
   createRecord,
   deleteRecord,
@@ -32,10 +33,7 @@ async function lookupInatTaxon(taxonId: number): Promise<InatTaxon | null> {
   const params = new URLSearchParams({
     fields: 'id,name,rank,preferred_common_name,ancestors.rank,ancestors.name',
   });
-  const resp = await fetch(
-    `https://api.inaturalist.org/v2/taxa/${taxonId}?${params}`,
-    { headers: { 'User-Agent': 'cuanto.bio/0.1 (prototype)' } },
-  );
+  const resp = await inatFetch(`/v2/taxa/${taxonId}?${params}`);
   if (!resp.ok) return null;
   const data = (await resp.json()) as { results: InatTaxon[] };
   return data.results[0] ?? null;

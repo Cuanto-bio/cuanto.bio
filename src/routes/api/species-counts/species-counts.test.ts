@@ -1,9 +1,11 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { GET } from './+server';
 
-function call(query: string) {
+function call(query: string, signal?: AbortSignal) {
+  const url = new URL(`http://localhost/api/species-counts${query}`);
   return GET({
-    url: new URL(`http://localhost/api/species-counts${query}`),
+    url,
+    request: new Request(url, { signal }),
   } as Parameters<typeof GET>[0]);
 }
 
@@ -169,5 +171,67 @@ describe('GET /api/species-counts', () => {
     );
     const resp = await call('?place_id=14&count=true');
     expect(resp.status).toBe(502);
+  });
+
+  describe('when iNat rate limits', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    test('retries a 429', async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce(new Response('rate limited', { status: 429 }))
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ total_results: 0, results: [] })),
+        );
+      vi.stubGlobal('fetch', mockFetch);
+      const promise = call('?place_id=14');
+      await vi.runAllTimersAsync();
+      expect(await (await promise).json()).toEqual({ results: [] });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    test('does not retry a 429 for a count preview', async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValue(new Response('rate limited', { status: 429 }));
+      vi.stubGlobal('fetch', mockFetch);
+      const resp = await call('?place_id=14&count=true');
+      expect(resp.status).toBe(502);
+      expect(mockFetch).toHaveBeenCalledOnce();
+    });
+
+    test('stops retrying when the client aborts the request', async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValue(new Response('rate limited', { status: 429 }));
+      vi.stubGlobal('fetch', mockFetch);
+      const controller = new AbortController();
+      const promise = call('?place_id=14', controller.signal);
+      const expectation = expect(promise).rejects.toThrow(/abort/i);
+      await vi.advanceTimersByTimeAsync(500);
+      controller.abort();
+      await expectation;
+      expect(mockFetch).toHaveBeenCalledOnce();
+    });
+
+    test('returns 502 when iNat keeps answering 429', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockImplementation(
+            async () => new Response('rate limited', { status: 429 }),
+          ),
+      );
+      const promise = call('?place_id=14');
+      await vi.runAllTimersAsync();
+      expect((await promise).status).toBe(502);
+    });
   });
 });

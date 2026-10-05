@@ -72,4 +72,14 @@ describe('GET /api/inat-places', () => {
     const resp = await call('?q=calif');
     expect(resp.status).toBe(502);
   });
+
+  test('returns 502 on a 429 without retrying', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(new Response('rate limited', { status: 429 }));
+    vi.stubGlobal('fetch', mockFetch);
+    const resp = await call('?q=calif');
+    expect(resp.status).toBe(502);
+    expect(mockFetch).toHaveBeenCalledOnce();
+  });
 });

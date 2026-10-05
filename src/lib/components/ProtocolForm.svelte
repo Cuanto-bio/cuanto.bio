@@ -601,7 +601,9 @@ async function matchBulkNames() {
   const unmatched: string[] = [];
   for (const name of lines) {
     try {
-      const resp = await fetch(`/api/taxa?q=${encodeURIComponent(name)}`);
+      const resp = await fetch(
+        `/api/taxa?q=${encodeURIComponent(name)}&retry=true`,
+      );
       const data = await resp.json();
       const results: TaxonResult[] = data.results ?? [];
       const match = results.find(

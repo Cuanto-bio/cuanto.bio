@@ -5,11 +5,10 @@ import {
   type Classification,
   inatIdsNeedingClassification,
 } from '$lib/targets.svelte';
+import { inatFetch } from './inat';
 import { INAT_MOCK_ANCESTORS } from './inat-mock';
 
 const log = logger.child({ component: 'inat-taxa' });
-
-const INAT_TAXA_URL = 'https://api.inaturalist.org/v2/taxa';
 
 // The v2 taxa search accepts up to 500 ids per request (verified 2026-09-28).
 // The path form (/v2/taxa/<ids>) returns ancestors directly but caps at 30 ids,
@@ -17,9 +16,10 @@ const INAT_TAXA_URL = 'https://api.inaturalist.org/v2/taxa';
 // two searches: the taxa's ancestor_ids, then those ancestors' names and ranks.
 const MAX_IDS_PER_REQUEST = 500;
 
-// How long a whole classification lookup (all of its requests) may take before
-// it's abandoned. A protocol save waits on this, so it has to give up rather
-// than hang if iNat stops responding.
+// How long a whole classification lookup (all of its requests, including
+// waiting out 429 backoff) may take before it's abandoned. A protocol save
+// waits on this, so it has to give up rather than hang if iNat stops
+// responding.
 const INAT_TIMEOUT_MS = 15_000;
 
 async function searchTaxa<T>(
@@ -37,10 +37,7 @@ async function searchTaxa<T>(
       fields,
       ...extraParams,
     });
-    const resp = await fetch(`${INAT_TAXA_URL}?${params}`, {
-      headers: { 'User-Agent': 'cuanto.bio/0.1 (prototype)' },
-      signal,
-    });
+    const resp = await inatFetch(`/v2/taxa?${params}`, { signal });
     if (!resp.ok) {
       throw new Error(`iNat taxa request failed with ${resp.status}`);
     }

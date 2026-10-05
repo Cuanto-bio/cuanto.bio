@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('$lib/server/db/occurrences', () => ({
   getOccurrenceByRkeyAndDid: vi.fn(),
@@ -328,6 +328,78 @@ describe('PATCH /api/occurrences/[rkey]', () => {
         expect.not.objectContaining({ surveyTargetID: expect.anything() }),
       );
       expect(res.status).toBe(200);
+    });
+  });
+
+  describe('convert-to-incidental — iNat unreachable', () => {
+    beforeEach(() => {
+      vi.mocked(getOccurrenceByRkeyAndDid).mockResolvedValue(
+        INAT_OCCURRENCE as never,
+      );
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockRejectedValue(new TypeError('fetch failed')),
+      );
+    });
+
+    test('fails without converting, so the user can try again', async () => {
+      await expect(
+        callPatch({ action: 'convert-to-incidental' }),
+      ).rejects.toThrow('fetch failed');
+      expect(putRecord).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('convert-to-incidental — iNat rate limits', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.mocked(getOccurrenceByRkeyAndDid).mockResolvedValue(
+        INAT_OCCURRENCE as never,
+      );
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    test('retries the iNat lookup on a 429', async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce(new Response('rate limited', { status: 429 }))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              results: [
+                { id: 48662, name: 'Danaus plexippus', rank: 'species' },
+              ],
+            }),
+          ),
+        );
+      vi.stubGlobal('fetch', mockFetch);
+      const promise = callPatch({ action: 'convert-to-incidental' });
+      await vi.runAllTimersAsync();
+      expect((await promise).status).toBe(200);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(createRecord).toHaveBeenCalledWith(
+        DID,
+        'bio.lexicons.temp.v0-1.identification',
+        expect.objectContaining({ scientificName: 'Danaus plexippus' }),
+      );
+    });
+
+    test('still saves the occurrence when iNat keeps answering 429', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockImplementation(
+            async () => new Response('rate limited', { status: 429 }),
+          ),
+      );
+      const promise = callPatch({ action: 'convert-to-incidental' });
+      await vi.runAllTimersAsync();
+      expect((await promise).status).toBe(200);
+      expect(putRecord).toHaveBeenCalled();
     });
   });
 });

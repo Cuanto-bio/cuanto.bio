@@ -8,6 +8,7 @@ import { parseAtUri } from '$lib/atUri';
 import sql from '$lib/server/db';
 import logger from '$lib/server/logger';
 import { getClient, isScopeSufficient } from './auth.js';
+import { fetchWithRetry } from './fetch-with-retry';
 
 export { parseAtUri };
 
@@ -57,34 +58,6 @@ let mockSeq = 0;
 const FAKE_CID = 'bafyreids4hmf6hmplkmcvjn57gqxq3gj2lspkutktkj4w53hnnqavtcr34';
 
 const idResolver = new IdResolver();
-
-const MAX_RETRIES = 3;
-const BASE_DELAY_MS = 1000;
-
-type FetchFn = typeof fetch;
-
-/** Wraps fetch with retry logic for 429 responses, honouring Retry-After. */
-export async function fetchWithRetry(
-  url: string | URL,
-  init: RequestInit,
-  fetchFn: FetchFn = fetch,
-): Promise<Response> {
-  let attempt = 0;
-  while (true) {
-    const resp = await fetchFn(url, init);
-    if (resp.status !== 429) return resp;
-    if (attempt >= MAX_RETRIES)
-      throw new Error(`HTTP 429 after ${MAX_RETRIES} retries`);
-
-    const retryAfter = resp.headers.get('Retry-After');
-    const delayMs = retryAfter
-      ? parseFloat(retryAfter) * 1000
-      : BASE_DELAY_MS * 2 ** attempt;
-
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-    attempt++;
-  }
-}
 
 export interface AtRecord {
   uri: string;

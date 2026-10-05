@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { inatFetch } from '$lib/server/inat';
 import type { RequestHandler } from './$types';
 
 type InatTaxon = {
@@ -22,8 +23,11 @@ export const GET: RequestHandler = async ({ url }) => {
     fields: 'id,name,rank,preferred_common_name,ancestors.rank,ancestors.name',
   });
 
-  const resp = await fetch(`https://api.inaturalist.org/v2/taxa?${params}`, {
-    headers: { 'User-Agent': 'cuanto.bio/0.1 (prototype)' },
+  // Autocomplete fails fast on a 429 rather than back off mid-keystroke. A
+  // caller that isn't keystroke-driven (matching a pasted list of names) asks
+  // for retries with retry=true.
+  const resp = await inatFetch(`/v2/taxa?${params}`, {
+    retry: url.searchParams.get('retry') === 'true',
   });
 
   if (!resp.ok) {

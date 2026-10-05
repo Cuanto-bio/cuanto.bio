@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { InatPlace } from '$lib/places';
+import { inatFetch } from '$lib/server/inat';
 import type { RequestHandler } from './$types';
 
 // The raw place shape from iNaturalist's places/autocomplete endpoint, before
@@ -23,10 +24,10 @@ export const GET: RequestHandler = async ({ url }) => {
     per_page: '10',
   });
 
-  const resp = await fetch(
-    `https://api.inaturalist.org/v1/places/autocomplete?${params}`,
-    { headers: { 'User-Agent': 'cuanto.bio/0.1 (prototype)' } },
-  );
+  // Autocomplete: fail fast on a 429 rather than back off mid-keystroke
+  const resp = await inatFetch(`/v1/places/autocomplete?${params}`, {
+    retry: false,
+  });
 
   if (!resp.ok) {
     return json({ error: 'iNat API error' }, { status: 502 });

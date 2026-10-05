@@ -66,6 +66,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -164,6 +165,23 @@ describe('fetchInatClassifications', () => {
       family: 'Family48662',
       higherClassification: 'Animalia | Family48662',
     });
+  });
+
+  test('retries a 429', async () => {
+    vi.useFakeTimers();
+    const echo = echoingFetch();
+    let rateLimited = false;
+    const mockFetch = vi.fn(async (url: string) => {
+      if (!rateLimited) {
+        rateLimited = true;
+        return new Response('rate limited', { status: 429 });
+      }
+      return echo(url);
+    });
+    vi.stubGlobal('fetch', mockFetch);
+    const promise = fetchInatClassifications([48662]);
+    await vi.runAllTimersAsync();
+    expect((await promise).get(48662)?.family).toBe('Family48662');
   });
 
   test('makes no request for no ids', async () => {

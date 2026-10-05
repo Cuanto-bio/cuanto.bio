@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { INAT_SPECIES_PAGE_CAP } from '$lib/inat';
+import { inatFetch } from '$lib/server/inat';
 import type { RequestHandler } from './$types';
 
 // A taxon observed within a place (optionally under a parent taxon), returned by
@@ -22,7 +23,7 @@ type InatSpeciesCount = {
 // `count=true` previews how many species match without fetching them: it asks
 // iNat for per_page=0, which still returns `total_results` but no rows, so the
 // UI can show a count before the (potentially large) import request.
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ url, request }) => {
   const placeId = url.searchParams.get('place_id');
   const taxonId = url.searchParams.get('taxon_id');
   const countOnly = url.searchParams.get('count') === 'true';
@@ -46,10 +47,13 @@ export const GET: RequestHandler = async ({ url }) => {
   });
   if (taxonId) params.set('taxon_id', taxonId);
 
-  const resp = await fetch(
-    `https://api.inaturalist.org/v1/observations/species_counts?${params}`,
-    { headers: { 'User-Agent': 'cuanto.bio/0.1 (prototype)' } },
-  );
+  // The count preview reruns on every selection change, so like autocomplete
+  // it fails fast on a 429; the import itself retries. The form aborts
+  // previews it no longer needs, and the signal stops their requests here too.
+  const resp = await inatFetch(`/v1/observations/species_counts?${params}`, {
+    retry: !countOnly,
+    signal: request.signal,
+  });
 
   if (!resp.ok) {
     return json({ error: 'iNat API error' }, { status: 502 });
