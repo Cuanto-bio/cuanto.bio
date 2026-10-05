@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { userTextSegments } from './userText';
+import { userTextPlain, userTextSegments } from './userText';
 
 const plain = (value: string) => ({
   type: 'text',
@@ -113,5 +113,25 @@ describe('userTextSegments', () => {
 
   test('treats runs of three or more markers as literal', () => {
     expect(userTextSegments('***odd***')).toEqual([plain('***odd***')]);
+  });
+});
+
+describe('userTextPlain', () => {
+  test('strips paired emphasis markers', () => {
+    expect(userTextPlain('**Windy**, *very* _cold_')).toBe('Windy, very cold');
+  });
+
+  test('keeps unpaired and arithmetic markers literal', () => {
+    expect(userTextPlain('2 * 3 is *six')).toBe('2 * 3 is *six');
+  });
+
+  test('keeps link text and underscores inside URLs', () => {
+    expect(userTextPlain('**see https://example.com/a_b_c now**')).toBe(
+      'see https://example.com/a_b_c now',
+    );
+  });
+
+  test('keeps line breaks', () => {
+    expect(userTextPlain('one\n*two*')).toBe('one\ntwo');
   });
 });

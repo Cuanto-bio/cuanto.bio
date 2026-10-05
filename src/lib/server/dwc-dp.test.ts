@@ -17,10 +17,21 @@ import {
   surveyRowToSurveyCsvLine,
   surveyTargetRowToCsvLine,
 } from './dwc-dp.js';
+import { EVENT_SCHEMA, OCCURRENCE_SCHEMA } from './dwc-dp-schemas.js';
 
 // Splits a CSV line respecting RFC 4180 quoting rules.
 function parseCsvLine(line: string): string[] {
   return line.trimEnd().match(/(?:^|,)(?:"(?:[^"]|"")*"|[^,]*)/g) ?? [];
+}
+
+// The decoded values of one CSV record: quotes removed and "" unescaped.
+function csvFields(line: string): string[] {
+  return parseCsvLine(line).map((raw) => {
+    const field = raw.replace(/^,/, '');
+    return field.startsWith('"')
+      ? field.slice(1, -1).replace(/""/g, '"')
+      : field;
+  });
 }
 
 const mockProtocol: Protocol = {
@@ -126,6 +137,7 @@ describe('surveyRowToEventCsvLine', () => {
     did: 'did:plc:abc',
     handle: 'testuser',
     protocol_title: 'Test Protocol',
+    event_remarks: null,
     record: {
       $type: 'bio.cuanto.survey',
       protocol: {
@@ -196,6 +208,37 @@ describe('surveyRowToEventCsvLine', () => {
     expect(line).not.toContain('personHours');
     expect(line).not.toContain('Test Protocol');
   });
+
+  it('describes every column in the event schema, in order', () => {
+    expect(EVENT_SCHEMA.fields.map((f) => f.name)).toEqual([...EVENT_COLUMNS]);
+  });
+
+  const eventRemarks = (event_remarks: string | null) => {
+    const fields = csvFields(
+      surveyRowToEventCsvLine({ ...baseRow, event_remarks }),
+    );
+    expect(fields).toHaveLength(EVENT_COLUMNS.length);
+    return fields[EVENT_COLUMNS.indexOf('eventRemarks')];
+  };
+
+  it('leaves eventRemarks empty when the survey has no remark', () => {
+    expect(eventRemarks(null)).toBe('');
+  });
+
+  it('writes the remark body as eventRemarks without markdown markers', () => {
+    expect(eventRemarks('**Windy** and *cold*')).toBe('Windy and cold');
+  });
+
+  it('keeps a multi-line remark in one CSV field', () => {
+    expect(eventRemarks('Windy, cold.\nRain later.')).toBe(
+      'Windy, cold.\nRain later.',
+    );
+  });
+
+  it('trims the remark, leaving a whitespace-only one empty', () => {
+    expect(eventRemarks('  Windy \n')).toBe('Windy');
+    expect(eventRemarks(' \n ')).toBe('');
+  });
 });
 
 describe('surveyRowToSurveyCsvLine', () => {
@@ -204,6 +247,7 @@ describe('surveyRowToSurveyCsvLine', () => {
     did: 'did:plc:abc',
     handle: 'testuser',
     protocol_title: 'Test Protocol',
+    event_remarks: null,
     record: {
       $type: 'bio.cuanto.survey',
       protocol: {
@@ -461,7 +505,41 @@ describe('occurrenceRowToCsvLine', () => {
     taxon_rank: 'species',
     taxon_id: 'https://www.gbif.org/species/2878688',
     is_presence: true,
+    occurrence_remarks: null,
   };
+
+  it('describes every column in the occurrence schema, in order', () => {
+    expect(OCCURRENCE_SCHEMA.fields.map((f) => f.name)).toEqual([
+      ...OCCURRENCE_COLUMNS,
+    ]);
+  });
+
+  const occurrenceRemarks = (occurrence_remarks: string | null) => {
+    const fields = csvFields(
+      occurrenceRowToCsvLine({ ...presenceRow, occurrence_remarks }),
+    );
+    expect(fields).toHaveLength(OCCURRENCE_COLUMNS.length);
+    return fields[OCCURRENCE_COLUMNS.indexOf('occurrenceRemarks')];
+  };
+
+  it('leaves occurrenceRemarks empty when the occurrence has no remark', () => {
+    expect(occurrenceRemarks(null)).toBe('');
+  });
+
+  it('writes the remark body as occurrenceRemarks without markdown markers', () => {
+    expect(occurrenceRemarks('**Flowering** *late*')).toBe('Flowering late');
+  });
+
+  it('keeps a multi-line occurrence remark in one CSV field', () => {
+    expect(occurrenceRemarks('Two, maybe.\nOne fled.')).toBe(
+      'Two, maybe.\nOne fled.',
+    );
+  });
+
+  it('trims the remark, leaving a whitespace-only one empty', () => {
+    expect(occurrenceRemarks('  Flowering \n')).toBe('Flowering');
+    expect(occurrenceRemarks(' \n ')).toBe('');
+  });
 
   it('produces a line with the expected number of columns', () => {
     const line = occurrenceRowToCsvLine(presenceRow);

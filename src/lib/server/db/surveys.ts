@@ -465,6 +465,9 @@ export interface SurveyExportRow {
   handle: string;
   record: AtSurvey;
   protocol_title: string;
+  // Body of the remark the survey's eventRemarksID names, as stored (with any
+  // markdown markers).
+  event_remarks: string | null;
 }
 
 export interface OccurrenceExportRow {
@@ -478,6 +481,27 @@ export interface OccurrenceExportRow {
   taxon_rank: string | null;
   taxon_id: string | null;
   is_presence: boolean;
+  // Body of the remark the occurrence's occurrenceRemarksID names, as stored
+  // (with any markdown markers). Always null for synthesized absence rows.
+  occurrence_remarks: string | null;
+}
+
+// Joins, as r, the remark that fills dwcTerm on the row aliased as subject, in
+// a query whose surveys are aliased s. This is the export's copy of the rule in
+// attachRemarks, and the two must agree: follow the subject's forward reference
+// (the term's name plus "ID"), and only take a remark the surveyor wrote about
+// that subject's term, so nobody else's prose is published under their name.
+function exportRemarkJoin(
+  subject: ReturnType<typeof sql>,
+  dwcTerm: 'eventRemarks' | 'occurrenceRemarks',
+) {
+  return sql`
+    LEFT JOIN remarks r
+      ON r.at_uri = ${subject}.record->>${`${dwcTerm}ID`}
+      AND r.did = s.did
+      AND r.subject_uri = ${subject}.at_uri
+      AND r.dwc_term = ${dwcTerm}
+  `;
 }
 
 // Note: handle is captured at export time. ATProto handles are mutable — a
@@ -490,10 +514,12 @@ export function streamSurveysByProtocolUri(protocolUri: string) {
       s.did,
       u.handle,
       s.record,
-      sp.record->>'title' AS protocol_title
+      sp.record->>'title' AS protocol_title,
+      r.record->>'body' AS event_remarks
     FROM surveys s
     JOIN survey_protocols sp ON sp.at_uri = s.protocol_uri
     JOIN users u ON u.did = s.did
+    ${exportRemarkJoin(sql`s`, 'eventRemarks')}
     WHERE s.protocol_uri = ${protocolUri}
     ORDER BY s.event_date ASC NULLS LAST, s.indexed_at ASC
   `.cursor(50);
@@ -551,7 +577,8 @@ export function streamTargetedOccurrencesByProtocolUri(protocolUri: string) {
         o.record->>'taxonID',
         st.record->'scope'->0->>'taxonID'
       )                  AS taxon_id,
-      true               AS is_presence
+      true               AS is_presence,
+      r.record->>'body'  AS occurrence_remarks
     FROM surveys s
     JOIN survey_targets st ON st.did = s.did AND st.protocol_uri = s.protocol_uri
     JOIN occurrences o
@@ -560,6 +587,7 @@ export function streamTargetedOccurrencesByProtocolUri(protocolUri: string) {
     LEFT JOIN identifications i
       ON i.occurrence_uri = o.at_uri
       AND i.at_uri = o.record->'acceptedIdentificationID'->>'uri'
+    ${exportRemarkJoin(sql`o`, 'occurrenceRemarks')}
     WHERE s.protocol_uri = ${protocolUri}
     ORDER BY s.at_uri, o.at_uri
   `.cursor(100);
@@ -578,7 +606,8 @@ export function streamAbsencesByProtocolUri(protocolUri: string) {
       st.record->'scope'->0->>'scientificName' AS scientific_name,
       st.record->'scope'->0->>'taxonRank'      AS taxon_rank,
       st.record->'scope'->0->>'taxonID'        AS taxon_id,
-      false              AS is_presence
+      false              AS is_presence,
+      NULL               AS occurrence_remarks
     FROM surveys s
     JOIN survey_targets st ON st.did = s.did AND st.protocol_uri = s.protocol_uri
     LEFT JOIN occurrences o
@@ -621,7 +650,8 @@ export function streamIncidentalOccurrencesByProtocolUri(protocolUri: string) {
         i.record->>'taxonID',
         o.record->>'taxonID'
       )                  AS taxon_id,
-      true               AS is_presence
+      true               AS is_presence,
+      r.record->>'body'  AS occurrence_remarks
     FROM surveys s
     JOIN occurrences o
       ON o.survey_uri = s.at_uri
@@ -629,6 +659,7 @@ export function streamIncidentalOccurrencesByProtocolUri(protocolUri: string) {
     LEFT JOIN identifications i
       ON i.occurrence_uri = o.at_uri
       AND i.at_uri = o.record->'acceptedIdentificationID'->>'uri'
+    ${exportRemarkJoin(sql`o`, 'occurrenceRemarks')}
     WHERE s.protocol_uri = ${protocolUri}
     ORDER BY s.at_uri, o.at_uri
   `.cursor(100);

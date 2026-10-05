@@ -3,7 +3,8 @@ import { linkifySegments } from '$lib/linkify';
 // Renders free text a user typed (e.g. a survey remark) with a deliberately
 // tiny subset of markdown: **bold**, *italic* / _italic_, and bare URLs as
 // links. The source text is stored as-is, so it stays readable to any client
-// or Darwin Core export that doesn't interpret the markers.
+// that doesn't interpret the markers. Our own Darwin Core export does
+// interpret them, writing the text userTextPlain returns.
 //
 // Like linkifySegments, this returns segments for a Svelte template to render
 // with ordinary {expr} interpolation, so Svelte escapes everything and there
@@ -148,4 +149,13 @@ export function userTextSegments(text: string): UserTextSegment[] {
     }
   }
   return segments;
+}
+
+// The same text with the emphasis markers the renderer would consume removed,
+// for places that can't style it, like a Darwin Core export. Markers that
+// don't pair up stay literal, exactly as they would on screen.
+export function userTextPlain(text: string): string {
+  return userTextSegments(text)
+    .map((segment) => (segment.type === 'link' ? segment.text : segment.value))
+    .join('');
 }

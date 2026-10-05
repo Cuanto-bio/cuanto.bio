@@ -4,6 +4,7 @@ import type { Pack } from 'tar-stream';
 import { pack } from 'tar-stream';
 import type { Main as LocationGeo } from '$lib/lexicons/community/lexicon/location/geo.defs.js';
 import type { Protocol } from '$lib/offline/db.js';
+import { userTextPlain } from '$lib/userText.js';
 import {
   type OccurrenceExportRow,
   type SurveyExportRow,
@@ -70,8 +71,9 @@ export function buildDatapackageJson(
   };
 }
 
-// The Event table holds only temporal and spatial context. Survey-specific
-// fields (effort, protocol, duration) go in the Survey table instead.
+// The Event table holds temporal and spatial context, plus the surveyor's
+// remarks. Survey-specific fields (effort, protocol, duration) go in the Survey
+// table instead.
 export const EVENT_COLUMNS = [
   'eventID',
   'parentEventID',
@@ -80,6 +82,7 @@ export const EVENT_COLUMNS = [
   'decimalLatitude',
   'decimalLongitude',
   'geodeticDatum',
+  'eventRemarks',
 ] as const;
 
 // The Survey table extends Event 1:1 (surveyID = eventID) with ecology-specific
@@ -146,6 +149,7 @@ export const OCCURRENCE_COLUMNS = [
   'organismQuantity',
   'organismQuantityType',
   'recordedByID',
+  'occurrenceRemarks',
 ] as const;
 
 export function csvEscape(value: string | number | null | undefined): string {
@@ -195,7 +199,15 @@ function extractGeo(
   return null;
 }
 
-// Generates one row for event.csv — temporal/spatial context only.
+// The text of a remark as a Darwin Core *Remarks value. Remarks keep their
+// markdown markers in the record; GBIF would show them as literal asterisks.
+// Trimmed because a remark from another client may be only whitespace, which
+// would otherwise export as a remark that is present.
+function remarkText(body: string | null): string {
+  return userTextPlain(body ?? '').trim();
+}
+
+// Generates one row for event.csv — temporal/spatial context and remarks.
 export function surveyRowToEventCsvLine(row: SurveyExportRow): string {
   const r = row.record;
   const geo = extractGeo(r.location as Parameters<typeof extractGeo>[0]);
@@ -207,6 +219,7 @@ export function surveyRowToEventCsvLine(row: SurveyExportRow): string {
     geo?.lat ?? '',
     geo?.lon ?? '',
     geo ? 'EPSG:4326' : '',
+    remarkText(row.event_remarks),
   ];
   return `${fields.map(csvEscape).join(',')}\n`;
 }
@@ -276,6 +289,7 @@ export function occurrenceRowToCsvLine(row: OccurrenceExportRow): string {
     r?.organismQuantity ?? '',
     r?.organismQuantityType ?? '',
     row.occurrence_did ?? row.survey_did,
+    remarkText(row.occurrence_remarks),
   ];
   return `${fields.map(csvEscape).join(',')}\n`;
 }

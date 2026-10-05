@@ -9,7 +9,7 @@ an emerging standard format for sharing biodiversity survey data developed by
 | File                  | Description                                                              |
 |-----------------------|--------------------------------------------------------------------------|
 | `datapackage.json`    | Package metadata and resource definitions                                |
-| `event.csv`           | One row per survey (temporal and spatial context)                        |
+| `event.csv`           | One row per survey (temporal and spatial context, remarks)               |
 | `survey.csv`          | Survey-specific fields extending each event (effort, protocol, duration) |
 | `protocol.csv`        | The sampling protocol used in this export                                |
 | `survey-protocol.csv` | Links surveys to the protocol                                            |
@@ -28,6 +28,15 @@ timestamp up to (but not including) its `retiredAt` timestamp, if any. Targets
 added to the protocol after a survey was completed are not reported as
 not-detected for that survey, nor are targets retired (their source
 protocolTarget removed by the author) before the survey took place.
+
+`eventRemarks` and `occurrenceRemarks` hold the remarks the surveyor wrote
+about a survey or an occurrence. The app lets remarks use a small markdown
+subset (`**bold**`, `*italic*`, `_italic_`); those markers are removed here,
+so the text can differ slightly from the source remark record.
+
+Text values are exported as written. A spreadsheet application may treat a
+value that begins with `=`, `+`, `-`, or `@` as a formula, so import the CSV
+files as text if you open them in one.
 
 ## Learn more
 

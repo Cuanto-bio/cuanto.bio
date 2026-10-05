@@ -132,6 +132,12 @@ export const EVENT_SCHEMA = {
       'string',
     ),
     ...locationFields,
+    dwc(
+      'eventRemarks',
+      'Event Remarks',
+      'Comments or notes about the dwc:Event.',
+      'string',
+    ),
   ],
   primaryKey: 'eventID',
 };
@@ -310,6 +316,12 @@ export const OCCURRENCE_SCHEMA = {
       'An identifier for a dcterms:Agent responsible for recording a dwc:Occurrence.',
       'string',
       { required: false, unique: false },
+    ),
+    dwc(
+      'occurrenceRemarks',
+      'Occurrence Remarks',
+      'Comments or notes about the dwc:Occurrence.',
+      'string',
     ),
   ],
   primaryKey: 'occurrenceID',

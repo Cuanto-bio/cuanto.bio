@@ -1,9 +1,11 @@
 import { Readable } from 'node:stream';
 import { createGunzip } from 'node:zlib';
 import type { APIRequestContext, APIResponse } from '@playwright/test';
+import type { Sql } from 'postgres';
 import { extract } from 'tar-stream';
 import {
   expect,
+  seedIncidentalOccurrence,
   seedOccurrence,
   seedProtocol,
   seedSurvey,
@@ -14,6 +16,9 @@ import {
 
 const EXPORT_DID = 'did:test:export-spec';
 const EXPORT_HANDLE = 'user-export-spec';
+// Owns a remark that one of EXPORT_DID's surveys points at, to check that the
+// export only takes remarks the surveyor wrote.
+const OTHER_DID = 'did:test:export-spec-other';
 // Matches the value playwright.config.ts hands the dev server.
 const TAP_PASSWORD = 'devpassword';
 
@@ -49,12 +54,37 @@ async function extractTarGz(buffer: Buffer): Promise<Map<string, string>> {
 }
 
 // Returns rows (as field arrays) from a CSV string, skipping the header line.
+// Follows RFC 4180 quoting, so a quoted field may hold commas, newlines, and
+// doubled quotes.
 function csvRows(csv: string): string[][] {
-  return csv
-    .trim()
-    .split('\n')
-    .slice(1)
-    .map((line) => line.split(','));
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let quoted = false;
+  for (let i = 0; i < csv.length; i++) {
+    const c = csv[i];
+    if (quoted) {
+      if (c !== '"') field += c;
+      else if (csv[i + 1] === '"') {
+        field += '"';
+        i++;
+      } else quoted = false;
+    } else if (c === '"') {
+      quoted = true;
+    } else if (c === ',') {
+      row.push(field);
+      field = '';
+    } else if (c === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+    } else {
+      field += c;
+    }
+  }
+  if (field || row.length) rows.push([...row, field]);
+  return rows.slice(1);
 }
 
 // Posts a tap firehose record event to the webhook. This is the production path
@@ -91,9 +121,49 @@ function surveyTargetEvent(
   };
 }
 
+// Seeds a remark about a survey or occurrence and points the subject's forward
+// reference (eventRemarksID / occurrenceRemarksID) at it. The remark's repo is
+// its author. The options build remarks the export must reject: one referenced
+// from a record other than its subject, or one filling some other term.
+async function seedRemark(
+  sql: Sql,
+  subjectTable: 'surveys' | 'occurrences',
+  subjectUri: string,
+  authorDid: string,
+  body: string,
+  {
+    referencedFrom = subjectUri,
+    dwcTerm,
+  }: { referencedFrom?: string; dwcTerm?: string } = {},
+) {
+  const tableTerm =
+    subjectTable === 'surveys' ? 'eventRemarks' : 'occurrenceRemarks';
+  const term = dwcTerm ?? tableTerm;
+  const rkey = referencedFrom.split('/').pop()!;
+  const remarkUri = `at://${authorDid}/bio.lexicons.temp.v0-1.remark/${rkey}`;
+  const record = {
+    $type: 'bio.lexicons.temp.v0-1.remark',
+    subject: subjectUri,
+    dwcTerm: term,
+    body,
+    createdAt: new Date().toISOString(),
+  };
+  await sql`
+    INSERT INTO remarks (at_uri, did, rkey, subject_uri, dwc_term, record)
+    VALUES (${remarkUri}, ${authorDid}, ${rkey}, ${subjectUri}, ${term},
+      ${sql.json(record)})
+  `;
+  await sql`
+    UPDATE ${sql(subjectTable)}
+    SET record = record || ${sql.json({ [`${tableTerm}ID`]: remarkUri })}
+    WHERE at_uri = ${referencedFrom}
+  `;
+}
+
 test.describe('DwC-DP export endpoint', () => {
   test.afterEach(async ({ sql }) => {
     await teardownDid(sql, EXPORT_DID);
+    await teardownDid(sql, OTHER_DID);
   });
 
   test('returns 401 for unauthenticated requests', async ({ request, sql }) => {
@@ -382,6 +452,195 @@ test.describe('DwC-DP export endpoint', () => {
       fields.some((f) => f.includes('targetrkeyg')),
     );
     expect(targetGRows).toHaveLength(1);
+  });
+
+  // https://tangled.org/cuanto.bio/cuanto.bio/issues/76
+  test('event.csv carries the plain text of the survey remark as eventRemarks', async ({
+    context,
+    sql,
+  }) => {
+    await context.addCookies([authCookie(EXPORT_DID)]);
+    const { protocolRkey } = await seedProtocol(sql, EXPORT_DID);
+    const protocolUri = `at://${EXPORT_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+
+    const own = await seedSurvey(sql, EXPORT_DID, protocolUri);
+    await seedRemark(
+      sql,
+      'surveys',
+      own.surveyAtUri,
+      EXPORT_DID,
+      '**Windy**, and *cold*.\nRain "later".',
+    );
+    // Anyone can write any AT-URI into eventRemarksID; someone else's prose
+    // must not be published under the surveyor's name.
+    const foreign = await seedSurvey(sql, EXPORT_DID, protocolUri);
+    await seedRemark(
+      sql,
+      'surveys',
+      foreign.surveyAtUri,
+      OTHER_DID,
+      'Not mine',
+    );
+    // The surveyor's own remark, but written about a different survey.
+    const wrongSubject = await seedSurvey(sql, EXPORT_DID, protocolUri);
+    await seedRemark(
+      sql,
+      'surveys',
+      own.surveyAtUri,
+      EXPORT_DID,
+      'About another survey',
+      { referencedFrom: wrongSubject.surveyAtUri },
+    );
+    // About this survey, but filling a term other than eventRemarks.
+    const wrongTerm = await seedSurvey(sql, EXPORT_DID, protocolUri);
+    await seedRemark(
+      sql,
+      'surveys',
+      wrongTerm.surveyAtUri,
+      EXPORT_DID,
+      'Some other term',
+      { dwcTerm: 'occurrenceRemarks' },
+    );
+    const bare = await seedSurvey(sql, EXPORT_DID, protocolUri);
+
+    const response = await context.request.get(
+      `/api/protocols/${EXPORT_HANDLE}/${protocolRkey}/export`,
+    );
+    expect(response.status()).toBe(200);
+    const files = await extractTarGz(Buffer.from(await response.body()));
+    const csv = files.get('event.csv')!;
+    const header = csv.split('\n')[0].split(',');
+    const remarksIndex = header.indexOf('eventRemarks');
+    expect(remarksIndex).toBeGreaterThan(-1);
+
+    const rows = csvRows(csv);
+    expect(rows).toHaveLength(5);
+    const remarksByEventID = new Map(
+      rows.map((fields) => [fields[0], fields[remarksIndex]]),
+    );
+    expect(remarksByEventID.get(own.surveyAtUri)).toBe(
+      'Windy, and cold.\nRain "later".',
+    );
+    expect(remarksByEventID.get(foreign.surveyAtUri)).toBe('');
+    expect(remarksByEventID.get(wrongSubject.surveyAtUri)).toBe('');
+    expect(remarksByEventID.get(wrongTerm.surveyAtUri)).toBe('');
+    expect(remarksByEventID.get(bare.surveyAtUri)).toBe('');
+  });
+
+  test('occurrence.csv carries the plain text of occurrence remarks as occurrenceRemarks', async ({
+    context,
+    sql,
+  }) => {
+    await context.addCookies([authCookie(EXPORT_DID)]);
+    const { protocolRkey } = await seedProtocol(sql, EXPORT_DID);
+    const protocolUri = `at://${EXPORT_DID}/bio.cuanto.surveyProtocol/${protocolRkey}`;
+    const { surveyAtUri } = await seedSurvey(sql, EXPORT_DID, protocolUri);
+    const ptUri = (rkey: string) =>
+      `at://${EXPORT_DID}/bio.cuanto.protocolTarget/${rkey}`;
+
+    const targeted = await seedOccurrence(
+      sql,
+      EXPORT_DID,
+      surveyAtUri,
+      protocolUri,
+      ptUri('remarktargeta'),
+    );
+    await seedRemark(
+      sql,
+      'occurrences',
+      targeted.occUri,
+      EXPORT_DID,
+      '**Flowering**, *late*.\nTwo "stems".',
+    );
+    const incidental = await seedIncidentalOccurrence(
+      sql,
+      EXPORT_DID,
+      surveyAtUri,
+      'https://www.gbif.org/species/2878688',
+      'Quercus agrifolia',
+    );
+    await seedRemark(
+      sql,
+      'occurrences',
+      incidental.occUri,
+      EXPORT_DID,
+      'On the _north_ slope',
+    );
+    // Anyone can write any AT-URI into occurrenceRemarksID; someone else's
+    // prose must not be published under the surveyor's name.
+    const foreign = await seedOccurrence(
+      sql,
+      EXPORT_DID,
+      surveyAtUri,
+      protocolUri,
+      ptUri('remarktargetb'),
+    );
+    await seedRemark(sql, 'occurrences', foreign.occUri, OTHER_DID, 'Not mine');
+    // The surveyor's own remark, but written about a different occurrence.
+    const wrongSubject = await seedOccurrence(
+      sql,
+      EXPORT_DID,
+      surveyAtUri,
+      protocolUri,
+      ptUri('remarktargetd'),
+    );
+    await seedRemark(
+      sql,
+      'occurrences',
+      targeted.occUri,
+      EXPORT_DID,
+      'About another occurrence',
+      { referencedFrom: wrongSubject.occUri },
+    );
+    // About this occurrence, but filling a term other than occurrenceRemarks.
+    const wrongTerm = await seedIncidentalOccurrence(
+      sql,
+      EXPORT_DID,
+      surveyAtUri,
+      'https://www.gbif.org/species/2878688',
+      'Quercus agrifolia',
+    );
+    await seedRemark(
+      sql,
+      'occurrences',
+      wrongTerm.occUri,
+      EXPORT_DID,
+      'Some other term',
+      { dwcTerm: 'eventRemarks' },
+    );
+    const bare = await seedOccurrence(
+      sql,
+      EXPORT_DID,
+      surveyAtUri,
+      protocolUri,
+      ptUri('remarktargetc'),
+    );
+
+    const response = await context.request.get(
+      `/api/protocols/${EXPORT_HANDLE}/${protocolRkey}/export`,
+    );
+    expect(response.status()).toBe(200);
+    const files = await extractTarGz(Buffer.from(await response.body()));
+    const csv = files.get('occurrence.csv')!;
+    const header = csv.split('\n')[0].split(',');
+    const remarksIndex = header.indexOf('occurrenceRemarks');
+    expect(remarksIndex).toBeGreaterThan(-1);
+
+    const rows = csvRows(csv);
+    expect(rows).toHaveLength(6);
+    const remarksByOccurrenceID = new Map(
+      rows.map((fields) => [fields[0], fields[remarksIndex]]),
+    );
+    expect(remarksByOccurrenceID.get(targeted.occUri)).toBe(
+      'Flowering, late.\nTwo "stems".',
+    );
+    expect(remarksByOccurrenceID.get(incidental.occUri)).toBe(
+      'On the north slope',
+    );
+    expect(remarksByOccurrenceID.get(foreign.occUri)).toBe('');
+    expect(remarksByOccurrenceID.get(wrongSubject.occUri)).toBe('');
+    expect(remarksByOccurrenceID.get(wrongTerm.occUri)).toBe('');
+    expect(remarksByOccurrenceID.get(bare.occUri)).toBe('');
   });
 
   // Issue #41: once the row survives a delete, event ordering starts to matter.
