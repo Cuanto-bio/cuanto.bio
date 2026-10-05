@@ -3,8 +3,11 @@ import { clearToken } from '$lib/auth/token';
 import { isNative } from '$lib/platform';
 
 export async function signOut() {
-  const { clearIdb } = await import('$lib/offline/db');
+  const { clearIdb, lockIdbUntilReload } = await import('$lib/offline/db');
   await clearIdb();
+  // This page lives on until the navigation below commits, still signed in
+  // as far as the server knows. Keep it from refilling what we just cleared.
+  lockIdbUntilReload();
 
   if (isNative()) {
     // Bearer clients have no cookie to delete, so /auth/signout (which just

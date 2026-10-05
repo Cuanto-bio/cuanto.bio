@@ -16,9 +16,13 @@ vi.mock('$lib/platform', () => ({
 const mocks = vi.hoisted(() => ({
   clearToken: vi.fn(),
   clearIdb: vi.fn().mockResolvedValue(undefined),
+  lockIdbUntilReload: vi.fn(),
 }));
 vi.mock('$lib/auth/token', () => ({ clearToken: mocks.clearToken }));
-vi.mock('$lib/offline/db', () => ({ clearIdb: mocks.clearIdb }));
+vi.mock('$lib/offline/db', () => ({
+  clearIdb: mocks.clearIdb,
+  lockIdbUntilReload: mocks.lockIdbUntilReload,
+}));
 
 let fetchMock: ReturnType<typeof vi.fn>;
 let location: { href: string };
@@ -43,6 +47,12 @@ describe('signOut', () => {
     await signOut();
 
     expect(mocks.clearIdb).toHaveBeenCalled();
+    // Locked once cleared, so nothing still in flight on this page can write
+    // the signed-out user's data back before the navigation below lands.
+    expect(mocks.lockIdbUntilReload).toHaveBeenCalled();
+    expect(mocks.clearIdb.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.lockIdbUntilReload.mock.invocationCallOrder[0],
+    );
     expect(location.href).toBe('/auth/signout');
     // Nothing to revoke: a cookie client never had a bearer token.
     expect(mocks.clearToken).not.toHaveBeenCalled();

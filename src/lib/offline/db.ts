@@ -202,8 +202,13 @@ interface CuantoDB extends DBSchema {
 }
 
 let _dbPromise: Promise<IDBPDatabase<CuantoDB>> | null = null;
+// Set by lockIdbUntilReload(); nothing in this module instance clears it.
+let _lockedUntilReload = false;
 
 function getDB(): Promise<IDBPDatabase<CuantoDB>> {
+  if (_lockedUntilReload) {
+    return Promise.reject(new Error('IndexedDB is locked after sign-out'));
+  }
   if (_dbPromise) return _dbPromise;
   _dbPromise = openDB<CuantoDB>('cuanto', CUANTO_IDB_VERSION, {
     blocked(currentVersion, blockedVersion) {
@@ -378,6 +383,26 @@ export function resetIdbConnection(): void {
   const pending = _dbPromise;
   _dbPromise = null;
   pending?.then((db) => db.close()).catch(() => {});
+}
+
+/**
+ * Refuses all further IndexedDB access from this page. For sign-out, right
+ * after clearIdb(): sign-out ends in a full-page navigation, but this page
+ * keeps running until that navigation commits, with the session still valid
+ * server-side. Anything that answers in that window (the offline sync, a
+ * cache refresh, a preload's /api/me check) would otherwise write the
+ * signed-out user's data straight back, for the next person to sign in on
+ * this device to find. The page load that ends sign-out starts a fresh module
+ * and with it a fresh, unlocked connection.
+ */
+export function lockIdbUntilReload(): void {
+  _lockedUntilReload = true;
+  // Writes held back while hidden would replay into the cleared database.
+  deferredWrites = [];
+  bufferedDiagnostics = [];
+  // Close the connection too, so an operation that already has a handle to
+  // it can't start another transaction.
+  resetIdbConnection();
 }
 
 export async function cacheProtocol(protocol: Protocol): Promise<void> {
