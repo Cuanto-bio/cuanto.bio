@@ -1,3 +1,4 @@
+import { failFastWhenUnreachable } from '$lib/composables/online.svelte';
 import { fetchDefaultRemarkLicense } from '$lib/licenses';
 import type { PageLoad } from './$types';
 
@@ -5,7 +6,8 @@ import type { PageLoad } from './$types';
 // here rather than folded into /api/me (which the /app layout guard reads on
 // every navigation). A failure is not fatal: /app is offline-capable and the
 // rest of this page still works, so the setting hides itself instead.
-export const load: PageLoad = async ({ fetch, parent }) => {
+export const load: PageLoad = async ({ fetch: loadFetch, parent }) => {
+  const fetch = failFastWhenUnreachable(loadFetch);
   const { did } = await parent();
   if (!did) return { defaultRemarkLicense: undefined };
   return { defaultRemarkLicense: await fetchDefaultRemarkLicense(fetch) };

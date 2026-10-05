@@ -1,3 +1,4 @@
+import { failFastWhenUnreachable } from '$lib/composables/online.svelte';
 import logger from '$lib/logger';
 import {
   getCachedFollowedProtocols,
@@ -8,7 +9,8 @@ import type { PageLoad } from './$types';
 
 const log = logger.child({ component: 'app-protocols-following' });
 
-export const load: PageLoad = async ({ fetch }) => {
+export const load: PageLoad = async ({ fetch: loadFetch }) => {
+  const fetch = failFastWhenUnreachable(loadFetch);
   const cached = await getCachedFollowedProtocols();
   if (cached.length > 0) {
     // Recorded before the request so setCachedFollowedProtocols can tell if

@@ -22,9 +22,9 @@ export const load: LayoutLoad = async ({ url }) => {
   };
   if (!browser) return signedOut;
 
-  // /app resolves the user itself in app/+layout.ts, which is authoritative
-  // there — it asks /api/me and clears the cache on a 401 — so a fallback here
-  // would only add a staler answer that its data overrides anyway.
+  // /app resolves the user itself in app/+layout.ts, which reads this same
+  // cache and also checks it against /api/me (clearing it on a 401), so a
+  // fallback here would only repeat an answer that its data overrides anyway.
   //
   // Reading url.pathname also makes SvelteKit re-run this load on every
   // client-side navigation. That matters as much as the branch: without a

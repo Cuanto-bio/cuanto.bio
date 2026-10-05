@@ -1,4 +1,5 @@
 import { error, redirect } from '@sveltejs/kit';
+import { failFastWhenUnreachable } from '$lib/composables/online.svelte';
 import logger from '$lib/logger';
 import {
   type CachedSurvey,
@@ -12,7 +13,13 @@ import type { PageLoad } from './$types';
 
 const log = logger.child({ component: 'app-survey-detail' });
 
-export const load: PageLoad = async ({ fetch, params, parent, url }) => {
+export const load: PageLoad = async ({
+  fetch: loadFetch,
+  params,
+  parent,
+  url,
+}) => {
+  const fetch = failFastWhenUnreachable(loadFetch);
   const { handle: userHandle } = await parent();
 
   if (userHandle !== params.handle)

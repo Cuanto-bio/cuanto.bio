@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { failFastWhenUnreachable } from '$lib/composables/online.svelte';
 import logger from '$lib/logger';
 import {
   cacheProtocol,
@@ -31,7 +32,13 @@ function toPageData(
   };
 }
 
-export const load: PageLoad = async ({ fetch, params, parent, url }) => {
+export const load: PageLoad = async ({
+  fetch: loadFetch,
+  params,
+  parent,
+  url,
+}) => {
+  const fetch = failFastWhenUnreachable(loadFetch);
   const { handle: currentUserHandle } = await parent();
   // Both mean "the cache is known-stale, fetch fresh instead of rendering it
   // first": `updated` after an edit, `deleted` after this issue's delete

@@ -1,3 +1,4 @@
+import { failFastWhenUnreachable } from '$lib/composables/online.svelte';
 import logger from '$lib/logger';
 import {
   cacheProtocol,
@@ -13,7 +14,8 @@ const log = logger.child({ component: 'app-protocols-list' });
 // route previously loaded through a +page.server.ts that queried Postgres
 // directly, so despite `ssr = false` it round-tripped to our server on every
 // navigation and had no offline story at all.
-export const load: PageLoad = async ({ fetch }) => {
+export const load: PageLoad = async ({ fetch: loadFetch }) => {
+  const fetch = failFastWhenUnreachable(loadFetch);
   const cached = await getCachedProtocols();
 
   const fresh = fetch('/api/protocols')

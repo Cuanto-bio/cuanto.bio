@@ -1,10 +1,12 @@
+import { failFastWhenUnreachable } from '$lib/composables/online.svelte';
 import logger from '$lib/logger';
 import { cacheSurvey, getCachedSurveys } from '$lib/offline/db';
 import type { PageLoad } from './$types';
 
 const log = logger.child({ component: 'app-surveys' });
 
-export const load: PageLoad = async ({ fetch }) => {
+export const load: PageLoad = async ({ fetch: loadFetch }) => {
+  const fetch = failFastWhenUnreachable(loadFetch);
   const cached = await getCachedSurveys();
   if (cached.length > 0) {
     fetch('/api/surveys')

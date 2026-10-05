@@ -34,9 +34,21 @@ const resumeHref = $derived(
 let migrating = $state(false);
 let migrationDone = $state(false);
 
-const showMigrationBanner = $derived(
-  !migrationDone && page.data.needsLexiconMigration === true,
-);
+// The layout load streams needsLexiconMigration as a promise when it answers
+// from the cached user (it settles when the background /api/me check does),
+// and returns it as a plain value otherwise.
+let needsLexiconMigration = $state(false);
+$effect(() => {
+  let superseded = false;
+  Promise.resolve(page.data.needsLexiconMigration).then((needs) => {
+    if (!superseded) needsLexiconMigration = needs === true;
+  });
+  return () => {
+    superseded = true;
+  };
+});
+
+const showMigrationBanner = $derived(!migrationDone && needsLexiconMigration);
 
 // The migration runs in the background on the server; poll /api/me until the
 // needs_lexicon_migration flag clears (or give up after ~5 minutes).

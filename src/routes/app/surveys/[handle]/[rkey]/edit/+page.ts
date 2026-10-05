@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { failFastWhenUnreachable } from '$lib/composables/online.svelte';
 import logger from '$lib/logger';
 import {
   type CachedSurvey,
@@ -10,7 +11,8 @@ import type { PageLoad } from './$types';
 
 const log = logger.child({ component: 'app-survey-edit' });
 
-export const load: PageLoad = async ({ fetch, params, parent }) => {
+export const load: PageLoad = async ({ fetch: loadFetch, params, parent }) => {
+  const fetch = failFastWhenUnreachable(loadFetch);
   const { handle: userHandle } = await parent();
 
   async function fetchAndCacheSurvey() {

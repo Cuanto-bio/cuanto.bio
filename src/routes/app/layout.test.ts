@@ -11,6 +11,16 @@ vi.mock('$lib/offline/db', () => ({
   resetIdbConnection: () => resetIdbConnection(),
 }));
 
+const invalidateAll = vi.fn();
+vi.mock('$app/navigation', () => ({
+  invalidateAll: () => invalidateAll(),
+}));
+
+// The page currently on screen, which the guard compares against the URL it
+// was run for. Tests set `page.url`; beforeEach defaults it.
+const page = vi.hoisted(() => ({ url: new URL('https://cuanto.bio/app') }));
+vi.mock('$app/state', () => ({ page }));
+
 const syncOfflineData = vi.fn();
 vi.mock('$lib/offline/sync', () => ({
   syncOfflineData: (...args: unknown[]) => syncOfflineData(...args),
@@ -23,6 +33,10 @@ vi.mock('$lib/platform', () => ({
   isNative: () => false,
 }));
 
+import {
+  markServerUnreachable,
+  restoreConnectivity,
+} from '$lib/composables/onlineTestUtils';
 import { IDB_TIMEOUT_MS } from '$lib/offline/idbDeadline';
 import { load } from './+layout';
 
@@ -71,6 +85,9 @@ beforeEach(() => {
   clearIdbUser.mockReset().mockResolvedValue(undefined);
   syncOfflineData.mockReset().mockResolvedValue(undefined);
   resetIdbConnection.mockReset();
+  invalidateAll.mockReset().mockResolvedValue(undefined);
+  // Most tests here load /app/account as the page being shown.
+  page.url = URL_APP_ACCOUNT;
 });
 
 afterEach(() => {
@@ -98,6 +115,275 @@ describe('/app layout auth guard', () => {
     await expect(promise).resolves.toEqual(USER);
   });
 
+  // https://tangled.org/cuanto.bio/cuanto.bio/issues/83
+  describe('with a cached user', () => {
+    test('returns the cached user without waiting on /api/me', async () => {
+      // A server that's down behind a proxy hangs rather than refusing the
+      // connection, so waiting on /api/me (3s, then a 12s retry) stalled
+      // every /app navigation, the launch included, for ~15s.
+      getIdbUser.mockResolvedValue({ ...USER });
+      // Fake timers, never advanced: any wait on a timeout would hang here.
+      vi.useFakeTimers();
+      const { fetchFn } = deferredFetch();
+
+      await expect(
+        load({
+          fetch: fetchFn,
+          url: URL_APP_ACCOUNT,
+        } as unknown as Parameters<typeof load>[0]),
+      ).resolves.toMatchObject(USER);
+    });
+
+    test('checks /api/me in the background and syncs', async () => {
+      getIdbUser.mockResolvedValue({ ...USER });
+      const fetchFn = vi.fn().mockResolvedValue(meResponse(USER));
+
+      await expect(
+        load({
+          fetch: fetchFn,
+          url: URL_APP_ACCOUNT,
+        } as unknown as Parameters<typeof load>[0]),
+      ).resolves.toMatchObject(USER);
+      await vi.waitFor(() => expect(syncOfflineData).toHaveBeenCalled());
+    });
+
+    test('streams needsLexiconMigration in from the background check', async () => {
+      // A live server signal that is never cached, so it can't come back
+      // with the cached user; the layout's banner awaits it instead.
+      getIdbUser.mockResolvedValue({ ...USER });
+      const fetchFn = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ ...USER, needsLexiconMigration: true }), {
+          status: 200,
+        }),
+      );
+
+      const data = (await load({
+        fetch: fetchFn,
+        url: URL_APP_ACCOUNT,
+      } as unknown as Parameters<typeof load>[0])) as {
+        needsLexiconMigration: Promise<boolean | undefined>;
+      };
+
+      await expect(data.needsLexiconMigration).resolves.toBe(true);
+    });
+
+    test('streams needsLexiconMigration as unknown when the server cannot be reached', async () => {
+      getIdbUser.mockResolvedValue({ ...USER });
+      const fetchFn = vi
+        .fn()
+        .mockRejectedValue(new TypeError('Failed to fetch'));
+
+      const data = (await load({
+        fetch: fetchFn,
+        url: URL_APP_ACCOUNT,
+      } as unknown as Parameters<typeof load>[0])) as {
+        needsLexiconMigration: Promise<boolean | undefined>;
+      };
+
+      await expect(data.needsLexiconMigration).resolves.toBeUndefined();
+    });
+
+    test('clears the cached user and re-runs the guard when the background check finds a revoked session', async () => {
+      // The page rendered from the cache; with the cache cleared, re-running
+      // the loads sends the guard down the no-cache path to the sign-in wall.
+      getIdbUser.mockResolvedValue({ ...USER });
+      const fetchFn = vi
+        .fn()
+        .mockResolvedValue(new Response(null, { status: 401 }));
+
+      await expect(
+        load({
+          fetch: fetchFn,
+          url: URL_APP_ACCOUNT,
+        } as unknown as Parameters<typeof load>[0]),
+      ).resolves.toMatchObject(USER);
+      await vi.waitFor(() => expect(invalidateAll).toHaveBeenCalled());
+      expect(clearIdbUser).toHaveBeenCalled();
+
+      // The re-run acts on the server's answer even if the clear didn't take
+      // (IDB can wedge), rather than trusting the cache again and looping.
+      await expect(
+        load({
+          fetch: fetchFn,
+          url: URL_APP_ACCOUNT,
+        } as unknown as Parameters<typeof load>[0]),
+      ).rejects.toMatchObject({ status: 302, location: '/auth/signin' });
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+    });
+
+    test('re-runs the loads when the server says we are someone else', async () => {
+      // E.g. the session expired and a different account signed in without
+      // a sign-out in between. Rendering as the cached user would get
+      // ownership checks wrong, so this can't wait for the next navigation.
+      const other = { did: 'did:plc:eli', handle: 'eli', avatarUrl: 'e.png' };
+      getIdbUser.mockResolvedValue({ ...USER });
+      const fetchFn = vi.fn().mockResolvedValue(meResponse(other));
+
+      await load({
+        fetch: fetchFn,
+        url: URL_APP_ACCOUNT,
+      } as unknown as Parameters<typeof load>[0]);
+
+      await vi.waitFor(() => expect(invalidateAll).toHaveBeenCalled());
+      expect(saveIdbUser).toHaveBeenCalledWith(other);
+
+      // The re-run answers with the server's user, not the cached one.
+      await expect(
+        load({
+          fetch: fetchFn,
+          url: URL_APP_ACCOUNT,
+        } as unknown as Parameters<typeof load>[0]),
+      ).resolves.toEqual(other);
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+    });
+
+    test('a revoked session found after the user left the page does not ambush a later sign-in', async () => {
+      // E.g. the 401 lands once the user is already on the sign-in page.
+      // An answer left waiting there would be picked up by the first /app
+      // load after they sign in, bouncing them straight back out.
+      getIdbUser.mockResolvedValue({ ...USER });
+      const { fetchFn, resolve } = deferredFetch();
+
+      await load({
+        fetch: fetchFn,
+        url: URL_APP_ACCOUNT,
+      } as unknown as Parameters<typeof load>[0]);
+      page.url = new URL('https://cuanto.bio/auth/signin');
+      resolve(new Response(null, { status: 401 }));
+      await vi.waitFor(() => expect(clearIdbUser).toHaveBeenCalled());
+
+      expect(invalidateAll).not.toHaveBeenCalled();
+
+      // Signed in again: nothing cached yet, and the server says who we are.
+      page.url = URL_APP_ACCOUNT;
+      getIdbUser.mockResolvedValue(undefined);
+      await expect(
+        load({
+          fetch: vi.fn().mockResolvedValue(meResponse(USER)),
+          url: URL_APP_ACCOUNT,
+        } as unknown as Parameters<typeof load>[0]),
+      ).resolves.toEqual(USER);
+    });
+
+    test('a revoked session found by a link preload does not redirect the page being shown', async () => {
+      // app.html preloads on hover, and a preload runs this guard for the
+      // hovered link. Redirecting the current page from that would throw
+      // away e.g. a survey form in progress because the pointer crossed a
+      // link.
+      getIdbUser.mockResolvedValue({ ...USER });
+      page.url = URL_APP_ACCOUNT;
+      const fetchFn = vi
+        .fn()
+        .mockResolvedValue(new Response(null, { status: 401 }));
+
+      await load({
+        fetch: fetchFn,
+        url: URL_APP_PROTOCOL,
+      } as unknown as Parameters<typeof load>[0]);
+      await vi.waitFor(() => expect(clearIdbUser).toHaveBeenCalled());
+
+      expect(invalidateAll).not.toHaveBeenCalled();
+    });
+
+    test('still re-runs the loads for a different account when caching it fails', async () => {
+      // The server's answer stands whether or not the cache could be
+      // updated; a failed write must not leave the page as the wrong user.
+      const other = { did: 'did:plc:eli', handle: 'eli', avatarUrl: 'e.png' };
+      getIdbUser.mockResolvedValue({ ...USER });
+      saveIdbUser.mockRejectedValue(
+        new DOMException('quota', 'QuotaExceededError'),
+      );
+      const fetchFn = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ ...other, needsLexiconMigration: true }),
+          {
+            status: 200,
+          },
+        ),
+      );
+
+      const data = (await load({
+        fetch: fetchFn,
+        url: URL_APP_ACCOUNT,
+      } as unknown as Parameters<typeof load>[0])) as {
+        needsLexiconMigration: Promise<boolean | undefined>;
+      };
+
+      await expect(data.needsLexiconMigration).resolves.toBe(true);
+      expect(invalidateAll).toHaveBeenCalled();
+      expect(syncOfflineData).toHaveBeenCalled();
+      // Use up the answer handed to the re-run, as the real re-run would.
+      await load({
+        fetch: fetchFn,
+        url: URL_APP_ACCOUNT,
+      } as unknown as Parameters<typeof load>[0]);
+    });
+
+    test('still re-runs the guard on a revoked session when clearing the cache fails', async () => {
+      getIdbUser.mockResolvedValue({ ...USER });
+      clearIdbUser.mockRejectedValue(
+        new DOMException('connection closing', 'InvalidStateError'),
+      );
+      const fetchFn = vi
+        .fn()
+        .mockResolvedValue(new Response(null, { status: 401 }));
+
+      await load({
+        fetch: fetchFn,
+        url: URL_APP_ACCOUNT,
+      } as unknown as Parameters<typeof load>[0]);
+
+      await vi.waitFor(() => expect(invalidateAll).toHaveBeenCalled());
+      await expect(
+        load({
+          fetch: fetchFn,
+          url: URL_APP_ACCOUNT,
+        } as unknown as Parameters<typeof load>[0]),
+      ).rejects.toMatchObject({ status: 302, location: '/auth/signin' });
+    });
+
+    test('does not re-run the loads for a mere handle or avatar change', async () => {
+      // Re-running every load resets page state; a stale avatar for one
+      // navigation isn't worth that.
+      getIdbUser.mockResolvedValue({ ...USER, avatarUrl: 'stale.png' });
+      const fetchFn = vi.fn().mockResolvedValue(meResponse(USER));
+
+      const data = (await load({
+        fetch: fetchFn,
+        url: URL_APP_ACCOUNT,
+      } as unknown as Parameters<typeof load>[0])) as {
+        needsLexiconMigration: Promise<boolean | undefined>;
+      };
+      await data.needsLexiconMigration;
+
+      expect(invalidateAll).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('once the connectivity ping has found the server unreachable', () => {
+    beforeEach(markServerUnreachable);
+    afterEach(restoreConnectivity);
+
+    test('keeps the full /api/me budget when there is no cached user to fall back on', async () => {
+      // A cold server can fail the 5s ping and still be reachable
+      // (https://tangled.org/cuanto.bio/cuanto.bio/issues/59). With nothing
+      // cached, giving up early would bounce a signed-in user to sign-in.
+      getIdbUser.mockResolvedValue(undefined);
+      vi.useFakeTimers();
+      const { fetchFn, resolve } = deferredFetch();
+
+      const promise = load({
+        fetch: fetchFn,
+        url: URL_APP_PROTOCOL,
+      } as unknown as Parameters<typeof load>[0]);
+
+      await vi.advanceTimersByTimeAsync(3000);
+      resolve(meResponse(USER));
+
+      await expect(promise).resolves.toEqual(USER);
+    });
+  });
+
   // https://tangled.org/cuanto.bio/cuanto.bio/issues/70
   test('does not rewrite the cached user when /api/me still matches it', async () => {
     // The guard re-runs on every /app navigation; rewriting a byte-identical
@@ -111,12 +397,14 @@ describe('/app layout auth guard', () => {
       }),
     );
 
-    await expect(
-      load({
-        fetch: fetchFn,
-        url: URL_APP_ACCOUNT,
-      } as unknown as Parameters<typeof load>[0]),
-    ).resolves.toEqual({ ...USER, needsLexiconMigration: true });
+    const data = (await load({
+      fetch: fetchFn,
+      url: URL_APP_ACCOUNT,
+    } as unknown as Parameters<typeof load>[0])) as {
+      needsLexiconMigration: Promise<boolean | undefined>;
+    };
+    // Settles once the background check has finished with the cache.
+    await data.needsLexiconMigration;
     expect(saveIdbUser).not.toHaveBeenCalled();
   });
 
@@ -126,12 +414,14 @@ describe('/app layout auth guard', () => {
     getIdbUser.mockResolvedValue({ ...USER, avatarUrl: 'stale.png' });
     const fetchFn = vi.fn().mockResolvedValue(meResponse(USER));
 
-    await expect(
-      load({
-        fetch: fetchFn,
-        url: URL_APP_ACCOUNT,
-      } as unknown as Parameters<typeof load>[0]),
-    ).resolves.toEqual(USER);
+    const data = (await load({
+      fetch: fetchFn,
+      url: URL_APP_ACCOUNT,
+    } as unknown as Parameters<typeof load>[0])) as {
+      needsLexiconMigration: Promise<boolean | undefined>;
+    };
+    // This navigation renders the cached avatar; the next one gets the new.
+    await data.needsLexiconMigration;
     expect(saveIdbUser).toHaveBeenCalledWith({
       did: USER.did,
       handle: USER.handle,
