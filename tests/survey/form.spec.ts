@@ -150,6 +150,57 @@ test.describe('cancel survey guard', () => {
       .click();
     await expect(page).toHaveURL(/\/app\/protocols\/user-survey-spec\//);
   });
+
+  test('confirming cancel while the first autosave is in flight leaves no draft', async ({
+    page,
+    protocolRkey,
+  }) => {
+    // Fake clock so the form's 10s auto-save interval fires on demand.
+    await page.clock.install({ time: Date.now() });
+    await cacheAndOpenNewSurvey(page, 'user-survey-spec', protocolRkey);
+    await page.fill(
+      '[placeholder="e.g. Mission Dolores Park"]',
+      'Cancelled Mid-Save Marsh',
+    );
+    await page.getByRole('button', { name: 'Cancel Survey' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Cancel survey?' }),
+    ).toBeVisible();
+    expect(await readPendingSurveys(page)).toHaveLength(0);
+
+    // Confirm the cancel from inside the autosave's own write transaction:
+    // the one point where the save is certainly in flight and the form
+    // certainly has no row id yet.
+    await page.evaluate(() => {
+      const getAll = IDBObjectStore.prototype.getAll;
+      let confirmed = false;
+      IDBObjectStore.prototype.getAll = function (...args) {
+        if (
+          !confirmed &&
+          this.name === 'pending-surveys' &&
+          this.transaction.mode === 'readwrite'
+        ) {
+          confirmed = true;
+          const confirm = [
+            ...document.querySelectorAll<HTMLButtonElement>(
+              '[role="dialog"] button',
+            ),
+          ].find((b) => b.textContent?.trim() === 'Cancel survey');
+          confirm?.click();
+        }
+        return getAll.apply(this, args);
+      };
+    });
+
+    await page.clock.runFor(10_000);
+
+    await expect(page).toHaveURL(/\/app\/protocols\/user-survey-spec\//);
+    // Let the in-flight save and the cancel's delete both land.
+    await page.waitForTimeout(500);
+    expect(await readPendingSurveys(page)).toHaveLength(0);
+    // The late autosave must not stamp its resumeId onto the protocol page.
+    expect(new URL(page.url()).search).toBe('');
+  });
 });
 
 // ── Finish survey confirmation dialog ────────────────────────────────────────

@@ -8,6 +8,7 @@ import {
   clearIdb,
   clearIdbUser,
   deletePendingSurvey,
+  deletePendingSurveyByRkey,
   flushDraftWal,
   getCachedFollowedProtocolByRkey,
   getCachedFollowedProtocols,
@@ -317,6 +318,38 @@ describe('pending-surveys store', () => {
     await deletePendingSurvey(id);
     const all = await getPendingSurveys();
     expect(all.find((s) => s.id === id)).toBeUndefined();
+  });
+
+  test('deletePendingSurveyByRkey removes the survey', async () => {
+    await savePendingSurvey({ ...pendingSurvey1, surveyRkey: 'delrkey00001' });
+    await deletePendingSurveyByRkey('delrkey00001');
+    const all = await getPendingSurveys();
+    expect(all.filter((s) => s.surveyRkey === 'delrkey00001')).toEqual([]);
+  });
+
+  test('deletePendingSurveyByRkey leaves other surveys alone', async () => {
+    const id = await savePendingSurvey({
+      ...pendingSurvey1,
+      surveyRkey: 'delrkey00002',
+    });
+    await deletePendingSurveyByRkey('delrkey00003');
+    expect(await getPendingSurveyById(id)).toBeDefined();
+    await deletePendingSurvey(id);
+  });
+
+  test('deletePendingSurveyByRkey removes a survey whose first save is still in flight', async () => {
+    // Cancelling while the first autosave is writing: the form has no row id
+    // to delete by yet, and the write used to land after the cancel.
+    await Promise.all([
+      savePendingSurvey({
+        ...pendingSurvey1,
+        surveyRkey: 'delrace00001',
+        complete: false,
+      }),
+      deletePendingSurveyByRkey('delrace00001'),
+    ]);
+    const all = await getPendingSurveys();
+    expect(all.filter((s) => s.surveyRkey === 'delrace00001')).toEqual([]);
   });
 
   test('savePendingSurvey stores complete: false for in-progress surveys', async () => {

@@ -657,6 +657,31 @@ export async function deletePendingSurvey(id: number): Promise<void> {
   await db.delete('pending-surveys', id);
 }
 
+/**
+ * Deletes every pending-surveys row holding `surveyRkey`.
+ *
+ * For discarding a survey whose row id the caller may not know yet: a first
+ * save still in flight has not handed its id back. Readwrite transactions on
+ * a store run in the order they were opened, so this one queues behind that
+ * save and removes the row it wrote.
+ */
+export async function deletePendingSurveyByRkey(
+  surveyRkey: string,
+): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction('pending-surveys', 'readwrite');
+  const remove = async () => {
+    for (const s of await tx.store.getAll()) {
+      if (s.surveyRkey === surveyRkey && s.id != null) {
+        await tx.store.delete(s.id);
+      }
+    }
+  };
+  // Awaited together with tx.done so a failed request doesn't leave the
+  // transaction's own rejection unhandled.
+  await Promise.all([remove(), tx.done]);
+}
+
 export async function getCachedFollowedProtocols(): Promise<CachedProtocol[]> {
   const db = await getDB();
   const protocols = await db.getAll('followed-protocols');

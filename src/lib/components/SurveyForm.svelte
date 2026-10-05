@@ -48,6 +48,7 @@ import {
 import {
   type CachedProtocol,
   deletePendingSurvey,
+  deletePendingSurveyByRkey,
   flushDraftWal,
   type PendingSurvey,
   type Survey,
@@ -780,7 +781,9 @@ async function autoSave() {
       await updatePendingSurvey({ ...payload, id: pendingSurveyId });
     } else {
       pendingSurveyId = await savePendingSurvey(payload);
-      replaceState(`?resumeId=${pendingSurveyId}`, {});
+      // confirmCancel() may have started while the save was in flight; don't
+      // stamp a resumeId onto the page it is navigating to.
+      if (!navigatingAway) replaceState(`?resumeId=${pendingSurveyId}`, {});
     }
   } finally {
     saving = false;
@@ -1030,8 +1033,13 @@ async function confirmCancel() {
     return;
   }
   clearDraftWal();
-  if (pendingSurveyId != null) await deletePendingSurvey(pendingSurveyId);
+  // Set before the delete is awaited, so an autosave tick landing in that
+  // window can't write the draft straight back.
   navigatingAway = true;
+  // By surveyRkey rather than pendingSurveyId: a first save (or the fold of a
+  // backgrounded draft) still in flight has no id to delete by yet, and would
+  // otherwise land after this and strand a cancelled survey under "In progress".
+  await deletePendingSurveyByRkey(surveyRkey);
   await goto(`/app/protocols/${protocol.handle}/${protocol.rkey}`);
 }
 
