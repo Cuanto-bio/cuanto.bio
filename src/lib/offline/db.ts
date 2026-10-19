@@ -139,6 +139,11 @@ export interface PendingSurvey {
   eventRemark?: RemarkInput;
   createdAt: number;
   complete: boolean;
+  // Whether the draft was started live ("now", with a running timer) or added
+  // after the fact ("past", with an entered date and duration), so resuming
+  // reopens it the same way (#87). Absent on drafts saved before this field
+  // existed, which resume as "now".
+  mode?: 'now' | 'past';
 }
 
 export interface IdbUser {

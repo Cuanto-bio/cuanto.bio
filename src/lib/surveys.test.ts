@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { IncidentalOccurrence } from './surveys';
 import {
+  buildDraftTiming,
   buildSurveyTiming,
   calcElapsed,
   formatElapsed,
@@ -122,6 +123,39 @@ describe('buildSurveyTiming', () => {
       '45',
     );
     expect(eventDurationValue).toBe(45);
+  });
+});
+
+describe('buildDraftTiming', () => {
+  const startedAt = new Date('2025-10-12T10:00:00Z').getTime();
+
+  test('now mode records startedAt and no duration', () => {
+    expect(
+      buildDraftTiming('now', startedAt, '2025-08-01T09:00', '45'),
+    ).toEqual({
+      eventDate: new Date(startedAt).toISOString(),
+      eventDurationValue: null,
+    });
+  });
+
+  test('past mode records the entered date and duration', () => {
+    expect(
+      buildDraftTiming('past', startedAt, '2025-08-01T09:00', '45'),
+    ).toEqual({
+      eventDate: new Date('2025-08-01T09:00').toISOString(),
+      eventDurationValue: 45,
+    });
+  });
+
+  test('past mode leaves unfilled or invalid fields null', () => {
+    expect(buildDraftTiming('past', startedAt, '', '')).toEqual({
+      eventDate: null,
+      eventDurationValue: null,
+    });
+    expect(buildDraftTiming('past', startedAt, 'nope', 'abc')).toEqual({
+      eventDate: null,
+      eventDurationValue: null,
+    });
   });
 });
 

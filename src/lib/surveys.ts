@@ -95,6 +95,29 @@ export function buildSurveyTiming(
   };
 }
 
+// Timing for an unfinished draft. A "now" draft keeps its start time so the
+// timer picks up where it left off; a "past" draft keeps whatever date and
+// duration the surveyor has entered so far, which may be incomplete.
+export function buildDraftTiming(
+  mode: 'now' | 'past',
+  startedAt: number,
+  pastDate: string,
+  pastDurationMinutes: string,
+): { eventDate: string | null; eventDurationValue: number | null } {
+  if (mode === 'now') {
+    return {
+      eventDate: new Date(startedAt).toISOString(),
+      eventDurationValue: null,
+    };
+  }
+  const date = new Date(pastDate);
+  const dur = parseInt(pastDurationMinutes, 10);
+  return {
+    eventDate: Number.isNaN(date.getTime()) ? null : date.toISOString(),
+    eventDurationValue: Number.isNaN(dur) ? null : dur,
+  };
+}
+
 export function calcElapsed(startedAt: number): number {
   return Math.floor((Date.now() - startedAt) / 1000);
 }

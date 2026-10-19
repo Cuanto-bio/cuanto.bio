@@ -93,6 +93,8 @@ export async function uploadPendingSurvey(
     publishTrack,
     // A local view preference for resuming drafts; nothing to publish.
     targetFilter: _targetFilter,
+    // How the draft resumes (#87); local only, like targetFilter.
+    mode: _mode,
     ...rest
   } = survey;
 

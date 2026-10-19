@@ -74,6 +74,7 @@ import {
   remarkByteLength,
 } from '$lib/remarks';
 import {
+  buildDraftTiming,
   buildSurveyTiming,
   calcElapsed,
   formatElapsed,
@@ -188,11 +189,17 @@ const existingIncidentalUris: Record<string, string> = isEdit
 
 // ─── form state ─────────────────────────────────────────────────────────────
 
+// A finished survey, or a draft started with "Add" rather than "Start" (#87),
+// resumes with its date and duration fields instead of a running timer.
+// svelte-ignore state_referenced_locally -- intentional: initialize from props
+const resumeAsPast =
+  !!initialResumeState?.complete || initialResumeState?.mode === 'past';
+
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
 let modeOverride = $state<'now' | 'past' | null>(
   isEdit
     ? 'past'
-    : initialResumeState?.complete
+    : resumeAsPast
       ? 'past'
       : defaultMode !== 'now'
         ? defaultMode
@@ -209,7 +216,9 @@ let resumingComplete = $state(!!initialResumeState?.complete && !isEdit);
 
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
 let startedAt = $state(
-  initialResumeState?.eventDate && !isEdit
+  // A past draft's eventDate is the date the surveyor entered, not when the
+  // timer started, so only a live draft picks its start time back up.
+  initialResumeState?.eventDate && !isEdit && !resumeAsPast
     ? new Date(initialResumeState.eventDate).getTime()
     : Date.now(),
 );
@@ -219,8 +228,8 @@ let elapsedSeconds = $state(0);
 let pastDate = $state(
   isEdit
     ? toDatetimeLocal(sv.record.eventDate)
-    : initialResumeState?.complete
-      ? toDatetimeLocal(initialResumeState.eventDate)
+    : resumeAsPast
+      ? toDatetimeLocal(initialResumeState?.eventDate)
       : '',
 );
 
@@ -230,8 +239,7 @@ let pastDurationMinutes = $state(
     ? sv.record.eventDurationValue != null
       ? String(sv.record.eventDurationValue)
       : ''
-    : initialResumeState?.complete &&
-        initialResumeState.eventDurationValue != null
+    : resumeAsPast && initialResumeState?.eventDurationValue != null
       ? String(initialResumeState.eventDurationValue)
       : '',
 );
@@ -564,7 +572,7 @@ onMount(() => {
   }
 
   // If we weren't given a startedAt from resume state, reset to now
-  if (!initialResumeState?.eventDate) startedAt = Date.now();
+  if (!initialResumeState?.eventDate || resumeAsPast) startedAt = Date.now();
 
   // Pick GPS track recording back up when the draft was still recording as the
   // user navigated away, so resuming doesn't silently leave the track stopped.
@@ -642,10 +650,7 @@ function buildNewSurveyPayload(complete: boolean): PendingSurvey {
         pastDate,
         pastDurationMinutes,
       )
-    : {
-        eventDate: new Date(startedAt).toISOString(),
-        eventDurationValue: null,
-      };
+    : buildDraftTiming(mode, startedAt, pastDate, pastDurationMinutes);
   // "now" mode records into the live GPS composable; "past" mode draws/uploads
   // geometry through the map picker (pickerTrack / gpsBbox).
   // snapshot: these are $state proxies and go to IndexedDB, which
@@ -679,7 +684,7 @@ function buildNewSurveyPayload(complete: boolean): PendingSurvey {
     longitude: effectiveLon,
     eventDate,
     eventDurationValue,
-    eventDurationUnit: complete ? 'minutes' : null,
+    eventDurationUnit: eventDurationValue != null ? 'minutes' : null,
     surveyorCount: surveyorCountStr ? parseInt(surveyorCountStr, 10) : null,
     ...(eventRemarkBody.trim()
       ? { eventRemark: eventRemarkPayload(eventRemarkBody.trim()) }
@@ -706,6 +711,7 @@ function buildNewSurveyPayload(complete: boolean): PendingSurvey {
     },
     createdAt: Date.now(),
     complete,
+    mode,
   };
 }
 

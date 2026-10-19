@@ -324,6 +324,30 @@ test.describe('navigation guard', () => {
     ).toContainText('1');
   });
 
+  test('draft of a past survey resumes as a past survey (#87)', async ({
+    page,
+    protocolRkey,
+  }) => {
+    await page.goto(`/app/protocols/user-survey-spec/${protocolRkey}`);
+    await page.waitForLoadState('networkidle');
+    await page.goto(`/app/surveys/new/${protocolRkey}?past=1`);
+    await page.waitForSelector('text=Finish Survey', { state: 'visible' });
+    await page.fill('#pastDate', '2026-01-15T10:00');
+    await page.fill('#pastDuration', '45');
+
+    await page.getByRole('link', { name: 'Your Surveys' }).click();
+    await page.waitForURL(/\/app\/surveys$/);
+
+    await page.getByRole('link', { name: 'Resume', exact: true }).click();
+    await page.waitForSelector('text=Finish Survey', { state: 'visible' });
+
+    // Resumed as "Add" (past) rather than "Start" (now): the date and
+    // duration fields are back with their values, and no timer is running.
+    await expect(page.locator('#pastDate')).toHaveValue('2026-01-15T10:00');
+    await expect(page.locator('#pastDuration')).toHaveValue('45');
+    await expect(page.getByText(/^\d{2,}:\d{2}$/)).toHaveCount(0);
+  });
+
   test('canceling a survey with a draft removes it from the surveys list', async ({
     page,
     protocolRkey,
