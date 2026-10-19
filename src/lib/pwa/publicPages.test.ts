@@ -18,9 +18,9 @@ describe('isPublicProtocolPath', () => {
 
   test('rejects the authenticated forms and their data requests', () => {
     // Caching these serves a signed-out visitor's answer back to a signed-in
-    // one: the load redirects to sign-in when there is no session, and
-    // stale-while-revalidate would replay that redirect to a user who is
-    // signed in, bouncing them to sign in again on a page they can edit.
+    // one: the load redirects to sign-in when there is no session, and the
+    // service worker's cached copy would replay that redirect to a user who
+    // is signed in, bouncing them to sign in again on a page they can edit.
     expect(isPublicProtocolPath('/protocols/new')).toBe(false);
     expect(isPublicProtocolPath('/protocols/new/__data.json')).toBe(false);
     expect(isPublicProtocolPath('/protocols/dana/abc/edit')).toBe(false);

@@ -1,3 +1,5 @@
+import { UNREACHABLE_TIMEOUT_MS } from '$lib/unreachableTimeout';
+
 const POLL_INTERVAL = 15_000;
 
 // Check connectivity by hitting our own ping endpoint
@@ -60,10 +62,7 @@ export function useOnline() {
   };
 }
 
-// How long a request gets once the ping has already found the server
-// unreachable: enough for a server that just came back to answer, short
-// enough that a navigation doesn't feel stuck.
-export const UNREACHABLE_TIMEOUT_MS = 2000;
+export { UNREACHABLE_TIMEOUT_MS };
 
 /**
  * Wraps a load function's `fetch` so that, once the ping has already found the
