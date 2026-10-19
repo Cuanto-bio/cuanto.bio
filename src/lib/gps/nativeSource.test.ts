@@ -5,8 +5,15 @@ vi.mock('@capgo/background-geolocation', () => ({
     start: vi.fn(),
     stop: vi.fn(),
     requestPermissions: vi.fn(),
+    updateNotification: vi.fn(),
   },
 }));
+
+vi.mock('@capacitor/core', () => ({
+  Capacitor: { getPlatform: vi.fn(() => 'android') },
+}));
+
+import { Capacitor } from '@capacitor/core';
 
 import {
   BackgroundGeolocation,
@@ -75,6 +82,15 @@ describe('nativeGpsSource', () => {
     // as the call is registered, and events (fixes and errors alike) arrive
     // through the callback afterwards.
     vi.mocked(BackgroundGeolocation.start).mockResolvedValue(undefined);
+    vi.mocked(BackgroundGeolocation.requestPermissions).mockResolvedValue({
+      location: 'granted',
+      backgroundLocation: 'when_in_use',
+    });
+    vi.mocked(BackgroundGeolocation.updateNotification).mockReset();
+    vi.mocked(BackgroundGeolocation.updateNotification).mockResolvedValue(
+      undefined,
+    );
+    vi.mocked(Capacitor.getPlatform).mockReturnValue('android');
   });
 
   // The plugin's own start()-time permission handling only asks for 'location',
@@ -221,5 +237,103 @@ describe('nativeGpsSource', () => {
     expect(onError).toHaveBeenCalledWith(persistent);
     expect(start).toHaveBeenCalledTimes(2);
     expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  // https://tangled.org/cuanto.bio/cuanto.bio/issues/91: the foreground-service
+  // notification shows elapsed time (a native chronometer counting up from
+  // notificationStartedAt) and the distance traveled so far.
+  test('starts the notification with the reported start time and distance', async () => {
+    const start = vi.mocked(BackgroundGeolocation.start);
+    const source = nativeGpsSource();
+
+    source.setStatus?.({ startedAt: 1_700_000_000_000, distanceMeters: 1234 });
+    await source.start(vi.fn(), vi.fn());
+
+    expect(start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        backgroundTitle: 'Recording survey track',
+        backgroundMessage: '1.23 km traveled',
+        notificationStartedAt: 1_700_000_000_000,
+      }),
+      expect.any(Function),
+    );
+  });
+
+  test('restarts with the latest status after recovering from ALREADY_STARTED', async () => {
+    const start = vi.mocked(BackgroundGeolocation.start);
+    const source = nativeGpsSource();
+
+    source.setStatus?.({ startedAt: 1_000, distanceMeters: 0 });
+    await source.start(vi.fn(), vi.fn());
+    source.setStatus?.({ startedAt: 1_000, distanceMeters: 2500 });
+    (start.mock.calls[0][1] as StartCallback)(undefined, alreadyStartedError());
+    await vi.waitFor(() => expect(start).toHaveBeenCalledTimes(2));
+
+    expect(start.mock.calls[1][0]).toEqual(
+      expect.objectContaining({
+        backgroundMessage: '2.50 km traveled',
+        notificationStartedAt: 1_000,
+      }),
+    );
+  });
+
+  test('updates the notification when the status changes while recording', async () => {
+    const updateNotification = vi.mocked(
+      BackgroundGeolocation.updateNotification,
+    );
+    const source = nativeGpsSource();
+    source.setStatus?.({ startedAt: 1_000, distanceMeters: 0 });
+    expect(updateNotification).not.toHaveBeenCalled();
+
+    await source.start(vi.fn(), vi.fn());
+    source.setStatus?.({ startedAt: 1_000, distanceMeters: 500 });
+
+    expect(updateNotification).toHaveBeenCalledWith({
+      title: 'Recording survey track',
+      message: '0.50 km traveled',
+    });
+  });
+
+  test('stops updating the notification once recording stops', async () => {
+    const updateNotification = vi.mocked(
+      BackgroundGeolocation.updateNotification,
+    );
+    const source = nativeGpsSource();
+    await source.start(vi.fn(), vi.fn());
+    await source.stop();
+
+    source.setStatus?.({ startedAt: 1_000, distanceMeters: 500 });
+
+    expect(updateNotification).not.toHaveBeenCalled();
+  });
+
+  // iOS has no tracking notification; the plugin only implements this on
+  // Android, and calling it on iOS would reject as unimplemented.
+  test('does not update a notification on iOS', async () => {
+    vi.mocked(Capacitor.getPlatform).mockReturnValue('ios');
+    const updateNotification = vi.mocked(
+      BackgroundGeolocation.updateNotification,
+    );
+    const source = nativeGpsSource();
+    await source.start(vi.fn(), vi.fn());
+
+    source.setStatus?.({ startedAt: 1_000, distanceMeters: 500 });
+
+    expect(updateNotification).not.toHaveBeenCalled();
+  });
+
+  test('swallows a failed notification update rather than surfacing it', async () => {
+    vi.mocked(BackgroundGeolocation.updateNotification).mockRejectedValue(
+      new Error('NOT_STARTED'),
+    );
+    const onError = vi.fn();
+    const source = nativeGpsSource();
+    await source.start(vi.fn(), onError);
+
+    source.setStatus?.({ startedAt: 1_000, distanceMeters: 500 });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onError).not.toHaveBeenCalled();
   });
 });

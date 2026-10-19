@@ -343,7 +343,11 @@ let incidentals = $state<IncidentalOccurrence[]>(
 );
 
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
-const track = isEdit ? null : useGpsTrack(initialResumeState?.gpsTrack ?? []);
+const track = isEdit
+  ? null
+  : useGpsTrack(initialResumeState?.gpsTrack ?? [], {
+      startedAt: () => startedAt,
+    });
 
 // svelte-ignore state_referenced_locally -- intentional: initialize from props
 let pendingSurveyId = $state<number | null>(initialPendingSurveyId ?? null);

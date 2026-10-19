@@ -1,3 +1,4 @@
+import { trackDistanceMeters } from '$lib/distance';
 import { nativeGpsSource } from '$lib/gps/nativeSource';
 import type { GpsSource } from '$lib/gps/source';
 import { webGpsSource } from '$lib/gps/webSource';
@@ -5,17 +6,29 @@ import { accumulate, emptyWindow, type WindowState } from '$lib/gpsTrackWindow';
 import type { GpsTrackPoint } from '$lib/gpx';
 import { isNative } from '$lib/platform';
 
-export function useGpsTrack(
-  initialPoints: GpsTrackPoint[] = [],
+interface GpsTrackOptions {
   // Injectable so tests and future callers can supply a source; defaults to
   // whichever one this platform can actually use.
-  source: GpsSource = isNative() ? nativeGpsSource() : webGpsSource(),
+  source?: GpsSource;
+  // When the survey started, so the source's status shows the same elapsed
+  // time as the survey timer. A getter because the caller may reset it after
+  // constructing the track. Defaults to when recording starts.
+  startedAt?: () => number;
+}
+
+export function useGpsTrack(
+  initialPoints: GpsTrackPoint[] = [],
+  {
+    source = isNative() ? nativeGpsSource() : webGpsSource(),
+    startedAt,
+  }: GpsTrackOptions = {},
 ) {
   const points = $state<GpsTrackPoint[]>(initialPoints);
   let isRecording = $state(false);
   let wakeLock: WakeLockSentinel | null = null;
   let hiddenAt: number | null = null;
   let recordWindow: WindowState = emptyWindow();
+  let recordingStartedAt = 0;
 
   // The screen wake lock exists only to stop the browser suspending JS while
   // the user walks. A source that keeps delivering in the background does not
@@ -28,7 +41,17 @@ export function useGpsTrack(
     // one to arrive; the device pushes better fixes between window boundaries.
     const result = accumulate(recordWindow, fix);
     recordWindow = result.state;
-    if (result.emit) points.push(result.emit);
+    if (result.emit) {
+      points.push(result.emit);
+      reportStatus();
+    }
+  }
+
+  function reportStatus() {
+    source.setStatus?.({
+      startedAt: startedAt?.() ?? recordingStartedAt,
+      distanceMeters: trackDistanceMeters(points),
+    });
   }
 
   function onVisibilityChange() {
@@ -68,6 +91,8 @@ export function useGpsTrack(
     if (isRecording) return;
     isRecording = true;
     recordWindow = emptyWindow();
+    recordingStartedAt = Date.now();
+    reportStatus();
     if (needsWakeLock) {
       document.addEventListener('visibilitychange', onVisibilityChange);
     }

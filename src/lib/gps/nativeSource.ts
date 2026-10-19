@@ -1,10 +1,19 @@
+import { Capacitor } from '@capacitor/core';
 import {
   BackgroundGeolocation,
   type CallbackError,
   type Location,
 } from '@capgo/background-geolocation';
+import { formatDistance } from '$lib/distance';
+import { readDistanceUnit } from '$lib/distanceUnit';
 import type { GpsTrackPoint } from '$lib/gpx';
-import type { GpsSource } from './source';
+import type { GpsSource, TrackStatus } from './source';
+
+const NOTIFICATION_TITLE = 'Recording survey track';
+
+function notificationMessage(status: TrackStatus): string {
+  return `${formatDistance(status.distanceMeters, readDistanceUnit())} traveled`;
+}
 
 /**
  * Maps a capgo fix onto our point shape.
@@ -34,13 +43,27 @@ export function toTrackPoint(loc: Location, now = Date.now()): GpsTrackPoint {
  * metronomic 1Hz delivery into a live JS context.
  */
 export function nativeGpsSource(): GpsSource {
+  let status: TrackStatus | null = null;
+  let running = false;
+
   return {
     worksInBackground: true,
 
+    setStatus(next) {
+      status = next;
+      // Only Android has a notification to update; iOS shows its own location
+      // indicator and the plugin does not implement updateNotification there.
+      if (!running || Capacitor.getPlatform() !== 'android') return;
+      BackgroundGeolocation.updateNotification({
+        title: NOTIFICATION_TITLE,
+        message: notificationMessage(next),
+      }).catch(() => {
+        // Cosmetic: a stale notification is no reason to interrupt recording.
+      });
+    },
+
     async start(onFix, onError) {
-      const startOptions = {
-        backgroundMessage: 'Recording your survey track.',
-        backgroundTitle: 'Cuanto',
+      const baseStartOptions = {
         requestPermissions: false,
         // Never hand us a cached fix: a stale position silently misplaces a
         // survey, and accumulate() has no way to tell one from a real fix.
@@ -50,6 +73,20 @@ export function nativeGpsSource(): GpsSource {
         // than raw, because it picks best-per-window. Delegating to a distance
         // filter would throw away the fixes it selects from.
         distanceFilter: 0,
+      };
+
+      // Built per call so the ALREADY_STARTED restart below shows the latest
+      // status rather than the one from when recording first started.
+      const startOptions = () => {
+        const current = status ?? { startedAt: Date.now(), distanceMeters: 0 };
+        return {
+          backgroundMessage: notificationMessage(current),
+          backgroundTitle: NOTIFICATION_TITLE,
+          // The notification's chronometer counts up from here, so it shows
+          // elapsed time without JS having to update it every second.
+          notificationStartedAt: current.startedAt,
+          ...baseStartOptions,
+        };
       };
 
       // capgo's start() is a callback-style plugin method: the promise resolves
@@ -72,7 +109,7 @@ export function nativeGpsSource(): GpsSource {
           if (error.code === 'ALREADY_STARTED' && !recovering) {
             recovering = true;
             BackgroundGeolocation.stop()
-              .then(() => BackgroundGeolocation.start(startOptions, onUpdate))
+              .then(() => BackgroundGeolocation.start(startOptions(), onUpdate))
               .catch(onError);
             return;
           }
@@ -100,7 +137,8 @@ export function nativeGpsSource(): GpsSource {
           permissions: ['location', 'notification'],
         });
 
-        await BackgroundGeolocation.start(startOptions, onUpdate);
+        await BackgroundGeolocation.start(startOptions(), onUpdate);
+        running = true;
       } catch (err) {
         // requestPermissions() rejected, or start() failed before it even
         // registered. Runtime start() failures come through onUpdate above.
@@ -109,6 +147,7 @@ export function nativeGpsSource(): GpsSource {
     },
 
     async stop() {
+      running = false;
       await BackgroundGeolocation.stop();
     },
   };

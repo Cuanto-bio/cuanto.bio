@@ -56,7 +56,7 @@ index d389cd76e7dca5e37fd19990e5a846fd55778578..aff1f8e759e9ddbf1bcf8b338150e37a
      <uses-feature android:name="android.hardware.location.gps" />
  </manifest>
 diff --git a/android/src/main/java/com/capgo/capacitor_background_geolocation/BackgroundGeolocation.java b/android/src/main/java/com/capgo/capacitor_background_geolocation/BackgroundGeolocation.java
-index 00b9e10f9515628093c7b928ba4a898c1e9f90aa..f1d308657cbe04c265545d1129ff77c5dfb87eae 100644
+index 00b9e10f9515628093c7b928ba4a898c1e9f90aa..6097937ccb5f17cc92e696e3cc5790898c269e1c 100644
 --- a/android/src/main/java/com/capgo/capacitor_background_geolocation/BackgroundGeolocation.java
 +++ b/android/src/main/java/com/capgo/capacitor_background_geolocation/BackgroundGeolocation.java
 @@ -28,12 +28,6 @@ import com.getcapacitor.PluginMethod;
@@ -94,7 +94,7 @@ index 00b9e10f9515628093c7b928ba4a898c1e9f90aa..f1d308657cbe04c265545d1129ff77c5
  
      @PluginMethod(returnType = PluginMethod.RETURN_CALLBACK)
      public void start(final PluginCall call) {
-@@ -108,9 +88,6 @@ public class BackgroundGeolocation extends Plugin {
+@@ -108,14 +88,15 @@ public class BackgroundGeolocation extends Plugin {
      }
  
      private void proceedWithStart(PluginCall call) {
@@ -104,7 +104,43 @@ index 00b9e10f9515628093c7b928ba4a898c1e9f90aa..f1d308657cbe04c265545d1129ff77c5
          getServiceConnection().thenAccept((serviceBinder) -> {
              serviceBinder.start(
                  call.getCallbackId(),
-@@ -330,252 +307,6 @@ public class BackgroundGeolocation extends Plugin {
+                 call.getString("backgroundTitle", "Using your location"),
+                 call.getString("backgroundMessage", ""),
++                // Where the notification's elapsed-time chronometer counts up
++                // from. optLong rather than getLong, which only accepts a value
++                // JSON happened to parse as a Long.
++                call.getData().optLong("notificationStartedAt", System.currentTimeMillis()),
+                 call.getFloat("distanceFilter", 0f),
+                 call.getString("url", null)
+             );
+@@ -303,6 +284,26 @@ public class BackgroundGeolocation extends Plugin {
+         call.resolve();
+     }
+ 
++    // Replaces the title and text of the foreground-service notification while
++    // tracking, e.g. to show progress. The elapsed-time chronometer keeps
++    // counting from the start() time.
++    @PluginMethod
++    public void updateNotification(PluginCall call) {
++        if (serviceConnectionFuture == null) {
++            call.reject("Service not started, make sure to call start() first", "NOT_STARTED");
++            return;
++        }
++        serviceConnectionFuture
++            .thenAccept((service) -> {
++                service.updateNotification(call.getString("title", "Using your location"), call.getString("message", ""));
++                call.resolve();
++            })
++            .exceptionally((throwable) -> {
++                call.reject("Failed to update notification: " + throwable.getMessage());
++                return null;
++            });
++    }
++
+     @PluginMethod
+     public void setPlannedRoute(PluginCall call) {
+         String soundFile = call.getString("soundFile");
+@@ -330,252 +331,6 @@ public class BackgroundGeolocation extends Plugin {
          }
      }
  
@@ -357,7 +393,7 @@ index 00b9e10f9515628093c7b928ba4a898c1e9f90aa..f1d308657cbe04c265545d1129ff77c5
      private static double[][] getJavaDoubleArray(JSArray jsArray) throws JSONException {
          int rows = jsArray.length();
          if (rows == 0) {
-@@ -654,27 +385,6 @@ public class BackgroundGeolocation extends Plugin {
+@@ -654,27 +409,6 @@ public class BackgroundGeolocation extends Plugin {
          }
      }
  
@@ -385,7 +421,7 @@ index 00b9e10f9515628093c7b928ba4a898c1e9f90aa..f1d308657cbe04c265545d1129ff77c5
      @Override
      public void load() {
          super.load();
-@@ -702,11 +412,6 @@ public class BackgroundGeolocation extends Plugin {
+@@ -702,11 +436,6 @@ public class BackgroundGeolocation extends Plugin {
              serviceReceiver,
              new IntentFilter(BackgroundGeolocationService.ACTION_BROADCAST)
          );
@@ -397,7 +433,7 @@ index 00b9e10f9515628093c7b928ba4a898c1e9f90aa..f1d308657cbe04c265545d1129ff77c5
      }
  
      private CompletableFuture<BackgroundGeolocationService.LocalBinder> getServiceConnection() {
-@@ -753,17 +458,10 @@ public class BackgroundGeolocation extends Plugin {
+@@ -753,17 +482,10 @@ public class BackgroundGeolocation extends Plugin {
          if (locationPermissionFuture != null && !locationPermissionFuture.isDone()) {
              locationPermissionFuture.cancel(true);
          }
@@ -415,6 +451,94 @@ index 00b9e10f9515628093c7b928ba4a898c1e9f90aa..f1d308657cbe04c265545d1129ff77c5
          super.handleOnDestroy();
      }
  
+diff --git a/android/src/main/java/com/capgo/capacitor_background_geolocation/BackgroundGeolocationService.java b/android/src/main/java/com/capgo/capacitor_background_geolocation/BackgroundGeolocationService.java
+index 85f2a02e91df0265d30aca148c6da869f5abe31b..e21f8ec78af58839ddd32396ad85125958b2d255 100644
+--- a/android/src/main/java/com/capgo/capacitor_background_geolocation/BackgroundGeolocationService.java
++++ b/android/src/main/java/com/capgo/capacitor_background_geolocation/BackgroundGeolocationService.java
+@@ -1,6 +1,7 @@
+ package com.capgo.capacitor_background_geolocation;
+ 
+ import android.app.Notification;
++import android.app.NotificationManager;
+ import android.app.PendingIntent;
+ import android.app.Service;
+ import android.content.Context;
+@@ -59,6 +60,13 @@ public class BackgroundGeolocationService extends Service {
+     private String nativePostUrl;
+     private ExecutorService postExecutor;
+ 
++    // Shown by the notification's chronometer as elapsed time. Zero until
++    // start() sets it, e.g. after a sticky restart, which falls back to now.
++    private long notificationStartedAt;
++    // Whether the foreground notification is up, so updateNotification() does
++    // not repost it after stop() has taken it down.
++    private volatile boolean foregrounded;
++
+     @Override
+     public IBinder onBind(Intent intent) {
+         return binder;
+@@ -331,6 +339,7 @@ public class BackgroundGeolocationService extends Service {
+             } else {
+                 startForeground(NOTIFICATION_ID, createBackgroundNotification(notificationTitle, notificationMessage));
+             }
++            foregrounded = true;
+         } catch (Exception exception) {
+             Logger.error("Failed to foreground service", exception);
+         }
+@@ -343,6 +352,7 @@ public class BackgroundGeolocationService extends Service {
+             final String id,
+             final String notificationTitle,
+             final String notificationMessage,
++            long startedAt,
+             float distanceFilter,
+             final String url
+         ) {
+@@ -351,6 +361,7 @@ public class BackgroundGeolocationService extends Service {
+             client = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+             callbackId = id;
+             currentDistanceFilter = distanceFilter;
++            notificationStartedAt = startedAt;
+ 
+             nativePostUrl = (url == null || url.isEmpty()) ? null : url;
+             LocationStore.saveSetup(getApplicationContext(), nativePostUrl, notificationTitle, notificationMessage, distanceFilter);
+@@ -366,6 +377,7 @@ public class BackgroundGeolocationService extends Service {
+         }
+ 
+         String stop() {
++            foregrounded = false;
+             LocationStore.clear(getApplicationContext());
+             nativePostUrl = null;
+             stopWatchdog();
+@@ -377,6 +389,14 @@ public class BackgroundGeolocationService extends Service {
+             return callbackId;
+         }
+ 
++        void updateNotification(String notificationTitle, String notificationMessage) {
++            if (!foregrounded) {
++                return;
++            }
++            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
++            manager.notify(NOTIFICATION_ID, createBackgroundNotification(notificationTitle, notificationMessage));
++        }
++
+         void setPlannedRoute(String filePath, double[][] routeCoordinates, float distance) {
+             route = routeCoordinates;
+             distanceThreshold = distance;
+@@ -416,7 +436,13 @@ public class BackgroundGeolocationService extends Service {
+             .setContentText(backgroundMessage)
+             .setOngoing(true)
+             .setPriority(Notification.PRIORITY_HIGH)
+-            .setWhen(System.currentTimeMillis());
++            // Show elapsed time as a chronometer counting up from the start of
++            // tracking, so it ticks without anyone reposting the notification.
++            .setWhen(notificationStartedAt > 0 ? notificationStartedAt : System.currentTimeMillis())
++            .setShowWhen(true)
++            .setUsesChronometer(true)
++            // updateNotification() reposts this; don't sound or buzz each time.
++            .setOnlyAlertOnce(true);
+ 
+         try {
+             String name = getAppString("capacitor_background_geolocation_notification_icon", "mipmap/ic_launcher", getApplicationContext());
 diff --git a/android/src/main/java/com/capgo/capacitor_background_geolocation/GeofenceBootReceiver.java b/android/src/main/java/com/capgo/capacitor_background_geolocation/GeofenceBootReceiver.java
 deleted file mode 100644
 index 7735d74fae22a695ccd86f6b350dd5e83f6010e8..0000000000000000000000000000000000000000
@@ -444,6 +568,48 @@ index 2e19afe9557e8b436b88d97574b3b27686f0ae44..1fdf846431e14a6c2e1483f5fc16bddf
  final class LocationStore {
  
      private static final String PREFS_NAME = "CapgoBackgroundGeolocationWatcher";
+diff --git a/dist/esm/definitions.d.ts b/dist/esm/definitions.d.ts
+index 5c3b3261435cd5f89429db7657ef4a456089d5b4..476f32bfd6c5a6000d08bbb04cb75375433b324a 100644
+--- a/dist/esm/definitions.d.ts
++++ b/dist/esm/definitions.d.ts
+@@ -82,6 +82,13 @@ export interface StartOptions {
+      * @example "Location Service"
+      */
+     backgroundTitle?: string;
++    /**
++     * Epoch milliseconds the Android notification's elapsed-time chronometer
++     * counts up from. Added by this app's patch.
++     *
++     * @default the time start() is called
++     */
++    notificationStartedAt?: number;
+     /**
+      * Whether permissions should be requested from the user automatically,
+      * if they are not already granted.
+@@ -586,6 +593,12 @@ export interface BackgroundGeolocationPlugin {
+      * });
+      */
+     setPlannedRoute(options: SetPlannedRouteOptions): Promise<void>;
++    /**
++     * Replaces the title and text of the Android foreground-service
++     * notification while tracking. Added by this app's patch; Android only, and
++     * rejects with NOT_STARTED if start() has not been called.
++     */
++    updateNotification(options: UpdateNotificationOptions): Promise<void>;
+     /**
+      * Configures native geofence transition handling.
+      *
+@@ -720,3 +733,10 @@ export interface BackgroundGeolocationPlugin {
+         version: string;
+     }>;
+ }
++/**
++ * Options for updateNotification(). Added by this app's patch.
++ */
++export interface UpdateNotificationOptions {
++    title: string;
++    message: string;
++}
 diff --git a/ios/Sources/CapgoBackgroundGeolocationPlugin/CapgoCapacitorBackgroundGeolocationPlugin.swift b/ios/Sources/CapgoBackgroundGeolocationPlugin/CapgoCapacitorBackgroundGeolocationPlugin.swift
 index 775ef831df7c645cf04b058e13d4d0599b48440d..670cd27d922da86da752bfa577783d3867bd3022 100644
 --- a/ios/Sources/CapgoBackgroundGeolocationPlugin/CapgoCapacitorBackgroundGeolocationPlugin.swift

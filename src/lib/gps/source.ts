@@ -1,5 +1,12 @@
 import type { GpsTrackPoint } from '$lib/gpx';
 
+/** What a source may show the user about the recording in progress. */
+export interface TrackStatus {
+  /** Epoch ms the survey started; elapsed time counts up from here. */
+  startedAt: number;
+  distanceMeters: number;
+}
+
 /**
  * A source of raw GPS fixes. `useGpsTrack` consumes one of these and is
  * otherwise unaware of the platform, so the windowing, persistence and UI logic
@@ -28,4 +35,11 @@ export interface GpsSource {
    * reasoning next to the thing it depends on.
    */
   readonly worksInBackground: boolean;
+  /**
+   * Reports the recording's progress, for a source that shows it outside the
+   * app (the Android foreground-service notification). Called before start()
+   * and again whenever a point is recorded. Optional: the web has nowhere to
+   * show it.
+   */
+  setStatus?(status: TrackStatus): void;
 }
