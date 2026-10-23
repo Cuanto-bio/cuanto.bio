@@ -7,6 +7,7 @@ import './layout.css';
 import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 import { Collapsible } from 'bits-ui';
 import { toast } from 'svelte-sonner';
+import { loadAnalytics } from '$lib/analytics';
 import favicon from '$lib/assets/favicon.svg';
 import * as Alert from '$lib/components/alert';
 import InstallFooter from '$lib/components/InstallFooter.svelte';
@@ -110,6 +111,11 @@ onMount(() => {
       () => window.location.reload(),
     );
   }
+
+  // Last, so nothing above depends on it: it reads $env/dynamic/public, which
+  // throws if the client and server builds disagree on kit.version.name (see
+  // scripts/app-version.js), and analytics is the least important thing here.
+  loadAnalytics();
 
   return () => {
     stopWatchdog();
